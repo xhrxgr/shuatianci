@@ -186,6 +186,13 @@ function git_repo_problem()
     if ($result['code'] === 127) {
         return '服务器上找不到 git 命令，无法使用在线更新（面板软件商店可安装 git）。';
     }
+    // git 拒绝：目录属主与运行用户不一致（git 2.35+ 的 dubious ownership 保护）。
+    // 典型场景：root 克隆的目录，而 PHP-FPM 以 www 运行。
+    if (stripos($result['err'], 'dubious ownership') !== false
+        || stripos($result['err'], 'safe.directory') !== false) {
+        return 'PHP 的运行用户与项目目录的属主不一致，git 出于安全拒绝操作。'
+            . '在服务器上执行 chown -R www:www 项目目录（www 换成 PHP 的实际运行用户）即可解决。';
+    }
     return '当前目录不是 git 仓库，无法使用在线更新。如果是复制粘贴部署的，请先按 README「让项目支持在线更新」一节初始化。';
 }
 
