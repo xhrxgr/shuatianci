@@ -99,6 +99,14 @@ if (root) {
     <dt class="w-20 shrink-0 text-muted">分支</dt>
     <dd class="text-ink">${escapeHtml(version.branch)}</dd>
   </div>
+  ${
+    version.phpVersion
+      ? `<div class="flex flex-wrap gap-x-3">
+    <dt class="w-20 shrink-0 text-muted">PHP</dt>
+    <dd class="text-ink">${escapeHtml(version.phpVersion)}</dd>
+  </div>`
+      : ""
+  }
   <div class="flex flex-wrap gap-x-3">
     <dt class="w-20 shrink-0 text-muted">时间</dt>
     <dd class="text-ink">${escapeHtml(formatTime(version.commitDate))}</dd>

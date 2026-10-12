@@ -290,6 +290,8 @@ function read_version()
         'commitDate' => $date['out'],
         'commitSubject' => $subject['out'],
         'branch' => $branch['out'],
+        // 显示运行中的 PHP 版本：排障时经常需要（不同 PHP 版本行为有差异）
+        'phpVersion' => PHP_VERSION,
     ];
 }
 

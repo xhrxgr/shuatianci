@@ -453,7 +453,7 @@ async function main() {
     "GET /system/version 返回 version 结构",
     version.status === 200 &&
       version.data.version &&
-      Object.keys(version.data.version).sort().join(",") === "branch,commit,commitDate,commitSubject,shortCommit",
+      Object.keys(version.data.version).sort().join(",") === "branch,commit,commitDate,commitSubject,phpVersion,shortCommit",
     version.data.version
   );
   record("system-version", version.status, version.data);
