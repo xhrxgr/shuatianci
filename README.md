@@ -206,7 +206,7 @@ New-NetFirewallRule -DisplayName "english-quiz" `
 ### 三步
 
 ```bash
-# 1. 拉取代码
+# 1. 拉取代码（公开仓库直接克隆；私有仓库提示输入时填用户名 + 令牌）
 git clone https://github.com/xhrxgr/shuatianci.git
 cd shuatianci
 
@@ -381,24 +381,29 @@ cd /www/wwwroot/项目目录
 chown -R www:www .
 ```
 
-**③ 把私有仓库的只读令牌写进远端地址**——PHP 进程无法交互式输入账号密码，
-令牌必须写在 URL 里。把下面命令里的「你的令牌」替换成令牌后再执行
+**③ 配置远端地址**——PHP 进程无法交互式输入账号密码，也不一定有 SSH 密钥，
+因此远端必须用 **HTTPS** 形式（`git@github.com:` 开头的 SSH 地址一律要改，
+否则会报 `Permission denied (publickey)`）。
+
+**公开仓库**：不需要任何凭据，直接用匿名地址：
+
+```bash
+cd /www/wwwroot/项目目录
+git remote set-url origin https://github.com/xhrxgr/shuatianci.git
+git remote -v    # 应显示 https://github.com/xhrxgr/shuatianci.git
+```
+
+**私有仓库**：令牌必须写在 URL 里。把下面命令里的「你的令牌」替换成令牌后再执行
 （**不要用尖括号当占位符**——bash 会把 `<` `>` 当成输入重定向，
 报 `bash: 用户名: No such file or directory`，命令会静默不执行）：
 
 ```bash
 cd /www/wwwroot/项目目录
-
-# 把「你的令牌」替换成令牌（xhrxgr 是本仓库的账号名）
 git remote set-url origin "https://xhrxgr:你的令牌@github.com/xhrxgr/shuatianci.git"
 git remote -v    # 确认地址已更新（令牌会明文显示，属正常）
-
-# 注意：如果上面显示的是 git@github.com:... 开头的 SSH 地址，也必须按上面
-# 改成 HTTPS——PHP 的运行用户（www）通常没有 SSH 密钥，
-# 用 SSH 地址在网页更新时会报「Permission denied (publickey)」
 ```
 
-令牌在 GitHub → Settings → Developer settings → Personal access tokens 生成
+私有仓库的令牌在 GitHub → Settings → Developer settings → Personal access tokens 生成
 （classic 勾 `repo`；建议用 fine-grained 只给这一个仓库的 Contents 只读权限）。
 配完以 `www` 身份验证一次，能拉到就全通了：
 
@@ -539,10 +544,11 @@ curl -s https://你的域名/ | head -5          # 应看到 <!doctype html> 与
 
 按上面「网页一键更新」的第 ① 步，到面板的 PHP 设置里解禁这两个函数。
 
-**检查更新报「无法连接远端仓库」**
+**检查更新报「无法连接远端仓库 / Permission denied (publickey)」**
 
-PHP 进程下的 git 凭据不可用。按「网页一键更新」的配置检查第 ③ 步（令牌是否已写进
-远端地址）与第 ② 步（项目目录属主是否为 `www`）。
+PHP 进程拿不到仓库访问权限。按「网页一键更新」第 ③ 步检查远端地址：
+必须是 HTTPS 形式——公开仓库用匿名地址，私有仓库把令牌写进地址；
+再看第 ② 步（项目目录属主是否为 `www`）。
 
 ## 发版
 
