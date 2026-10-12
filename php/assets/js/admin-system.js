@@ -109,9 +109,12 @@ if (root) {
   </div>
 </dl>`;
     } else {
-      versionBody.innerHTML = `<p class="text-sm text-muted">${
-        version ? "当前目录不是 git 仓库，无法读取版本信息。" : "未能读取版本信息"
-      }</p>`;
+      // 后端会在 commitSubject 里给出具体原因（不是 git 仓库 / 函数被禁用 / 缺 git 等）
+      const reason =
+        version && version.commitSubject
+          ? escapeHtml(version.commitSubject)
+          : "未能读取版本信息";
+      versionBody.innerHTML = `<p class="text-sm text-muted">${reason}</p>`;
     }
   }
 
@@ -119,11 +122,16 @@ if (root) {
   function renderUpdateActions() {
     if (!updateActions) return;
     if (!gitAvailable) {
+      const reason =
+        version && version.commitSubject
+          ? escapeHtml(version.commitSubject)
+          : "项目目录不是 git 仓库。";
       updateActions.innerHTML = `<div class="rounded-lg border border-warning/40 bg-warning-soft p-4">
   <p class="text-sm font-medium text-ink">当前部署不支持在线更新</p>
-  <p class="mt-2 text-xs leading-5 text-ink">
-    项目目录不是 git 仓库，通常是直接把文件复制上去部署的。在线更新依赖 git，
-    按 README 里「让项目支持在线更新」一节的命令初始化后，就能在这里一键更新。
+  <p class="mt-2 text-xs leading-5 text-ink">${reason}</p>
+  <p class="mt-2 text-xs leading-5 text-muted">
+    在线更新依赖服务器上的 git 与 PHP 的进程函数；按 README「网页一键更新」一节完成配置后，
+    这里就能直接检查和更新。
   </p>
 </div>`;
       return;
@@ -184,8 +192,8 @@ if (root) {
   >${updating ? "更新中..." : "立即更新"}</button>
 
   <p class="mt-3 text-xs leading-5 text-muted">
-    更新会自动完成：拉取代码 → 安装依赖 → 构建前端 → 重启服务。
-    若构建失败会自动回滚到当前版本，站点不会中断。
+    更新会自动完成：拉取代码 → 应用新版本 → 刷新缓存。
+    若中途失败会自动回滚到当前版本，站点不会中断。
   </p>
 </div>`;
       return;

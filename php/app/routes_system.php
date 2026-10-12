@@ -33,6 +33,24 @@ require_once __DIR__ . '/system_state.php';
  */
 function run_command($command, $cwd, $timeoutSec = 60)
 {
+    // 被 disable_functions 禁用的函数不能直接调用：function_exists 会返回 false，
+    // 强行调用会抛 Error（"Call to undefined function"）——@ 抑制不住，会变成接口 500。
+    // 所以必须先检查并给出可读原因（宝塔默认禁用 proc_open 与 proc_get_status）。
+    $missing = [];
+    if (!function_exists('proc_open')) {
+        $missing[] = 'proc_open';
+    }
+    if (!function_exists('proc_get_status')) {
+        $missing[] = 'proc_get_status';
+    }
+    if ($missing !== []) {
+        return [
+            'out' => '',
+            'err' => 'PHP 函数被禁用：' . implode('、', $missing) . '（php.ini 的 disable_functions）',
+            'code' => -1,
+        ];
+    }
+
     $descriptors = [
         1 => ['pipe', 'w'],
         2 => ['pipe', 'w'],
@@ -158,8 +176,9 @@ function git_repo_problem()
     if ($result['code'] === 0) {
         return null;
     }
-    // proc_open 被禁用（宝塔默认禁用它和 proc_get_status）
-    if ($result['code'] === -1 && strpos($result['err'], '无法启动进程') !== false) {
+    // proc_open / proc_get_status 被禁用（宝塔默认禁用它们）
+    if ($result['code'] === -1 && (strpos($result['err'], '被禁用') !== false
+            || strpos($result['err'], '无法启动进程') !== false)) {
         return 'PHP 的 proc_open / proc_get_status 函数被禁用，无法执行 git 命令。'
             . '请到面板的 PHP 设置 →「禁用函数」里移除这两个函数，在线更新才能使用。';
     }
