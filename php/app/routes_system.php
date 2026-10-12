@@ -227,12 +227,34 @@ function git_repo_problem()
     }
     // git 拒绝：目录属主与运行用户不一致（git 2.35+ 的 dubious ownership 保护）。
     // 典型场景：root 克隆的目录，而 PHP-FPM 以 www 运行。
+    // 旧版 git（2.35.1/2.35.2）的措辞是 "unsafe repository"，一并识别。
     if (stripos($result['err'], 'dubious ownership') !== false
+        || stripos($result['err'], 'unsafe repository') !== false
         || stripos($result['err'], 'safe.directory') !== false) {
         return 'PHP 的运行用户与项目目录的属主不一致，git 出于安全拒绝操作。'
             . '在服务器上执行 chown -R www:www 项目目录（www 换成 PHP 的实际运行用户）即可解决。';
     }
-    return '当前目录不是 git 仓库，无法使用在线更新。如果是复制粘贴部署的，请先按 README「让项目支持在线更新」一节初始化。';
+    // 其余未知原因：不能再"猜"，直接跑一遍环境诊断（运行账号、HOME/PATH、
+    // git 能否找到、关键路径属主、真实报错），把结果附在提示里，一次定位。
+    $raw = 'exit=' . $result['code'] . '; err=' . $result['err'];
+    if (PHP_OS_FAMILY !== 'Windows') {
+        $diag = run_command(
+            'pwd -P 2>&1; id 2>&1; echo "HOME=$HOME"; echo "PATH=$PATH"; '
+                . 'command -v git || echo "git-not-found"; git --version 2>&1; '
+                . 'ls -ld . .git .git/config 2>&1; '
+                . 'git rev-parse HEAD 2>&1; echo "rev-parse-exit=$?"',
+            APP_DIR,
+            15
+        );
+        $extra = trim($diag['out'] . ' ' . $diag['err']);
+        if ($extra !== '') {
+            $raw .= '; ' . $extra;
+        }
+    }
+    $raw = preg_replace('/\s+/', ' ', $raw);
+    $raw = function_exists('mb_substr') ? mb_substr($raw, 0, 900, 'UTF-8') : substr($raw, 0, 900);
+    return '当前目录不是 git 仓库，无法使用在线更新。如果是复制粘贴部署的，请先按 README「让项目支持在线更新」一节初始化。'
+        . '（诊断信息：' . $raw . '）';
 }
 
 /**
