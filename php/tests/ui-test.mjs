@@ -533,6 +533,74 @@ async function main() {
   // 「手动复制」降级入口存在（clipboard 不可用时的兜底）
   check("AI 页签有「手动复制」降级按钮", (await page.locator("#admin-ai-manual-copy").count()) === 1);
 
+  // AI 导入的来源：输入框留空 -> 采用 JSON 里 AI 生成的来源；填写 -> 覆盖
+  const aiSrcId = `q_ai_src_${Date.now().toString(36)}`;
+  await page.locator("#ai-source").fill("");
+  await page.locator("#admin-ai-json").fill(
+    JSON.stringify([
+      {
+        id: aiSrcId,
+        originalSentence: "AI source check ______ done.",
+        blanks: [
+          {
+            blankIndex: 1,
+            answer: ["is"],
+            hintWord: null,
+            hintType: "无提示词",
+            tagIds: ["t_001"],
+            trapAnalysis: "AI 来源字段测试。",
+          },
+        ],
+        source: "某某测试中学2026-2027学年高三上学期10月阶段检测试题",
+      },
+    ])
+  );
+  await page.locator("#admin-ai-submit").click();
+  await page.waitForTimeout(800);
+  const aiSourceValue = await page.evaluate(async (id) => {
+    const res = await fetch("/api/questions");
+    const data = await res.json();
+    const found = (data.questions ?? []).find((q) => q.id === id);
+    return found ? found.source : null;
+  }, aiSrcId);
+  check(
+    "AI 导入（来源留空）采用 JSON 里 AI 生成的来源",
+    aiSourceValue === "某某测试中学2026-2027学年高三上学期10月阶段检测试题",
+    aiSourceValue
+  );
+
+  const aiOverrideId = `q_ai_ovr_${Date.now().toString(36)}`;
+  await page.locator("#ai-source").fill("手动覆盖来源");
+  await page.locator("#admin-ai-json").fill(
+    JSON.stringify([
+      {
+        id: aiOverrideId,
+        originalSentence: "AI override check ______ done.",
+        blanks: [
+          {
+            blankIndex: 1,
+            answer: ["is"],
+            hintWord: null,
+            hintType: "无提示词",
+            tagIds: ["t_001"],
+            trapAnalysis: "覆盖来源字段测试。",
+          },
+        ],
+        source: "不应采用的来源",
+      },
+    ])
+  );
+  await page.locator("#admin-ai-submit").click();
+  await page.waitForTimeout(800);
+  const overriddenSource = await page.evaluate(async (id) => {
+    const res = await fetch("/api/questions");
+    const data = await res.json();
+    const found = (data.questions ?? []).find((q) => q.id === id);
+    return found ? found.source : null;
+  }, aiOverrideId);
+  check("手填来源覆盖 AI 生成的来源", overriddenSource === "手动覆盖来源", overriddenSource);
+  await page.locator("#ai-source").fill(""); // 复位，避免影响后续断言
+
   // 导入页签
   await page.locator('[data-admin-tab="import"]').click();
   check("导入页签显示导出按钮", await page.locator("#admin-export").isVisible());

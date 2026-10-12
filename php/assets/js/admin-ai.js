@@ -53,10 +53,13 @@ function escapeHtml(value) {
  * 生成给外部 AI 用的提示词。
  *
  * 适用场景：把一整段真题（可能连着多道题、带题号 56~65）
- * 连同卷子封面一起发给 AI，由 AI 按句切分成独立题目。
+ * 连同卷子封面一起发给 AI，由 AI 按句切分成独立题目，
+ * 并从封面读出试卷来源写进每道题的 source 字段。
  *
- * 注意：本函数的返回值必须与 src/components/AiAssistant.tsx 的 buildPrompt
- * 逐字一致——这段文本直接决定 AI 返回的 JSON 能否被解析。
+ * 注意：这段文本直接决定 AI 返回的 JSON 能否被解析与正确入库，
+ * 修改后必须人工通读一遍（对照「解析并入库」的校验规则），
+ * 并跑一次 ui-test 的 AI 页签用例。source 的示例值要与真实填写格式一致，
+ * 否则 AI 会照抄示例、不读封面。
  */
 function buildPrompt(tagDictionary) {
   const activeTags = tagDictionary.tags.filter((tag) => tag.isActive);
@@ -143,14 +146,16 @@ ${activeTags.map((tag) => `- ${tag.id} ${tag.name}`).join("\n")}
    每个词按标准拼写和大小写书写。
 6. 注意原文中还有中文注释（如"新石器""礼仪器"），这些是原卷的一部分，**原样保留在 originalSentence 里**。
 
-## source 字段怎么填
+## source 字段怎么填（每道题都要填）
 
-如果我提供的封面图里能看出卷子信息（学校、学期、考试名称、日期、题型），
-就填成完整来源，例如：
+source 从封面图里读出的卷子信息生成（学校、学期、考试名称、题型），
+写成一行完整来源，例如：
 "某某中学2026-2027学年高三上学期10月阶段检测试题"
 "2024年全国甲卷·语法填空"
 
-如果封面看不清或我没提供封面，填 "AI 生成"，我会在网页上手动改。
+- 同一套卷子的所有题目，source 填同一个值
+- 封面能辨认出多少信息就写多完整；只能看出考试名称（如"2024年全国甲卷"）时也照实写
+- 只有封面确实看不清、或我没有提供封面图时，才填 "AI 生成"
 
 ## 词形转换必须逐词核实（重要）
 
@@ -203,7 +208,7 @@ tagIds 的判定规则已经按类别分好标签，**不要凭语感随意归�
         "trapAnalysis": "空格与后文 one of 构成 as one of the most... 固定结构，as 在此作介词，与 one of 搭配使用。"
       }
     ],
-    "source": "AI 生成"
+    "source": "某某中学2026-2027学年高三上学期10月阶段检测试题"
   },
   {
     "id": "q_0002",
@@ -218,7 +223,7 @@ tagIds 的判定规则已经按类别分好标签，**不要凭语感随意归�
         "trapAnalysis": "空格作主句谓语，主语 Niuheliang 是第三人称单数，故用 features。后文 a temple 是宾语，说明主语主动发掘出该遗址，用主动语态。"
       }
     ],
-    "source": "AI 生成"
+    "source": "某某中学2026-2027学年高三上学期10月阶段检测试题"
   }
 ]
 
@@ -232,6 +237,8 @@ tagIds 的判定规则已经按类别分好标签，**不要凭语感随意归�
 - 两个空后面都没有括号，所以 hintWord 都是 null
 - 原文的中文注释「(新石器)」原样保留了
 - 题号 56、57 没有出现在任何字段里
+- source 是按封面信息填的完整来源（本示例假设封面是某某中学的月考试卷），
+  两条题填的是同一个值；实际以你看到的封面为准
 
 ## 需要拆解的内容
 
@@ -559,7 +566,7 @@ function runImport(list) {
     return;
   }
 
-  // 统一打上来源：优先用户在页面上填的
+  // 统一打上来源：优先用户在页面上填的；留空则用 AI 写在 JSON 里、从封面识别的来源
   const finalSource = els.source.value.trim();
   const stamped = list.map((question) => ({
     ...question,
@@ -570,7 +577,9 @@ function runImport(list) {
   }));
 
   hooks.onAppend(stamped, finalSource);
-  hooks.onNotice(`成功导入 ${stamped.length} 道题目${finalSource ? `，来源：${finalSource}` : ""}`);
+  // 提示里的来源取实际写库的值，便于当即核对 AI 有没有读对封面信息
+  const displaySource = stamped.length > 0 ? String(stamped[0].source ?? "").trim() : "";
+  hooks.onNotice(`成功导入 ${stamped.length} 道题目${displaySource ? `，来源：${displaySource}` : ""}`);
   els.textarea.value = "";
   pending = null;
 }

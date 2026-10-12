@@ -77,12 +77,12 @@ foreach ($aiTags as $aiTag) {
       校验通过后<span class="font-medium text-success">增量追加</span>到题库，不会覆盖或删除已有题目。
     </p>
 
-    <!-- 试卷来源 -->
-    <label class="mb-1.5 block text-sm font-medium text-ink" for="ai-source">试卷来源（本批题目的统一标注）</label>
+    <!-- 试卷来源：留空时使用 AI 从封面识别出的来源（写在 JSON 每道题的 source 里） -->
+    <label class="mb-1.5 block text-sm font-medium text-ink" for="ai-source">试卷来源（可选）</label>
     <input
       id="ai-source"
       type="text"
-      placeholder="如：某某中学2026-2027学年高三上学期10月阶段检测试题"
+      placeholder="留空则用 AI 从封面识别的来源；填写后将统一覆盖本批题目"
       class="mb-4 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition focus:border-primary"
     >
 

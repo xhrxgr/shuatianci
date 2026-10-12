@@ -644,10 +644,14 @@ function updateTags(updater) {
 async function handleAiAppend(incoming, source) {
   const stamped = incoming.map((question) => ({
     ...question,
+    // 页面上手填的来源优先；留空则用 AI 从封面生成、写在 JSON 里的来源
     source: source || question.source || "AI 生成",
   }));
   const result = await api.pushQuestions(stamped, false);
-  showNotice(`已导入 ${result.added ?? 0} 道题目${source ? `，来源：${source}` : ""}`);
+  // 提示里展示实际写库的来源（可能来自手填，也可能来自 AI 识别封面），
+  // 便于当即核对 AI 有没有读对卷子信息
+  const finalSource = stamped.length > 0 ? String(stamped[0].source ?? "").trim() : "";
+  showNotice(`已导入 ${result.added ?? 0} 道题目${finalSource ? `，来源：${finalSource}` : ""}`);
   existingIds = [...existingIds, ...stamped.map((question) => question.id)];
   renderAi(); // 标签字典可能变化时重刷预览
 }
