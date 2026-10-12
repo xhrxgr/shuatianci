@@ -66,12 +66,21 @@ function run_command($command, $cwd, $timeoutSec = 60)
     $out = '';
     $err = '';
     $deadline = time() + max(1, $timeoutSec);
+    // 退出码要在「检测到进程结束」的那一刻从 proc_get_status() 的 exitcode 取走。
+    // 不能依赖 proc_close() 的返回值：PHP 官方文档明确 —— PHP < 8.3 时，
+    // 调用过 proc_get_status() 之后 proc_close() 会返回 -1（8.3.0 才修复），
+    // 会把「命令成功」误判成失败（如宝塔常见的老版本 PHP）。
+    // 而旧版本下 exitcode 只有在第一次观察到进程退出时有效，所以要立刻保存。
+    $exitCode = null;
 
     while (true) {
         $out .= (string) fread($pipes[1], 8192);
         $err .= (string) fread($pipes[2], 8192);
         $status = proc_get_status($process);
         if (!$status['running']) {
+            if (isset($status['exitcode']) && (int) $status['exitcode'] >= 0) {
+                $exitCode = (int) $status['exitcode'];
+            }
             break;
         }
         if (time() > $deadline) {
@@ -86,9 +95,10 @@ function run_command($command, $cwd, $timeoutSec = 60)
     $err .= (string) stream_get_contents($pipes[2]);
     fclose($pipes[1]);
     fclose($pipes[2]);
-    $code = proc_close($process);
+    $closeCode = (int) proc_close($process);
+    $code = $exitCode !== null ? $exitCode : $closeCode;
 
-    return ['out' => trim($out), 'err' => trim($err), 'code' => (int) $code];
+    return ['out' => trim($out), 'err' => trim($err), 'code' => $code];
 }
 
 /**
@@ -236,7 +246,8 @@ function git_repo_problem()
     }
     // 其余未知原因：不能再"猜"，直接跑一遍环境诊断（运行账号、HOME/PATH、
     // git 能否找到、关键路径属主、真实报错），把结果附在提示里，一次定位。
-    $raw = 'exit=' . $result['code'] . '; err=' . $result['err'];
+    $raw = 'php=' . PHP_VERSION . '; exit=' . $result['code']
+        . '; out=' . $result['out'] . '; err=' . $result['err'];
     if (PHP_OS_FAMILY !== 'Windows') {
         $diag = run_command(
             'pwd -P 2>&1; id 2>&1; echo "HOME=$HOME"; echo "PATH=$PATH"; '
