@@ -405,6 +405,43 @@ async function main() {
   check("提示词已从括号提取", (await page.locator("[data-blank-card]").first().innerText()).includes("(energy)"));
   check("右侧实时预览出现题目卡片", (await page.locator("#admin-preview article").count()) === 1);
 
+  // 宽容识别：全角下划线 / 中文破折号 / 非 6 个的连续下划线
+  await page.locator("#admin-sentence").fill("He is an ＿＿＿＿＿＿ (energy) boy.");
+  await page.waitForTimeout(200);
+  check(
+    "全角下划线也能识别",
+    (await page.locator("#admin-blank-count").innerText()).includes("1 个空格"),
+    await page.locator("#admin-blank-count").innerText()
+  );
+
+  await page.locator("#admin-sentence").fill("He is an —— boy and —— girl.");
+  await page.waitForTimeout(200);
+  check(
+    "中文破折号（Shift+减号）也能识别",
+    (await page.locator("#admin-blank-count").innerText()).includes("2 个空格"),
+    await page.locator("#admin-blank-count").innerText()
+  );
+
+  await page.locator("#admin-sentence").fill("Only four ____ underscores here.");
+  await page.waitForTimeout(200);
+  check(
+    "4 个连续下划线也识别为一个空",
+    (await page.locator("#admin-blank-count").innerText()).includes("1 个空格"),
+    await page.locator("#admin-blank-count").innerText()
+  );
+
+  await page.locator("#admin-sentence").fill("No placeholder in this sentence.");
+  await page.waitForTimeout(200);
+  check(
+    "没有占位符时给出用法提示",
+    (await page.locator("#admin-blank-count").innerText()).includes("6 个下划线"),
+    await page.locator("#admin-blank-count").innerText()
+  );
+
+  // 恢复为后续保存流程使用的句子
+  await page.locator("#admin-sentence").fill("He is an ______ (energy) boy.");
+  await page.waitForTimeout(200);
+
   // 答案为空时保存应报错
   await page.locator("#admin-save").click();
   await page.waitForTimeout(200);
@@ -427,6 +464,36 @@ async function main() {
     await page.locator("#admin-notice").innerText()
   );
   check("保存后表单已清空", (await page.locator("#admin-sentence").inputValue()) === "");
+
+  // 全角下划线保存后应自动规范化为标准格式（经公开题库接口验证）
+  await page.locator("#admin-sentence").fill("Bracket ＿＿＿＿＿＿ case ＿＿＿＿＿＿ done.");
+  await page.waitForTimeout(200);
+  await page.locator('[data-blank-answer="0"]').fill("one");
+  await page.locator('[data-blank-answer="1"]').fill("two");
+  await page.locator('[data-blank-trap="0"]').fill("测试解析一");
+  await page.locator('[data-blank-trap="1"]').fill("测试解析二");
+  await page.locator("#admin-save").click();
+  await page
+    .waitForFunction(
+      () => (document.getElementById("admin-sentence")?.value ?? "x") === "",
+      { timeout: 5000 }
+    )
+    .catch(() => {});
+  const savedSentence = await page.evaluate(async () => {
+    const res = await fetch("/api/questions");
+    const data = await res.json();
+    const found = (data.questions ?? []).filter((item) =>
+      String(item.originalSentence ?? "").includes("Bracket")
+    );
+    return found.length > 0 ? found[found.length - 1].originalSentence : null;
+  });
+  check(
+    "全角下划线保存后规范化为标准占位符",
+    typeof savedSentence === "string"
+      && !savedSentence.includes("＿")
+      && (savedSentence.match(/______/g) ?? []).length === 2,
+    savedSentence
+  );
 
   // AI 页签
   await page.locator('[data-admin-tab="ai"]').click();

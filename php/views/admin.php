@@ -50,7 +50,7 @@ $adminTabs = [
             placeholder="He is an ______ (energy) boy, and he always does everything ______ (energetic)."
             class="blank-slot w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition focus:border-primary"
           ></textarea>
-          <p class="mt-1.5 text-xs text-faint" id="admin-blank-count">识别到 0 个空格，空位已自动拆好</p>
+          <p class="mt-1.5 text-xs text-faint" id="admin-blank-count">输入或粘贴原句后，这里会自动拆出各个空位</p>
 
           <label class="mb-1.5 mt-4 block text-sm font-medium text-ink" for="admin-source">题目来源</label>
           <input

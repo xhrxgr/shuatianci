@@ -69,9 +69,24 @@ function switchTab(tab) {
 /* 手动精录                                                            */
 /* ================================================================== */
 
+/**
+ * 规范化原句里的空格占位符。
+ * 手输、粘贴、中文输入法、从网页复制都可能混入"长得像下划线"的字符：
+ * - 全角下划线 ＿（中文标点 / 复制来源常见）
+ * - 中文输入法 Shift+减号 打出的破折号 ——（连续 em/en dash）
+ * - 下划线数量不是 6 个（连打 3 个以上也视为一个空）
+ * 全部统一成标准占位符，保证识别、预览与入库的数据格式一致。
+ */
+function normalizeSentence(text) {
+  return String(text)
+    .replace(/＿/g, "_")
+    .replace(/[—–]{2,}/g, BLANK_PLACEHOLDER)
+    .replace(/_{3,}/g, BLANK_PLACEHOLDER);
+}
+
 /** 空格位置与提示词提取（与 ManualEntry 的 parseSentence 同规则） */
 function parseSentence(sentence) {
-  const segments = String(sentence).split(BLANK_PLACEHOLDER);
+  const segments = normalizeSentence(sentence).split(BLANK_PLACEHOLDER);
   const count = segments.length - 1;
   const hintWords = [];
   for (let i = 0; i < count; i += 1) {
@@ -105,7 +120,16 @@ function renderBlanks() {
 
   const parsed = parseSentence(draft.sentence);
   if (countBox) {
-    countBox.textContent = `识别到 ${parsed.count} 个空格，空位已自动拆好`;
+    if (parsed.count > 0) {
+      countBox.textContent = `识别到 ${parsed.count} 个空格，空位已自动拆好`;
+      countBox.className = "mt-1.5 text-xs text-faint";
+    } else if (String(draft.sentence).trim() === "") {
+      countBox.textContent = "输入或粘贴原句后，这里会自动拆出各个空位";
+      countBox.className = "mt-1.5 text-xs text-faint";
+    } else {
+      countBox.textContent = "未识别到空格：请在要填空的位置放 6 个下划线（英文半角），例如 ______";
+      countBox.className = "mt-1.5 text-xs text-danger";
+    }
   }
 
   const active = tagDictionary.tags.filter((tag) => tag.isActive);
@@ -185,7 +209,7 @@ function buildQuestion(id) {
   const parsed = parseSentence(draft.sentence);
   return {
     id,
-    originalSentence: draft.sentence,
+    originalSentence: normalizeSentence(draft.sentence),
     blanks: draft.blanks.map((blank, index) => ({
       blankIndex: index + 1,
       answer: splitAnswers(blank.answer),

@@ -25,6 +25,18 @@ const HINT_TYPES = ["给动词", "给名词", "给形容词", "给副词", "无�
 /** 空格占位符字面量（与 src/utils/validate.ts 一致） */
 const BLANK_PLACEHOLDER = "______";
 
+/**
+ * 规范化原句占位符（与 admin.js 的同名函数一致）：
+ * 全角下划线、中文破折号、3+ 连续下划线都统一成标准 "______"，
+ * 避免 AI 返回或粘贴内容里的字符差异导致校验误报。
+ */
+function normalizeSentence(text) {
+  return String(text)
+    .replace(/＿/g, "_")
+    .replace(/[—–]{2,}/g, BLANK_PLACEHOLDER)
+    .replace(/_{3,}/g, BLANK_PLACEHOLDER);
+}
+
 /** HTML 转义：所有动态文本都要经过它 */
 function escapeHtml(value) {
   return String(value ?? "")
@@ -506,6 +518,14 @@ function parseAndImport() {
   }
 
   const list = Array.isArray(parsed) ? parsed : [parsed];
+
+  // 先规范化每题原句的占位符（全角下划线 / 中文破折号 / 数量不为 6），
+  // 保证后续校验与入库都使用标准格式
+  list.forEach((question) => {
+    if (question && typeof question.originalSentence === "string") {
+      question.originalSentence = normalizeSentence(question.originalSentence);
+    }
+  });
 
   // 找出字典里不存在的标签，交给用户确认是否创建
   const unknown = new Set();
