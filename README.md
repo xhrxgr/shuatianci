@@ -550,6 +550,23 @@ PHP 进程拿不到仓库访问权限。按「网页一键更新」第 ③ 步�
 必须是 HTTPS 形式——公开仓库用匿名地址，私有仓库把令牌写进地址；
 再看第 ② 步（项目目录属主是否为 `www`）。
 
+**检查更新卡住 / 超时，服务器直连 GitHub 不稳定（国内网络）**
+
+给这个仓库配置 GitHub 加速通道即可（第三方公共服务，仅影响本仓库的拉取；
+也可自行换成别的加速服务）：
+
+```bash
+cd /www/wwwroot/项目目录
+git config url."https://gh-proxy.com/https://github.com/".insteadOf "https://github.com/"
+chown www:www .git/config
+```
+
+配置后原生 `git fetch`（含网页「检查更新 / 立即更新」）会自动走加速通道。取消配置：
+
+```bash
+git config --unset url."https://gh-proxy.com/https://github.com/".insteadOf
+```
+
 ## 发版
 
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)，三处保持一致：
