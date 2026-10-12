@@ -437,6 +437,11 @@ async function main() {
     (await page.locator("#admin-blank-count").innerText()).includes("6 个下划线"),
     await page.locator("#admin-blank-count").innerText()
   );
+  check(
+    "没有空位时说明配置卡包含标签与解析",
+    (await page.locator("#admin-blanks").innerText()).includes("命题意图与判断依据"),
+    await page.locator("#admin-blanks").innerText()
+  );
 
   // 恢复为后续保存流程使用的句子
   await page.locator("#admin-sentence").fill("He is an ______ (energy) boy.");

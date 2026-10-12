@@ -132,6 +132,16 @@ function renderBlanks() {
     }
   }
 
+  // 还没有空位时，先说明"拆出空位后会有什么"，
+  // 避免用户以为页面只能填原句和来源（标签、解析都挂在每个空的配置卡里）
+  if (parsed.count === 0) {
+    container.innerHTML = `<div class="rounded-xl border border-dashed border-line bg-surface p-5 text-sm leading-6 text-muted">
+  还没有空位。识别出空位后，<span class="font-medium text-ink">每个空会生成一张配置卡</span>：答案、提示词类型、知识点标签、命题意图与判断依据。
+</div>`;
+    renderPreview();
+    return;
+  }
+
   const active = tagDictionary.tags.filter((tag) => tag.isActive);
   const groups = active
     .filter((tag) => tag.parentId === null)
