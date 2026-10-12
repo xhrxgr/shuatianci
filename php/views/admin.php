@@ -278,4 +278,4 @@ $seedTags = $seedTagsRaw !== false ? json_decode($seedTagsRaw, true) : null;
     'colorOptions' => ['#EF4444', '#F97316', '#F59E0B', '#EAB308', '#84CC16', '#10B981', '#14B8A6', '#06B6D4', '#3B82F6', '#6366F1', '#8B5CF6', '#A855F7', '#EC4899', '#F43F5E', '#64748B', '#0F172A'],
     'schemaVersion' => 1,
 ]) ?>
-<script type="module" src="/assets/js/admin.js"></script>
+<script type="module" src="<?= e(asset_url('/js/admin.js')) ?>"></script>

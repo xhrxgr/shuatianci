@@ -28,7 +28,7 @@ $items = nav_items($user);
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><?= e($title) ?></title>
-  <link rel="stylesheet" href="/assets/app.css">
+  <link rel="stylesheet" href="<?= e(asset_url('/app.css')) ?>">
 </head>
 <!-- data-authenticated 供 app.js 判断服务端是否已识别登录态 -->
 <body data-authenticated="<?= $user !== null ? '1' : '0' ?>">
@@ -108,9 +108,9 @@ $items = nav_items($user);
     </div>
   </div>
 
-  <script type="module" src="/assets/js/app.js"></script>
+  <script type="module" src="<?= e(asset_url('/js/app.js')) ?>"></script>
   <?php foreach ($scripts as $script): ?>
-    <script type="module" src="/assets/js/<?= e($script) ?>"></script>
+    <script type="module" src="<?= e(asset_url('/js/' . $script)) ?>"></script>
   <?php endforeach; ?>
 </body>
 </html>

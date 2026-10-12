@@ -133,5 +133,5 @@ $labelStyles = [
     </div>
   </div>
 
-  <script type="module" src="/assets/js/collection.js"></script>
+  <script type="module" src="<?= e(asset_url('/js/collection.js')) ?>"></script>
 <?php endif; ?>

@@ -440,14 +440,9 @@ function route_system_update_status()
     require_permission('system:read');
 
     // 后台进程更新完代码后，需要刷新 opcache 才能让新代码生效。
-    // CLI 进程无法刷新 FPM 的 opcache，所以由这个接口来消费标记。
-    $flag = reload_flag_file();
-    if (is_file($flag)) {
-        if (function_exists('opcache_reset')) {
-            @opcache_reset();
-        }
-        @unlink($flag);
-    }
+    // CLI 进程无法刷新 FPM 的 opcache，由请求消费标记（入口 index.php 也做了同样的
+    // 兜底：即使管理员中途关闭页面，新代码也会在下一个请求自动生效）。
+    maybe_apply_reload_flag();
 
     $state = update_state_read();
     json_response([

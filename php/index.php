@@ -147,6 +147,9 @@ $path = request_path((string) ($_SERVER['REQUEST_URI'] ?? '/'));
 
 send_security_headers();
 
+// 更新完成后自动生效：消费后台进程留下的「刷新 opcache」标记
+maybe_apply_reload_flag();
+
 try {
     // CORS 默认关闭；开启时预检请求会在这里结束
     if (send_cors_headers()) {

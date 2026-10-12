@@ -28,6 +28,25 @@ function reload_flag_file()
     return PHP_DATA_DIR . '/reload.flag';
 }
 
+/**
+ * 若存在「刷新 opcache」标记，则立即刷新并消费掉。
+ *
+ * 更新进程跑完后由**任意请求**触发（index.php 入口与更新状态接口都调用）：
+ * PHP-FPM 的 opcache 无法被 CLI 进程刷新；这样无论管理员接下来打开哪个页面，
+ * 第一个到达的请求都会让新代码生效 —— 「更新完成后自动生效」。
+ */
+function maybe_apply_reload_flag()
+{
+    $flag = reload_flag_file();
+    if (!is_file($flag)) {
+        return;
+    }
+    if (function_exists('opcache_reset')) {
+        @opcache_reset();
+    }
+    @unlink($flag);
+}
+
 /** 空状态 */
 function update_state_blank()
 {

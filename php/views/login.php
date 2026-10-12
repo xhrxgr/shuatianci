@@ -61,4 +61,4 @@
   <p class="mt-4 text-center text-xs text-faint">不登录也可以正常刷题，只是不会记录数据。</p>
 </div>
 
-<script type="module" src="/assets/js/login.js"></script>
+<script type="module" src="<?= e(asset_url('/js/login.js')) ?>"></script>

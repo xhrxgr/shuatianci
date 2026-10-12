@@ -54,7 +54,7 @@ $isGuest = $user === null;
       >清空本地记录</button>
     </section>
 
-    <script type="module" src="/assets/js/profile.js"></script>
+    <script type="module" src="<?= e(asset_url('/js/profile.js')) ?>"></script>
   <?php else: ?>
     <p class="rounded-lg bg-danger-soft px-4 py-2 text-xs text-danger" id="profile-error" hidden></p>
     <p class="rounded-lg bg-success-soft px-4 py-2 text-xs text-success" id="profile-notice" hidden></p>
@@ -128,6 +128,6 @@ $isGuest = $user === null;
       >退出登录</button>
     </section>
 
-    <script type="module" src="/assets/js/profile.js"></script>
+    <script type="module" src="<?= e(asset_url('/js/profile.js')) ?>"></script>
   <?php endif; ?>
 </div>

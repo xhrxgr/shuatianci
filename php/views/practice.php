@@ -83,4 +83,4 @@
     'tagDictionary' => $tagDictionary,
     'sourceFilter' => $sourceFilter,
 ]) ?>
-<script type="module" src="/assets/js/practice.js"></script>
+<script type="module" src="<?= e(asset_url('/js/practice.js')) ?>"></script>

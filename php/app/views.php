@@ -25,6 +25,24 @@ function e($value)
 }
 
 /**
+ * 静态资源 URL 加缓存戳（文件修改时间）。
+ *
+ * 代码更新后 URL 随之变化，浏览器会自动重新下载，无需手动 Ctrl+F5；
+ * 未变化的文件版本号不变，继续走缓存。
+ *
+ * @param string $path 形如 /app.css、/js/practice.js
+ * @return string
+ */
+function asset_url($path)
+{
+    $path = '/' . ltrim((string) $path, '/');
+    $url = '/assets' . $path;
+    $file = PHP_DIR . '/assets' . $path;
+    $mtime = is_file($file) ? filemtime($file) : false;
+    return $mtime !== false ? $url . '?v=' . $mtime : $url;
+}
+
+/**
  * 渲染一个页面。
  *
  * @param string $view  views/ 下的模板名（不含扩展名）

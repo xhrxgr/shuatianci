@@ -151,5 +151,5 @@
     </section>
   </div>
 
-  <script type="module" src="/assets/js/admin-users.js"></script>
+  <script type="module" src="<?= e(asset_url('/js/admin-users.js')) ?>"></script>
 <?php endif; ?>

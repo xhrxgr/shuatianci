@@ -297,8 +297,13 @@ if (root) {
           if (status.error) {
             showMessage("error", `更新失败：${status.error}`);
           } else {
-            showMessage("notice", "更新完成。服务正在重启，几秒后刷新页面即可使用新版本。");
+            showMessage("notice", "更新完成，正在自动刷新页面以应用新版本…（若未自动刷新，点下方按钮）");
             restarting = true;
+            // 新代码已就位（opcache 由后端自动刷新），短暂停留后自动重载页面，
+            // 让管理员直接看到新版本号与新的前端资源，无需任何手动操作
+            window.setTimeout(() => {
+              window.location.reload();
+            }, 2500);
           }
           renderUpdateActions();
           renderCheckResult();
@@ -314,7 +319,7 @@ if (root) {
 
   /** 开始更新 */
   async function handleUpdate() {
-    if (!window.confirm("确定要更新到最新版本吗？\n\n更新过程中服务会短暂中断，页面可能需要手动刷新。")) {
+    if (!window.confirm("确定要更新到最新版本吗？\n\n更新完成后页面会自动刷新；更新过程中站点可能短暂无响应，属正常现象。")) {
       return;
     }
 
