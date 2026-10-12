@@ -6,7 +6,9 @@
  * - 解析粘贴回来的 JSON、查出字典里没有的标签、校验后增量入库
  *
  * 与主脚本（assets/js/admin.js）的接口约定：
- *   window.setupAdminAi({ tagDictionary, onAppend, onCreateTags, onNotice })
+ *   admin.js 通过 `import { setupAiAssistant } from "./admin-ai.js"` 直接调用，
+ *   不依赖 script 标签顺序（模块依赖图保证本文件先求值）。
+ *   setupAiAssistant({ tagDictionary, onAppend, onCreateTags, onNotice })
  *   - tagDictionary：{ schemaVersion, tags: [{ id, name, parentId, color, isActive }] }
  *   - onAppend(questions, source)：把校验通过的题目批量入库（返回 Promise）
  *   - onCreateTags(names)：创建字典里没有的新标签
@@ -645,4 +647,6 @@ export function setupAiAssistant({ tagDictionary, onAppend, onCreateTags, onNoti
   renderSubmitting();
 }
 
+// 兼容挂载：主脚本现走 import 调用；保留此全局入口便于控制台调试
+// （注意：不要把它当作初始化依赖——曾因本文件未被加载导致面板静默失效）
 window.setupAdminAi = setupAiAssistant;

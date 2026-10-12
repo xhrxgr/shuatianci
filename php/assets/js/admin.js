@@ -12,6 +12,10 @@
  */
 
 import { api } from "./api.js";
+// AI 助手必须走 import 引入：此前靠 window.setupAdminAi 全局约定，
+// 而 admin-ai.js 没有被任何 script 标签加载，导致整个 AI 面板（含"复制提示词"）
+// 从未绑定事件、点击无反应。import 由模块依赖图保证求值顺序，不依赖标签顺序。
+import { setupAiAssistant } from "./admin-ai.js";
 
 const BLANK_PLACEHOLDER = "______";
 const HINT_TYPES = ["给动词", "给名词", "给形容词", "给副词", "无提示词"];
@@ -1001,14 +1005,12 @@ function init() {
   renderBlanks();
 
   // 初始化 AI 助手（模块自带幂等，重复调用只更新字典与回调）
-  if (typeof window.setupAdminAi === "function") {
-    window.setupAdminAi({
-      tagDictionary,
-      onAppend: handleAiAppend,
-      onCreateTags: handleCreateTags,
-      onNotice: showNotice,
-    });
-  }
+  setupAiAssistant({
+    tagDictionary,
+    onAppend: handleAiAppend,
+    onCreateTags: handleCreateTags,
+    onNotice: showNotice,
+  });
 }
 
 init();

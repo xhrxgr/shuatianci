@@ -48,6 +48,8 @@ async function launchBrowser() {
 async function main() {
   const browser = await launchBrowser();
   const context = await browser.newContext();
+  // 「复制提示词」测试需要读写剪贴板（Chromium 默认需显式授权）
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: BASE });
   const page = await context.newPage();
 
   const pageErrors = [];
@@ -505,6 +507,31 @@ async function main() {
   check("切到 AI 页签后面板可见", await page.locator("#admin-ai-root").isVisible());
   check("AI 页签有「复制提示词」按钮", (await page.locator("#admin-ai-copy").count()) === 1);
   check("AI 页签显示可用标签数", (await page.locator("[data-tag-count]").count()) === 1);
+
+  // 复制提示词（回归：曾因 admin-ai.js 未被任何 script 加载，整个 AI 面板静默失效）
+  check(
+    "「复制提示词」初始文案正确",
+    (await page.locator("#admin-ai-copy").innerText()).trim() === "复制提示词"
+  );
+  await page.locator("#admin-ai-copy").click();
+  await page.waitForTimeout(400);
+  check(
+    "点击「复制提示词」后按钮变为已复制态",
+    (await page.locator("#admin-ai-copy").innerText()).includes("已复制"),
+    await page.locator("#admin-ai-copy").innerText()
+  );
+  const clipboardText = await page
+    .evaluate(() => navigator.clipboard.readText().catch(() => ""))
+    .catch(() => "");
+  check(
+    "剪贴板包含完整提示词（含标签规则与输出格式）",
+    clipboardText.length > 500
+      && clipboardText.includes("高考英语")
+      && clipboardText.includes("trapAnalysis"),
+    `剪贴板长度 ${clipboardText.length}`
+  );
+  // 「手动复制」降级入口存在（clipboard 不可用时的兜底）
+  check("AI 页签有「手动复制」降级按钮", (await page.locator("#admin-ai-manual-copy").count()) === 1);
 
   // 导入页签
   await page.locator('[data-admin-tab="import"]').click();
