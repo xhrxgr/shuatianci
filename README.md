@@ -382,10 +382,20 @@ chown -R www:www .
 ```
 
 **③ 把私有仓库的只读令牌写进远端地址**——PHP 进程无法交互式输入账号密码，
-令牌必须写在 URL 里（`<用户名>` 和 `<令牌>` 都替换掉）：
+令牌必须写在 URL 里。把下面命令里的「你的令牌」替换成令牌后再执行
+（**不要用尖括号当占位符**——bash 会把 `<` `>` 当成输入重定向，
+报 `bash: 用户名: No such file or directory`，命令会静默不执行）：
 
 ```bash
-git remote set-url origin https://<用户名>:<令牌>@github.com/xhrxgr/shuatianci.git
+cd /www/wwwroot/项目目录
+
+# 把「你的令牌」替换成令牌（xhrxgr 是本仓库的账号名）
+git remote set-url origin "https://xhrxgr:你的令牌@github.com/xhrxgr/shuatianci.git"
+git remote -v    # 确认地址已更新（令牌会明文显示，属正常）
+
+# 注意：如果上面显示的是 git@github.com:... 开头的 SSH 地址，也必须按上面
+# 改成 HTTPS——PHP 的运行用户（www）通常没有 SSH 密钥，
+# 用 SSH 地址在网页更新时会报「Permission denied (publickey)」
 ```
 
 令牌在 GitHub → Settings → Developer settings → Personal access tokens 生成

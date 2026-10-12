@@ -11,6 +11,28 @@
 当前版本写在根目录的 `VERSION` 文件里，与 `package.json` 的 `version`、git 标签 `v{VERSION}`
 三处保持一致；发版流程见 README「发版」一节。
 
+## 3.0.9（2026-10-12）
+
+### 改进
+
+- **「检查更新 / 立即更新」的失败提示可操作化**：把 git 的原始英文报错翻译成中文指引
+  （`git_failure_hint()`），覆盖四类常见故障并给出具体做法：
+  - `Permission denied (publickey)`：远端是 SSH 地址但 PHP 运行用户没有密钥
+    → 改成带令牌的 HTTPS 地址，或配部署密钥
+  - `Authentication failed` / 凭据缺失：令牌写错、过期或完全没配
+  - `Could not resolve host` / 连接失败：服务器网络或出站防火墙
+  - 其余情况仍走通用提示
+  「检查更新」与后台更新进程（worker）共用同一套翻译
+- **README 修正令牌配置命令的占位符**：原示例用 `<用户名>` `<令牌>` 会被 bash 当成
+  输入重定向（报 `bash: 用户名: No such file or directory`，命令静默不执行）；
+  改为无尖括号写法，并补充「远端是 `git@github.com:` 开头的 SSH 地址时也必须改成
+  HTTPS」的说明
+
+### 验证
+
+- `git_failure_hint` 单测 5/5（SSH 无密钥 / 令牌错误 / 完全无凭据 / DNS 故障 / 无法归类）
+- 接口自测 60/60；页面交互自测 87/87
+
 ## 3.0.8（2026-10-12）
 
 ### 改进

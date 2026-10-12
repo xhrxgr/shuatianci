@@ -116,6 +116,45 @@ function git_cmd(array $args, $timeoutSec = 30)
 }
 
 /**
+ * 把 git 的原始报错翻译成可操作的中文提示；无法归类时返回空串。
+ *
+ * 触发场景：网页更新以 PHP 的运行用户（宝塔上是 www）执行 git，
+ * 该用户往往没有 SSH 密钥、也没有配 HTTPS 凭据，报错全是英文，
+ * 直接贴给用户看等于没说，这里逐类给出具体做法。
+ *
+ * @param string $err
+ * @return string
+ */
+function git_failure_hint($err)
+{
+    $err = (string) $err;
+
+    // 远端是 SSH 地址（git@github.com:...）但运行用户没有密钥
+    if (stripos($err, 'Permission denied (publickey)') !== false) {
+        return '远端仓库是 SSH 地址（git@github.com:...），但 PHP 的运行用户没有 SSH 密钥。'
+            . '请把远端地址改成带令牌的 HTTPS 形式（README「网页一键更新」一节的 git remote set-url 命令），'
+            . '或在 GitHub 仓库的 Deploy keys 中为该用户添加部署密钥。';
+    }
+    // HTTPS 凭据缺失或无效（令牌没配 / 写错 / 过期 / 误用账号密码）
+    if (stripos($err, 'Authentication failed') !== false
+        || stripos($err, 'Invalid username or password') !== false
+        || stripos($err, 'could not read Username') !== false
+        || stripos($err, 'terminal prompts disabled') !== false
+        || stripos($err, 'Support for password authentication was removed') !== false) {
+        return '仓库凭据缺失或无效：请确认远端地址里带上了有效的只读令牌且未过期'
+            . '（README「网页一键更新」一节有完整的 git remote set-url 命令）。';
+    }
+    // 网络 / DNS
+    if (stripos($err, 'Could not resolve host') !== false
+        || stripos($err, 'Failed to connect') !== false
+        || stripos($err, 'Connection timed out') !== false
+        || stripos($err, 'network is unreachable') !== false) {
+        return '无法连接 GitHub：请检查服务器的网络与出站防火墙规则（能否正常访问 github.com）。';
+    }
+    return '';
+}
+
+/**
  * 找一个能执行 CLI 脚本的 php 可执行文件，找不到返回 null。
  *
  * 不能直接用 PHP_BINARY：在 PHP-FPM 下它指向 php-fpm 本身
@@ -263,10 +302,12 @@ function route_system_check_update()
 
     $fetch = git_cmd(['fetch', 'origin', '--prune'], 60);
     if ($fetch['code'] !== 0) {
+        $raw = trim($fetch['err'] !== '' ? $fetch['err'] : $fetch['out']);
+        $hint = git_failure_hint($raw);
         json_response([
             'ok' => false,
-            'error' => '无法连接远端仓库，请检查服务器上的 git 凭据是否已配置',
-            'detail' => trim($fetch['err'] !== '' ? $fetch['err'] : $fetch['out']),
+            'error' => $hint !== '' ? $hint : '无法连接远端仓库，请检查服务器上的 git 凭据是否已配置',
+            'detail' => $raw,
         ], 502);
     }
 

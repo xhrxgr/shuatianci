@@ -46,7 +46,11 @@ try {
     update_state_log('git fetch origin');
     $fetch = git_cmd(['fetch', 'origin', '--prune'], 60);
     if ($fetch['code'] !== 0) {
-        throw new RuntimeException(trim($fetch['err'] !== '' ? $fetch['err'] : $fetch['out']));
+        $raw = trim($fetch['err'] !== '' ? $fetch['err'] : $fetch['out']);
+        update_state_log('git 报错：' . $raw);
+        // 常见的凭据 / 网络故障翻译成可操作的中文（git_failure_hint）
+        $hint = git_failure_hint($raw);
+        throw new RuntimeException($hint !== '' ? $hint : $raw);
     }
 
     $target = 'origin/' . $branch;
