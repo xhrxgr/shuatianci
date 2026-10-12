@@ -1,0 +1,149 @@
+@import "tailwindcss";
+
+/*
+ * 主题：跟随系统（prefers-color-scheme）。
+ *
+ * 做法：所有颜色只在 :root 和深色媒体查询里定义两套，
+ * 再用 @theme inline 把它们注册成 Tailwind 颜色。
+ * 组件里写 bg-surface / text-muted / border-line 即可，
+ * 换主题时组件代码一个字都不用改。
+ */
+
+:root {
+  /* 品牌与语义色 */
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-soft: #dbeafe;
+  --success: #059669;
+  --success-soft: #d1fae5;
+  --danger: #dc2626;
+  --danger-soft: #fee2e2;
+  --warning: #d97706;
+  --warning-soft: #fef3c7;
+
+  /* 中性色 */
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-alt: #f1f5f9;
+  --line: #e2e8f0;
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --text-faint: #94a3b8;
+  --on-primary: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --primary: #3b82f6;
+    --primary-hover: #2563eb;
+    --primary-soft: #1e3a8a;
+    --success: #10b981;
+    --success-soft: #064e3b;
+    --danger: #f87171;
+    --danger-soft: #7f1d1d;
+    --warning: #fbbf24;
+    --warning-soft: #78350f;
+
+    --bg: #0b1120;
+    --surface: #111827;
+    --surface-alt: #1e293b;
+    --line: #1f2937;
+    --text: #e5e7eb;
+    --text-muted: #94a3b8;
+    --text-faint: #64748b;
+    --on-primary: #ffffff;
+  }
+}
+
+/* 注册为 Tailwind 颜色：bg-surface、text-muted、border-line 等自动可用 */
+@theme inline {
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-soft: var(--primary-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-alt: var(--surface-alt);
+  --color-line: var(--line);
+  --color-ink: var(--text);
+  --color-muted: var(--text-muted);
+  --color-faint: var(--text-faint);
+  --color-on-primary: var(--on-primary);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 填空占位符与英文使用等宽字体 */
+.blank-slot {
+  font-family: "JetBrains Mono", "Consolas", "Courier New", monospace;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-faint);
+}
+
+input,
+textarea,
+select,
+button {
+  font-family: inherit;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-faint);
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* 尊重系统的减少动效设置 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * 前端改为 PHP 服务端渲染后，Tailwind 需要同时扫描 PHP 模板与原生 JS 里的类名。
+ *
+ * 有 Node 时执行 `npm run build:css` 重新生成 php/assets/app.css；
+ * 没有 Node 时直接编辑 php/assets/app.css 即可——它是纯 CSS，浏览器直接用，
+ * 运行时不需要任何构建步骤。
+ * --------------------------------------------------------------------------- */
+@source "../php/views";
+@source "../php/assets/js";

@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "tags": [
+    { "id": "t_001", "name": "动词", "parentId": null, "color": "#EF4444", "isActive": true },
+    { "id": "t_002", "name": "名词", "parentId": null, "color": "#3B82F6", "isActive": true },
+    { "id": "t_003", "name": "形容词副词", "parentId": null, "color": "#10B981", "isActive": true },
+    { "id": "t_004", "name": "无提示词", "parentId": null, "color": "#F59E0B", "isActive": true },
+
+    { "id": "t_005", "name": "谓语-时态", "parentId": "t_001", "color": "#F87171", "isActive": true },
+    { "id": "t_006", "name": "谓语-语态", "parentId": "t_001", "color": "#F87171", "isActive": true },
+    { "id": "t_007", "name": "谓语-主谓一致", "parentId": "t_001", "color": "#F87171", "isActive": true },
+    { "id": "t_008", "name": "非谓语-to do", "parentId": "t_001", "color": "#F87171", "isActive": true },
+    { "id": "t_009", "name": "非谓语-doing", "parentId": "t_001", "color": "#F87171", "isActive": true },
+    { "id": "t_010", "name": "非谓语-done", "parentId": "t_001", "color": "#F87171", "isActive": true },
+    { "id": "t_011", "name": "情态动词", "parentId": "t_001", "color": "#F87171", "isActive": true },
+    { "id": "t_012", "name": "虚拟语气", "parentId": "t_001", "color": "#F87171", "isActive": true },
+
+    { "id": "t_013", "name": "名词-单复数", "parentId": "t_002", "color": "#60A5FA", "isActive": true },
+    { "id": "t_014", "name": "名词-词性转换", "parentId": "t_002", "color": "#60A5FA", "isActive": true },
+    { "id": "t_015", "name": "名词-所有格", "parentId": "t_002", "color": "#60A5FA", "isActive": true },
+
+    { "id": "t_016", "name": "形容词-比较级", "parentId": "t_003", "color": "#34D399", "isActive": true },
+    { "id": "t_017", "name": "形容词-最高级", "parentId": "t_003", "color": "#34D399", "isActive": true },
+    { "id": "t_018", "name": "形容词变副词-直接加ly", "parentId": "t_003", "color": "#34D399", "isActive": true },
+    { "id": "t_019", "name": "形容词变副词-ic变ally", "parentId": "t_003", "color": "#34D399", "isActive": true },
+    { "id": "t_020", "name": "形容词变副词-le变ly", "parentId": "t_003", "color": "#34D399", "isActive": true },
+    { "id": "t_021", "name": "形容词变副词-y变ily", "parentId": "t_003", "color": "#34D399", "isActive": true },
+    { "id": "t_022", "name": "形容词变副词-特殊同形", "parentId": "t_003", "color": "#34D399", "isActive": true },
+    { "id": "t_023", "name": "形容词变名词", "parentId": "t_003", "color": "#34D399", "isActive": true },
+
+    { "id": "t_024", "name": "冠词-a/an", "parentId": "t_004", "color": "#FBBF24", "isActive": true },
+    { "id": "t_025", "name": "冠词-the", "parentId": "t_004", "color": "#FBBF24", "isActive": true },
+    { "id": "t_026", "name": "介词-固定搭配", "parentId": "t_004", "color": "#FBBF24", "isActive": true },
+    { "id": "t_027", "name": "介词-时间", "parentId": "t_004", "color": "#FBBF24", "isActive": true },
+    { "id": "t_028", "name": "介词-地点", "parentId": "t_004", "color": "#FBBF24", "isActive": true },
+    { "id": "t_029", "name": "连词-并列", "parentId": "t_004", "color": "#FBBF24", "isActive": true },
+    { "id": "t_030", "name": "连词-从属", "parentId": "t_004", "color": "#FBBF24", "isActive": true },
+    { "id": "t_031", "name": "定语从句-which", "parentId": "t_004", "color": "#FBBF24", "isActive": true },
+    { "id": "t_032", "name": "定语从句-where", "parentId": "t_004", "color": "#FBBF24", "isActive": true },
+    { "id": "t_033", "name": "定语从句-who", "parentId": "t_004", "color": "#FBBF24", "isActive": true },
+    { "id": "t_034", "name": "定语从句-whose", "parentId": "t_004", "color": "#FBBF24", "isActive": true },
+    { "id": "t_035", "name": "定语从句-that", "parentId": "t_004", "color": "#FBBF24", "isActive": true },
+    { "id": "t_036", "name": "名词性从句-what", "parentId": "t_004", "color": "#FBBF24", "isActive": true },
+    { "id": "t_037", "name": "名词性从句-that", "parentId": "t_004", "color": "#FBBF24", "isActive": true },
+    { "id": "t_038", "name": "代词-人称", "parentId": "t_004", "color": "#FBBF24", "isActive": true },
+    { "id": "t_039", "name": "代词-物主", "parentId": "t_004", "color": "#FBBF24", "isActive": true },
+    { "id": "t_040", "name": "代词-反身", "parentId": "t_004", "color": "#FBBF24", "isActive": true },
+    { "id": "t_041", "name": "it-形式主语", "parentId": "t_004", "color": "#FBBF24", "isActive": true },
+    { "id": "t_042", "name": "it-形式宾语", "parentId": "t_004", "color": "#FBBF24", "isActive": true }
+  ]
+}

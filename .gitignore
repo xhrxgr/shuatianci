@@ -1,0 +1,17 @@
+node_modules
+dist
+dist-ssr
+*.local
+.DS_Store
+.vite
+*.tsbuildinfo
+
+# 环境变量与本地日志
+.env
+*.log
+
+# 网页更新时构建产物的临时备份目录
+.dist-backup
+
+# PHP 版后端的运行时状态（登录限速计数、在线更新进度），都是进程外临时数据
+php/data/

@@ -1,0 +1,16 @@
+{
+  "name": "english-quiz",
+  "private": true,
+  "version": "3.0.4",
+  "type": "module",
+  "description": "高考英语短文填空穷举题库（纯 PHP 后端 + 原生 JS 前端，运行时不需要 Node）",
+  "scripts": {
+    "dev:api": "php -S 127.0.0.1:9001 php/dev-router.php",
+    "build:css": "tailwindcss -i styles/app.css -o php/assets/app.css --minify",
+    "test:api": "node php/tests/api-test.mjs http://127.0.0.1:9001",
+    "test:ui": "node php/tests/ui-test.mjs http://127.0.0.1:9002"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.3"
+  }
+}

@@ -1,0 +1,166 @@
+# 更新日志
+
+本项目从 **2.0.0** 起正式记录版本。此前没有版本号管理，历史变更请看 `git log`。
+
+版本号遵循[语义化版本 2.0.0](https://semver.org/lang/zh-CN/)：
+
+- **MAJOR**：不兼容的变更（部署方式、配置位置、接口契约变化）
+- **MINOR**：向下兼容的功能新增
+- **PATCH**：向下兼容的问题修复
+
+当前版本写在根目录的 `VERSION` 文件里，与 `package.json` 的 `version`、git 标签 `v{VERSION}`
+三处保持一致；发版流程见 README「发版」一节。
+
+## 3.0.4（2026-10-12）
+
+### 修复
+
+- **网页一键更新在 PHP-FPM 环境下拉不起后台进程**：原实现直接用 `PHP_BINARY`
+  拉起 worker，但它在 FPM 下指向 `php-fpm` 本身（宝塔环境形如
+  `/www/server/php/82/sbin/php-fpm`），无法执行脚本。新增 `find_php_cli()`：
+  按 CLI 命名 → 宝塔同版本 → 从 php-fpm 路径推断 → 宝塔其他版本 →
+  系统通用位置依次探测，都找不到时给出明确报错
+- **在线更新的报错更准确**：`proc_open` / `proc_get_status` 被禁用
+  （宝塔默认禁用这两个函数）或系统缺 git 时，不再误报「当前目录不是 git 仓库」
+
+### 文档
+
+- README「网页一键更新」重写为完整的首次配置指引：
+  ① 面板解禁 `proc_open` / `proc_get_status`；② `chown -R www:www` 项目目录；
+  ③ 只读令牌写进远端地址（PHP 进程无法交互输入密码），附 `www` 身份验证命令
+- 故障排查补充两个新错误提示的对应处理
+
+### 验证
+
+- 接口自测 60/60；页面交互 81/81（全新库）
+- `find_php_cli()` CLI 场景实测返回当前解释器；php-fpm / apache 等命名正确进入探测分支
+
+## 3.0.3（2026-10-12）
+
+### 变更
+
+- **解析不再带错误示范**（用户要求：把错误形式写出来会误导学生）：
+  - **AI 助手提示词**：`trapAnalysis` 的要求由「说清三件事（含"学生最容易错在哪"）」
+    改为「说清两件事（命题人为什么这么设计、正确的判断依据是什么）」，
+    并明确「不要把错误的写法或错误选项列出来」；三处示例解析同步改写为纯正面表述
+  - **内置示例题**（`php/seed/questions.json`）：4 处解析全部改写，
+    删去「学生最常见的错误是……写成 xxx」类的错误示范
+  - **界面文案**：「命题意图与易错点」改为「命题意图与判断依据」
+    （录题后台字段标签、录题预览空态、刷题页解析区空态，共 3 处）
+
+### 说明
+
+- 内置示例题只在**空库首次启动**时导入；已有数据库中的旧解析不会自动更新
+
+### 验证
+
+- 接口自测 60/60；页面交互 81/81（全新库）；全新库导入的示例解析已确认无错误示范
+
+## 3.0.2（2026-10-12）
+
+### 安全
+
+- **两个内部脚本此前可被浏览器直接访问**（已加守卫）：
+  - `php/worker_update.php`：HTTP 访问会真的执行一次代码更新（git fetch + reset --hard）。
+    现在限制为只允许命令行执行（拉起方式 `nohup php worker_update.php &` 不受影响），
+    HTTP 访问返回 403
+  - `php/dev-router.php`：本地开发专用，限制为只允许内置服务器（`php -S`）执行
+- **部署文档修正 deny 写法（重要）**：原配置用 `location ~ ^/(app|views|...)/` 正则形式，
+  在宝塔等环境里会被面板自动生成的 js/css 缓存正则（`location ~ .*\.(js|css)?$`，
+  该正则实际匹配任何带「点」的路径）抢先，导致 `data/english_quiz.db`
+  （含全部账号密码哈希）可被直接下载。改为 `location =` / `location ^~` 写法——
+  这两类匹配的优先级高于所有正则，与配置出现位置无关；并补上
+  `worker_update.php`、`dev-router.php`、`.env` 的拦截
+- README 补充宝塔 / 面板环境的最简部署片段（填「伪静态」即可，不需要碰主配置文件）
+
+### 文档
+
+- `docs/PHP_MIGRATION.md`：部署与本地启动章节标注时效（3.0.0 起形态已变），
+  移除已不存在的构建步骤
+
+## 3.0.1（2026-10-12）
+
+### 修复
+
+- **在线更新去掉构建步骤**：`php/worker_update.php` 不再执行 npm install / npm run build
+  （前端已是 PHP 渲染，没有构建产物），改为「拉代码 → 刷新 opcache」；
+  同时把 `pull --ff-only` 换成 `reset --hard origin/<分支>`——本仓库的提交历史被重写过，
+  `pull` 会因「无法快进」直接失败
+- **Windows 下 git 参数里的 `%` 被吞**：PHP 的 `escapeshellarg` 在 Windows 上会把 `%`
+  替换成空格，导致「系统设置」里显示的提交时间与提交说明为空（Linux 生产环境不受影响）；
+  改为 Windows 下自行加引号
+- 删除已无人使用的 npm 辅助函数与 `DIST_DIR` 常量
+
+### 文档与测试
+
+- README 补齐「从 2.x / 1.x 升级」教程（含 nginx 站点根要从 `dist/` 改成 `php/`）、
+  环境变量表里的种子目录默认值、发版自测命令；局域网章节去掉已删除的前端开发服务器
+- 接口与页面自测都会先清掉上一次运行留下的收藏/标记，重复运行不再误报
+- 页面自测明确要求用全新的库（脚本头部与 README 均有说明）
+
+## 3.0.0（2026-10-12）
+
+前端由 React 改为 PHP 服务端渲染 + 原生 JavaScript，**页面、交互、文案与接口完全不变**，
+运行时不再需要 Node。
+
+### 变更
+
+- **页面改为 PHP 渲染**：`php/views/*.php`（布局、首页、登录、刷题、个人中心、收藏、
+  录题后台、用户管理、系统设置、404），首屏数据直接查库渲染
+- **交互改为原生 JS**：`php/assets/js/*.js`（ES module，浏览器直接加载，不打包）
+- **登录态新增 Cookie 通道**：页面导航不会带 Authorization 头，PHP 靠 Cookie 识别登录态；
+  JS 侧的 token 机制保持不变（Authorization 优先），老 token 会自动补写 Cookie
+- **样式**：Tailwind 编译产物落地为 `php/assets/app.css`；样式源移到 `styles/app.css`
+  （`npm run build:css` 可重新生成，没有 Node 时直接改产物也能用）
+- **种子数据**从 `src/data/` 移到 `php/seed/`
+- **删除**：`src/`（React 源码）、`dist/`、`vite.config.ts`、`tsconfig*.json`、
+  根 `index.html`、React 相关依赖
+- **在线更新去掉构建步骤**：`php/worker_update.php` 不再执行 npm install / npm run build，
+  拉完代码刷新 opcache 即完成
+- **新增测试**：`php/tests/ui-test.mjs`（81 项页面交互断言，需 playwright-core + 本机浏览器）
+- 新增 `docs/REFACTOR_PROGRESS.md`（重构进度台账）
+
+### 对外影响
+
+- 页面结构、样式、交互、文案：**无变化**
+- 接口路径、方法、字段、状态码：**无变化**（60 项接口自测通过）
+- 部署形态变化：站点根指向 `php/`，所有请求交给 `php/index.php`
+  （静态资源在 `/assets/`，由 nginx 直接吐）
+- 已有数据与账号密码：**无需迁移或重置**
+
+### 验证
+
+- 接口自测 60/60
+- 页面交互自测 81/81（首页、登录、刷题、个人中心、收藏、录题后台、权限拦截）
+
+## 2.0.0（2026-10-12）
+
+后端实现由 Node/Express 换成 PHP，接口契约与页面完全不变。
+
+### 变更
+
+- **新增 PHP 后端**（`php/`）：PDO + pdo_sqlite，零 Composer 依赖
+  - `php/index.php` 单一入口，26 条接口路由，统一错误出口
+  - `php/app/` 配置、数据库、会话与权限、限速、校验、建表与种子
+  - `php/worker_update.php` 后台更新进程（失败自动回滚）
+- **删除 Node 后端**：`server/`、`deploy.sh`、`scripts/dev-all.mjs`
+- **位置调整**（原 Node 版的产物移到 php/ 下，内容不变）：
+  - 数据库：`server/data/english_quiz.db` → `php/data/english_quiz.db`
+  - 建表脚本：`server/sql/schema.sql` → `php/sql/schema.sql`
+  - 配置：`server/.env` → `php/.env`（找不到时回退项目根 `.env`）
+- 前端开发代理改为指向本机 PHP 服务（`npm run dev:api`，默认 9001）
+- 新增接口自测脚本 `php/tests/api-test.mjs`（60 项断言，可与历史版本做响应对比）
+- 新增迁移文档 `docs/PHP_MIGRATION.md`
+
+### 对外影响
+
+- 页面结构、样式、交互、文案：**无变化**
+- 接口路径、方法、字段、状态码：**无变化**（与 Node 版逐字段对比通过）
+- 已有账号密码：**不需要重置**（bcrypt 双向兼容，已实测）
+- 数据：**无需转换**，把 `.db` 文件复制到 `php/data/` 即可
+- 部署方式变化：nginx 托管 `dist/`，`/api/` 交给 PHP-FPM（见 README）
+
+### 验证
+
+- PHP 版 60/60 断言通过，Node 版 60/60 通过
+- 两边 22 个接口响应快照（动态字段归一化后）逐字节一致

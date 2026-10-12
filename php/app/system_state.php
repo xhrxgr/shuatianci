@@ -1,0 +1,138 @@
+<?php
+/**
+ * 在线更新的进度状态。
+ *
+ * Node 版把状态放在进程内存里（updateState），同一个进程内异步跑完更新即可。
+ * PHP 每个请求是独立的，后台更新必须落在**另一个进程**里跑，
+ * 因此状态改用文件存（php/data/update_state.json），接口读文件即可。
+ *
+ * 这是本模块唯一的实现差异，对外的接口契约（字段名与含义）完全一致。
+ */
+
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/util.php';
+
+/** 状态文件路径 */
+function update_state_file()
+{
+    $dir = PHP_DATA_DIR;
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+    return $dir . '/update_state.json';
+}
+
+/** opcache 刷新标记：由后台进程写、由下一次接口请求消费 */
+function reload_flag_file()
+{
+    return PHP_DATA_DIR . '/reload.flag';
+}
+
+/** 空状态 */
+function update_state_blank()
+{
+    return [
+        'running' => false,
+        'stage' => '',
+        'log' => [],
+        'error' => null,
+        'finished' => false,
+        'startedAt' => null,
+        'finishedAt' => null,
+    ];
+}
+
+/**
+ * 读取状态（带独占锁，避免与后台进程写冲突）。
+ *
+ * @return array
+ */
+function update_state_read()
+{
+    $file = update_state_file();
+    if (!is_file($file)) {
+        return update_state_blank();
+    }
+    $fp = @fopen($file, 'c+');
+    if ($fp === false) {
+        return update_state_blank();
+    }
+    @flock($fp, LOCK_SH);
+    $raw = stream_get_contents($fp);
+    @flock($fp, LOCK_UN);
+    fclose($fp);
+
+    $data = json_decode((string) $raw, true);
+    if (!is_array($data)) {
+        return update_state_blank();
+    }
+    return array_merge(update_state_blank(), $data);
+}
+
+/**
+ * 写入状态（合并式，带独占锁）。
+ *
+ * @param array $patch
+ */
+function update_state_write(array $patch)
+{
+    $fp = @fopen(update_state_file(), 'c');
+    if ($fp === false) {
+        return;
+    }
+    @flock($fp, LOCK_EX);
+
+    // 在锁内重新读一次，避免覆盖后台进程刚写的内容
+    $raw = stream_get_contents($fp);
+    $current = json_decode((string) $raw, true);
+    if (!is_array($current)) {
+        $current = update_state_blank();
+    }
+
+    ftruncate($fp, 0);
+    rewind($fp);
+    fwrite($fp, json_encode(array_merge($current, $patch), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    fflush($fp);
+    @flock($fp, LOCK_UN);
+    fclose($fp);
+}
+
+/**
+ * 追加一行日志（只保留最近 200 行）。
+ *
+ * @param string $line
+ */
+function update_state_log($line)
+{
+    $state = update_state_read();
+    $state['log'][] = '[' . date('H:i:s') . '] ' . $line;
+    if (count($state['log']) > 200) {
+        $state['log'] = array_slice($state['log'], -200);
+    }
+    update_state_write(['log' => $state['log']]);
+}
+
+/** 重置状态，开始一次新的更新 */
+function update_state_start()
+{
+    update_state_write([
+        'running' => true,
+        'stage' => '准备中',
+        'log' => [],
+        'error' => null,
+        'finished' => false,
+        'startedAt' => now_iso(),
+        'finishedAt' => null,
+    ]);
+}
+
+/** 结束一次更新 */
+function update_state_finish($error = null)
+{
+    update_state_write([
+        'running' => false,
+        'finished' => true,
+        'finishedAt' => now_iso(),
+        'error' => $error,
+    ]);
+}

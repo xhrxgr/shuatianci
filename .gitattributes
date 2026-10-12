@@ -1,0 +1,10 @@
+# shell 脚本必须保持 LF，否则在 Linux 上执行会报语法错误
+*.sh text eol=lf
+
+# 后端脚本同理由 Node 执行，但保持 LF 避免意外
+*.js text eol=lf
+server/*.js text eol=lf
+server/src/**/*.js text eol=lf
+
+# Windows 项目文件保持 CRLF
+*.ps1 text eol=crlf

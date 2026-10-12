@@ -1,0 +1,67 @@
+[
+  {
+    "id": "q_0001",
+    "originalSentence": "He is an ______ (energy) boy, and he always does everything ______ (energetic).",
+    "blanks": [
+      {
+        "blankIndex": 1,
+        "answer": ["energetic"],
+        "hintWord": "energy",
+        "hintType": "给名词",
+        "tagIds": ["t_002", "t_023"],
+        "trapAnalysis": "提示词给的是名词 energy，此处需要形容词修饰 boy。energy 以「辅音字母 + y」结尾，变形容词时去 y 加 -ic：energetic。"
+      },
+      {
+        "blankIndex": 2,
+        "answer": ["energetically"],
+        "hintWord": "energetic",
+        "hintType": "给形容词",
+        "tagIds": ["t_003", "t_019"],
+        "trapAnalysis": "提示词给形容词 energetic，此处修饰动词 does everything，需要用副词。以 -ic 结尾的形容词变副词时，-ic 整体替换为 -ically：energetically。"
+      }
+    ],
+    "source": "示例题1",
+    "schemaVersion": 1,
+    "status": "unmastered",
+    "wrongCount": 0,
+    "createdAt": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "q_0002",
+    "originalSentence": "The book ______ (write) by him last year is very popular.",
+    "blanks": [
+      {
+        "blankIndex": 1,
+        "answer": ["written"],
+        "hintWord": "write",
+        "hintType": "给动词",
+        "tagIds": ["t_001", "t_006", "t_010"],
+        "trapAnalysis": "空格位于名词 book 与介词 by 之间，是过去分词作后置定语修饰 book。by 是被动语态的关键信号，book 与 write 是被动关系，故填 written。"
+      }
+    ],
+    "source": "示例题2",
+    "schemaVersion": 1,
+    "status": "unmastered",
+    "wrongCount": 0,
+    "createdAt": "2026-01-01T00:00:00.000Z"
+  },
+  {
+    "id": "q_0003",
+    "originalSentence": "______ is known to all, the earth moves around the sun.",
+    "blanks": [
+      {
+        "blankIndex": 1,
+        "answer": ["As"],
+        "hintWord": null,
+        "hintType": "无提示词",
+        "tagIds": ["t_004", "t_041"],
+        "trapAnalysis": "本句无提示词，必须靠结构判断。逗号前是完整的主谓宾，且后半句说明前面的内容，填 As 构成 As is known to all 的固定句式。As 指代后面整个主句的内容，在此作插入语。"
+      }
+    ],
+    "source": "示例题3",
+    "schemaVersion": 1,
+    "status": "unmastered",
+    "wrongCount": 0,
+    "createdAt": "2026-01-01T00:00:00.000Z"
+  }
+]
