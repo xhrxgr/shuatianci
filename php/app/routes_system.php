@@ -173,6 +173,19 @@ function git_failure_hint($err, $result = null)
         return '无法连接 GitHub：请检查服务器的网络与出站防火墙规则（能否正常访问 github.com）。';
     }
 
+    // 仓库不可写（root 跑过 git 导致属主错位）——这个提示比任何猜测都准
+    if (stripos($err, 'insufficient permission') !== false
+        || stripos($err, 'failed to write object') !== false
+        || stripos($err, 'unpack-objects failed') !== false
+        || stripos($err, 'Permission denied') !== false && stripos($err, '.git') !== false) {
+        return '网络与凭据都没问题——仓库目录的写入权限不足，'
+            . 'git 已经连上远端但无法把代码写进 .git 目录。'
+            . '通常是用 root 账号执行过 git 命令，导致文件属主变成了 root，'
+            . '而 PHP 运行时用户没有写权限。请在服务器上执行：'
+            . 'chown -R www:www 项目目录（www 换成 PHP 的实际运行用户）。'
+            . '注意：以后更新请用 sudo -u www git ...，不要直接用 root 跑 git。';
+    }
+
     // git 报「仓库不存在 / 拒绝访问」——公开仓库不该出现，出现就是地址写错
     if (stripos($err, 'not found') !== false
         || stripos($err, 'Repository not found') !== false
@@ -263,6 +276,15 @@ function git_repo_problem()
 {
     $result = git_cmd(['rev-parse', 'HEAD'], 15);
     if ($result['code'] === 0) {
+        // rev-parse 只读不写，能成功不代表能写入。
+        // 典型事故：用root 跑 git reset --hard 更新后，.git 下的文件属主变成
+        // root，PHP 以 www 运行就写不进去——此时读版本一切正常，
+        // 一到 git fetch 才报「insufficient permission for adding an object」。
+        // 所以这里额外检查一次「能不能写」，把这类问题挡在更新之前。
+        $writeProblem = git_objects_not_writable();
+        if ($writeProblem !== null) {
+            return $writeProblem;
+        }
         return null;
     }
     // proc_open / proc_get_status 被禁用（宝塔默认禁用它们）
@@ -306,6 +328,52 @@ function git_repo_problem()
     $raw = function_exists('mb_substr') ? mb_substr($raw, 0, 900, 'UTF-8') : substr($raw, 0, 900);
     return '当前目录不是 git 仓库，无法使用在线更新。如果是复制粘贴部署的，请先按 README「让项目支持在线更新」一节初始化。'
         . '（诊断信息：' . $raw . '）';
+}
+
+/**
+ * 检查 git 能否往仓库里写东西（.git/objects 不可写时 fetch 必然失败）。
+ *
+ * 为什么必须实测而不是看属主：
+ *   · 属主对但权限位不对（如 755 的目录只对属主可写）照样写不了
+ *   · 属主不对时 git 2.35+ 会先报 dubious ownership，那是另一个问题
+ *   · 只读类命令（rev-parse、log）完全正常，掩盖了写权限的问题
+ * 所以直接写一个探针文件、写完即删——最接近 fetch 的真实动作。
+ *
+ * @return string|null 有问题返回可执行的中文说明，没问题返回 null
+ */
+function git_objects_not_writable()
+{
+    if (PHP_OS_FAMILY === 'Windows') {
+        return null; // 本地开发不涉及属主问题
+    }
+
+    $probe = '.git/objects/.eq-write-probe-' . getmypid();
+    $probePath = APP_DIR . '/' . $probe;
+    // 上次探测可能因进程被杀而留下文件，先清掉，否则会误判为「可写」
+    @unlink($probePath);
+    $written = @file_put_contents($probePath, 'probe');
+    if ($written !== false) {
+        @unlink($probePath);
+        return null;
+    }
+    @unlink($probePath);
+
+    // 写不进去：查清是哪个目录、当前以谁的身份在跑，一次把话说全
+    $diag = run_command(
+        'id -un 2>&1; ls -ld . .git .git/objects 2>&1; test -w .git/objects && echo "objects-writable" || echo "objects-NOT-writable"',
+        APP_DIR,
+        10
+    );
+    $info = trim($diag['out']);
+    $info = preg_replace('/\s+/', ' ', $info);
+    $info = function_exists('mb_substr') ? mb_substr($info, 0, 400, 'UTF-8') : substr($info, 0, 400);
+
+    return '无法把代码写入仓库目录，在线更新会失败（git fetch 会报 '
+        . '"insufficient permission for adding an object"）。'
+        . '通常是因为用 root 账号执行过 git 命令，导致文件属主变成了 root，'
+        . '而 PHP 运行时用户没有写权限。'
+        . '在服务器上执行 chown -R www:www 项目目录（www 换成 PHP 的实际运行用户）即可解决。'
+        . '（当前状态：' . $info . '）';
 }
 
 /**

@@ -1,7 +1,7 @@
 {
   "name": "english-quiz",
   "private": true,
-  "version": "3.3.1",
+  "version": "3.3.2",
   "type": "module",
   "description": "高考英语短文填空穷举题库（纯 PHP 后端 + 原生 JS 前端，运行时不需要 Node）",
   "scripts": {

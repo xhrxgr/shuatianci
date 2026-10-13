@@ -11,6 +11,45 @@
 当前版本写在根目录的 `VERSION` 文件里，与 `package.json` 的 `version`、git 标签 `v{VERSION}`
 三处保持一致；发版流程见 README「发版」一节。
 
+## 3.3.2（2026-10-14）
+
+### 修复：识别「仓库目录不可写」并给出正确处置
+
+线上故障的真实原因是**权限**，不是网络也不是凭据：
+
+    remote: Enumerating objects: 50, done.← 网络正常，对象已拉到本地
+    error: insufficient permission for adding an object to repository database .git/objects
+    fatal: failed to write object
+
+原因是用 **root** 执行了 `git reset --hard`，新检出文件的属主变成 root，
+而 PHP 以 www 运行，往 `.git/objects` 写不进去。
+
+两类改进：
+
+- **`git_failure_hint()` 新增权限分支**：命中 `insufficient permission` /
+  `failed to write object` / `unpack-objects failed` 时明确说明
+  「网络与凭据都没问题」，直接给出 `chown -R www:www 项目目录`，
+  并提醒以后用 `sudo -u www git ...` 而不是 root
+- **新增 `git_objects_not_writable()` 前置自检**：`git_repo_problem()` 原来只用
+  `git rev-parse HEAD` 判断（**只读命令**，权限不足时照样成功），
+  所以问题一路漏到 `git fetch` 才暴露。现在额外**实测写权限**——
+  往 `.git/objects` 写一个探针文件、写完即删，把这类问题挡在更新之前。
+  提示里附上 `id -un` 与目录属主，一次说清
+
+Windows 下直接返回 null，不影响本地开发。探针文件写前先清理上次残留
+（进程被杀会留下文件，残留会被误判为「可写」）；`git fsck` 实测无影响。
+
+### 文档
+
+README 的加速通道一节改写：先说明**必须用 PHP 运行用户执行 git 命令**
+及属主错位的修复方法，再讲加速通道（顺序不能反——
+属主不对时配了加速也没用）。
+
+### 验证
+
+- 页面交互自测 181/181；接口自测 82/82；升级自测 13/13
+- 用线上真实报错原文验证提示分支，命中正确
+
 ## 3.3.1（2026-10-14）
 
 ### 修复：「检查更新」失败时看不到真实原因

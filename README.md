@@ -1,7 +1,7 @@
 # 高考英语短文填空穷举题库
 
 服务端题库 + 刷题 + 错题本，支持多设备、多用户。
-当前版本 **3.3.1**（更新记录见 [CHANGELOG.md](CHANGELOG.md)）。
+当前版本 **3.3.2**（更新记录见 [CHANGELOG.md](CHANGELOG.md)）。
 
 ## 快速导航
 
@@ -575,6 +575,21 @@ PHP 进程拿不到仓库访问权限。按「网页一键更新」第 ③ 步�
 
 给这个仓库配置 GitHub 加速通道即可（第三方公共服务，仅影响本仓库的拉取；
 也可自行换成别的加速服务）：
+
+**务必用 PHP 的运行用户执行 git 命令**（本项目是 www），否则新检出的文件属主会变成
+root，在线更新会报「insufficient permission for adding an object」：
+
+```bash
+sudo -u www git -C /www/wwwroot/项目目录 fetch origin --prune
+```
+
+若已经用 root 跑过导致属主错位，执行一次即可修复：
+
+```bash
+chown -R www:www /www/wwwroot/项目目录
+```
+
+如服务器无法直连 github.com，再配置加速通道：
 
 ```bash
 cd /www/wwwroot/项目目录
