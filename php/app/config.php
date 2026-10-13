@@ -5,7 +5,7 @@
  * 配置只有一个来源：php/.env（找不到时回退项目根 .env）。
  * 找不到 .env 时全部走代码内默认值，保证「拷上去就能跑」。
  *
- * Node 版由 dotenv 读取；PHP 没有内置 dotenv，这里自己解析同样的格式
+ * PHP 没有内置 dotenv，这里自行解析 .env（同样的 key=value 格式）
  * （KEY=VALUE，# 开头为注释，忽略空行），不引入 Composer 依赖。
  */
 

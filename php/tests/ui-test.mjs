@@ -227,7 +227,7 @@ async function main() {
 
   /* ---------------- 首页 / 登录页基础渲染 ---------------- */
   await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
-  check("首页标题正确", (await page.title()) === "高考英语短文填空题库");
+  check("首页标题正确", (await page.title()) === "高考英语短文填空穷举题库");
   check("首页有统计卡片", (await page.locator("section.grid > div").count()) === 4);
   check("导航含「刷题」", (await page.locator('header nav a[href="/practice"]').count()) >= 1);
 
@@ -419,9 +419,9 @@ async function main() {
   );
   check("取消标记后列表减少", (await page.locator("[data-mark-item]").count()) === markCountBefore - 1);
 
-  /* ---------------- 录题后台 ---------------- */
+  /* ---------------- 题库管理 ---------------- */
   await page.goto(`${BASE}/admin`, { waitUntil: "networkidle" });
-  check("录题后台有 4 个页签", (await page.locator("[data-admin-tab]").count()) === 4);
+  check("题库管理有 4 个页签", (await page.locator("[data-admin-tab]").count()) === 4);
   check("默认停在手动精录", await page.locator('[data-admin-panel="manual"]').isVisible());
   check("其它页签默认收起", !(await page.locator('[data-admin-panel="import"]').isVisible()));
 
@@ -641,7 +641,7 @@ async function main() {
   check("标签页签有 4 个顶级分类", (await page.locator("[data-tag-group]").count()) === 4);
   check("标签页签列出子标签", (await page.locator("[data-tag]").count()) >= 30);
 
-  /* ---------------- 录题后台：数据操作（flash 提示在刷新后仍可见） ---------------- */
+  /* ---------------- 题库管理：数据操作（flash 提示在刷新后仍可见） ---------------- */
   const clickReload = async (locator) => {
     await Promise.all([
       page.waitForNavigation({ waitUntil: "networkidle", timeout: 12000 }).catch(() => {}),

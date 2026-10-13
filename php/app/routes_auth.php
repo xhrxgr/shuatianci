@@ -41,7 +41,7 @@ function route_auth_register()
     $password = (string) body_param('password', '');
 
     if (preg_match(USERNAME_RE, $username) !== 1) {
-        throw http_error(400, '用户名需为 4-20 位字母、数字或下划线');
+        throw http_error(400, '用户名须为 4-20 位字母、数字或下划线');
     }
     if (strlen($password) < MIN_PASSWORD_LENGTH) {
         throw http_error(400, '密码至少 ' . MIN_PASSWORD_LENGTH . ' 位');
@@ -69,7 +69,7 @@ function route_auth_login()
     $username = trim((string) body_param('username', ''));
     $password = (string) body_param('password', '');
 
-    // 与 Node 版一致：限速挂在登录处理之前，锁定中直接 429
+    // 限速挂在登录处理之前，锁定中直接 429
     login_throttle($username);
 
     $rows = query(

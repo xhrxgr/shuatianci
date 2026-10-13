@@ -1,6 +1,6 @@
 <?php
 /**
- * 我的收藏（对应 src/pages/Collection.tsx，结构与类名逐项一致）。
+ * 我的收藏。
  *
  * 收藏与标记都由 PHP 直接查库渲染；页签切换与「取消收藏 / 取消标记」
  * 由 assets/js/profile.js 之外的 collection 逻辑处理——
@@ -31,7 +31,7 @@ $labelStyles = [
   <div class="space-y-5" id="collection-root">
     <div>
       <h2 class="text-lg font-semibold text-ink">我的收藏</h2>
-      <p class="mt-1 text-xs text-muted">收藏试卷、标记重点题目。只有你自己能看到这些内容。</p>
+      <p class="mt-1 text-xs text-muted">收藏试卷、标记重点题目。仅你本人可查看这些内容。</p>
     </div>
 
     <p class="rounded-lg bg-danger-soft px-4 py-2 text-xs text-danger" id="collection-error" hidden></p>

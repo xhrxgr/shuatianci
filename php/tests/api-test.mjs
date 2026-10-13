@@ -7,7 +7,7 @@
  *
  * --out 会把每个用例的响应做「动态值归一化」后写入文件
  * （token、时间、自增 id、git 提交号都替换成占位符），
- * 这样可以拿 Node 版与 PHP 版的两份输出直接 diff，
+ * 这样可以拿两份输出直接 diff，
  * 用来证明两边的响应结构完全一致。
  */
 
@@ -158,7 +158,7 @@ async function main() {
   });
   const first = questions.data.questions[0];
   check(
-    "题目字段与 Node 版一致（id/originalSentence/blanks/source/schemaVersion/status/wrongCount/createdAt）",
+    "题目字段结构完整（id/originalSentence/blanks/source/schemaVersion/status/wrongCount/createdAt）",
     first &&
       Object.keys(first).sort().join(",") ===
         "blanks,createdAt,id,originalSentence,schemaVersion,source,status,wrongCount",
@@ -202,8 +202,8 @@ async function main() {
     body: { questionId: "q_not_exist", isCorrect: true, wrongCount: 0 },
   });
   check(
-    "记录不存在的题目 -> 404「题目不存在或已被删除」",
-    missingQuestion.status === 404 && missingQuestion.data.error === "题目不存在或已被删除",
+    "记录不存在的题目 -> 404「题目不存在或已删除」",
+    missingQuestion.status === 404 && missingQuestion.data.error === "题目不存在或已删除",
     missingQuestion.data
   );
 
@@ -283,7 +283,7 @@ async function main() {
   record("marks-list", markList.status, { item: markList.data.marks?.[0] });
 
   const markMissing = await request("POST", "/marks", { token: adminToken, body: { questionId: "q_not_exist" } });
-  check("标记不存在的题目 -> 404「题目不存在」", markMissing.status === 404 && markMissing.data.error === "题目不存在", markMissing.data);
+  check("标记不存在的题目 -> 404「题目不存在或已删除」", markMissing.status === 404 && markMissing.data.error === "题目不存在或已删除", markMissing.data);
 
   /* ---------------- 题库写入（管理员） ---------------- */
   const created = await request("POST", "/questions", { token: adminToken, body: { question: SAMPLE_QUESTION } });
@@ -316,7 +316,7 @@ async function main() {
   const deleted = await request("DELETE", `/questions/${SAMPLE_QUESTION.id}`, { token: adminToken });
   check("DELETE /questions/{id} 删除成功", deleted.status === 200 && deleted.data.ok === true, deleted.data);
   const deletedAgain = await request("DELETE", `/questions/${SAMPLE_QUESTION.id}`, { token: adminToken });
-  check("删除不存在的题目 -> 404", deletedAgain.status === 404 && deletedAgain.data.error === "题目不存在", deletedAgain.data);
+  check("删除不存在的题目 -> 404", deletedAgain.status === 404 && deletedAgain.data.error === "题目不存在或已删除", deletedAgain.data);
 
   /* ---------------- 标签 ---------------- */
   const tagList = await request("GET", "/tags");
@@ -372,7 +372,7 @@ async function main() {
   check("重名用户 -> 409「用户名已被占用」", dupUser.status === 409 && dupUser.data.error === "用户名已被占用", dupUser.data);
 
   const badRole = await request("POST", `/admin/users/${newUserId}/role`, { token: adminToken, body: { role: "super" } });
-  check("非法角色 -> 400「角色不合法」", badRole.status === 400 && badRole.data.error === "角色不合法", badRole.data);
+  check("非法角色 -> 400「角色无效」", badRole.status === 400 && badRole.data.error === "角色无效", badRole.data);
 
   const selfRole = await request("POST", `/admin/users/${login.data.user.id}/role`, {
     token: adminToken,

@@ -8,7 +8,7 @@
  *   middleware/permission.js   -> require_auth / require_permission
  *   middleware/rateLimit.js    -> login_throttle / record_login_failure / clear_login_failures
  *
- * 两处与 Node 版的**实现差异**（行为等价，见文档「环境差异」一节）：
+ * 两处**实现差异**（行为等价，见文档「环境差异」一节）：
  * 1. 会话解析结果不做内存缓存。Node 用 30 秒的进程内缓存省掉并发重复查询，
  *    PHP 每个请求独立、没有跨请求的进程内内存，直接查库即可；
  *    反而更安全——「禁用账号后立即失效」不再依赖缓存主动失效。
@@ -19,7 +19,7 @@
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/errors.php';
 
-/** 会话有效期（天），与 Node 版 SESSION_TTL_DAYS 一致 */
+/** 会话有效期（天） */
 define('SESSION_TTL_DAYS', 30);
 
 /** 角色常量 */
@@ -27,7 +27,7 @@ define('ROLE_ADMIN', 'admin');
 define('ROLE_USER', 'user');
 
 /**
- * 角色 -> 权限集合。与 Node 版 PERMISSIONS 完全一致。
+ * 角色 -> 权限集合。新增角色只需改这里，调用方不受影响。
  * 未声明的角色没有任何权限（deny by default）。
  *
  * @return array<string,string[]>
@@ -220,7 +220,7 @@ function require_auth()
     return current_user();
 }
 
-/** 要求具备某权限，否则 401 / 403，文案与 Node 版一致 */
+/** 要求具备某权限，否则返回 401 / 403 */
 function require_permission($permission)
 {
     $user = require_auth();
@@ -297,7 +297,7 @@ define('LOGIN_MAX_FAILURES', 8);
 /**
  * 限速状态文件。
  *
- * 放在 php/data/ 下；与 Node 版「只存内存，重启即清空」不同，
+ * 放在 php/data/ 下（PHP 没有跨请求内存，只能落文件）：
  * PHP 没有跨请求内存，用文件是等价且唯一可行的做法（不改动数据库结构）。
  *
  * @return string
@@ -348,7 +348,7 @@ function throttle_read()
  */
 function throttle_write(array $data)
 {
-    // 顺手清理过期条目，避免文件无限增长（对应 Node 版的 prune）
+    // 顺手清理过期条目，避免文件无限增长
     $now = time();
     foreach ($data as $key => $entry) {
         $expired = ($now - (int) $entry['firstAt'] > LOGIN_WINDOW_SECONDS)
@@ -374,7 +374,7 @@ function throttle_write(array $data)
 /**
  * 登录前置检查：处于锁定状态时抛 429。
  *
- * 与 Node 版 loginThrottle 的文案一致：
+ * 登录失败次数超限的提示文案：
  * 「登录失败次数过多，请 {minutes} 分钟后再试」
  *
  * @param string $username

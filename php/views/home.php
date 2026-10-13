@@ -1,6 +1,6 @@
 <?php
 /**
- * 首页（对应 src/pages/Home.tsx，结构与类名逐项一致）。
+ * 首页。
  *
  * @var array $stats   total / mastered / wrong / blankCount
  * @var array $topTags 高频错题考点 Top5，元素 ['tag' => [...], 'count' => int]
@@ -16,10 +16,10 @@ $cards = [
 ?>
 <div class="space-y-6">
   <section class="rounded-2xl border border-line bg-surface p-6 sm:p-8">
-    <h2 class="text-xl font-semibold text-ink">高考英语短文填空 · 穷举题库</h2>
+    <h2 class="text-xl font-semibold text-ink">高考英语短文填空穷举题库</h2>
     <p class="mt-2 max-w-2xl text-sm leading-6 text-muted">
-      按知识点穷举整理短文填空题目，每道题都带标准答案、可接受答案集合与命题陷阱分析。
-      数据保存在服务器，登录后换设备也能接着刷。
+      按知识点穷举整理短文填空题目，每道题均附标准答案、可接受答案集合，以及命题意图与判断依据。
+      数据保存在服务器，登录后更换设备也可继续练习。
     </p>
     <div class="mt-5 flex flex-col gap-3 sm:flex-row">
       <a

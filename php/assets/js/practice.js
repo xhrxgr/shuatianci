@@ -1,6 +1,5 @@
 /**
- * 刷题页交互（对应 src/pages/Practice.tsx + QuizCard.tsx + FilterBar.tsx +
- * CollectionActions.tsx，行为逐条一致）。
+ * 刷题页交互。
  *
  * 判卷口径与原版完全相同：只 trim 首尾空格，**区分大小写**——
  * 高考填空严格判分，不做大小写归一。
@@ -138,7 +137,7 @@ let showMarkInput = false;
 let markLabel = MARK_LABELS[0];
 let markNote = "";
 
-/* ---------------- 纯函数（与 React 版同口径） ---------------- */
+/* ---------------- 纯函数 ---------------- */
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -509,7 +508,7 @@ function renderCard() {
     analysisHtml = `<section class="border-t border-line bg-surface-alt px-5 py-6 sm:px-7">
       <h3 class="mb-4 text-sm font-semibold text-ink">出题人视角解析</h3>
       <div class="space-y-4">${blanksHtml}</div>
-      <p class="mt-4 text-xs text-faint">题目来源：${escapeHtml(question.source)}</p>
+      <p class="mt-4 text-xs text-faint">来源：${escapeHtml(question.source)}</p>
       <div class="mt-5 flex flex-col gap-3 sm:flex-row">
         <button type="button" data-action="next" class="min-h-11 flex-1 rounded-xl bg-primary px-6 py-3 text-sm font-medium text-on-primary transition hover:bg-primary-hover">下一题</button>
         <button type="button" data-action="master" class="min-h-11 flex-1 rounded-xl border border-success/40 bg-success-soft px-6 py-3 text-sm font-medium text-success transition hover:bg-success/20">标记为已掌握</button>

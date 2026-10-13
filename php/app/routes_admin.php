@@ -3,7 +3,7 @@
  * /api/admin/* —— 用户管理。
  *
  * 接口契约与历史版本完全一致：
- * - 该组接口整体要求 user:read 权限（Node 版用 adminRouter.use 挂载）
+ * - 该组接口整体要求 user:read 权限
  * - 写操作额外要求 user:write
  * - 三条自我保护规则：不能改自己的管理员角色、不能禁用自己、不能删自己
  * - 改密 / 改角色 / 禁用 / 删除都会让该用户的会话失效
@@ -70,13 +70,13 @@ function route_admin_users_create()
     $role = (string) (body_param('role') ?: ROLE_USER);
 
     if (preg_match('/^[a-zA-Z0-9_]{4,20}$/', $username) !== 1) {
-        throw http_error(400, '用户名需为 4-20 位字母、数字或下划线');
+        throw http_error(400, '用户名须为 4-20 位字母、数字或下划线');
     }
     if (strlen($password) < 6) {
-        throw http_error(400, '密码至少 6 位');
+        throw http_error(400, '密码至少 ' . MIN_PASSWORD_LENGTH . ' 位');
     }
     if (!is_valid_role($role)) {
-        throw http_error(400, '角色不合法');
+        throw http_error(400, '角色无效');
     }
 
     $exists = query('SELECT id FROM users WHERE username = ?', [$username]);
@@ -104,12 +104,12 @@ function route_admin_reset_password($id)
     $password = (string) body_param('password', '');
 
     if (strlen($password) < 6) {
-        throw http_error(400, '密码至少 6 位');
+        throw http_error(400, '密码至少 ' . MIN_PASSWORD_LENGTH . ' 位');
     }
 
     $rows = query('SELECT id FROM users WHERE id = ?', [$id]);
     if (count($rows) === 0) {
-        throw http_error(404, '用户不存在');
+        throw http_error(404, '账号不存在');
     }
 
     $hash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 10]);
@@ -130,7 +130,7 @@ function route_admin_change_role($id)
     $self = require_auth();
 
     if (!is_valid_role($role)) {
-        throw http_error(400, '角色不合法');
+        throw http_error(400, '角色无效');
     }
     // 不允许把自己降级，避免把系统锁死到无人可管理
     if ($id === (int) $self['id'] && $role !== ROLE_ADMIN) {
@@ -139,7 +139,7 @@ function route_admin_change_role($id)
 
     $rows = query('SELECT id FROM users WHERE id = ?', [$id]);
     if (count($rows) === 0) {
-        throw http_error(404, '用户不存在');
+        throw http_error(404, '账号不存在');
     }
 
     execute('UPDATE users SET role = ? WHERE id = ?', [$role, $id]);
@@ -162,7 +162,7 @@ function route_admin_change_status($id)
     $self = require_auth();
 
     if ($status !== 0 && $status !== 1) {
-        throw http_error(400, '状态值不合法');
+        throw http_error(400, '状态值无效');
     }
     if ($id === (int) $self['id']) {
         throw http_error(400, '不能禁用自己的账号');
@@ -197,7 +197,7 @@ function route_admin_user_records($id)
                 'questionId' => (string) $row['question_id'],
                 'isCorrect' => (int) $row['is_correct'] === 1,
                 'wrongCount' => (int) $row['wrong_count'],
-                // 与 Node 版一致：原样返回库里的 answers_json 文本
+                // 原样返回库里的 answers_json 文本
                 'answers' => $row['answers_json'],
                 'createdAt' => to_iso($row['created_at']),
             ];

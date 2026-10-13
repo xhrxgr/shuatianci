@@ -1,7 +1,7 @@
 /**
- * AI 助手标签页（对应 src/components/AiAssistant.tsx）。
+ * AI 助手标签页。
  *
- * 前端从 React 改为「PHP 服务端渲染 + 原生 JS」后，本文件承担原组件的全部交互：
+ * AI 助手标签页的全部交互（本文件不使用任何框架，以原生模块直接加载）：
  * - 生成「复制给 AI 的提示词」并按需复制（内容与原版 buildPrompt 逐字一致）
  * - 解析粘贴回来的 JSON、查出字典里没有的标签、校验后增量入库
  *
@@ -21,10 +21,10 @@
  * 动态文本一律先经 escapeHtml 再写入 DOM。
  */
 
-/** 全部合法的提示词类型（与 src/types/index.ts 的 HintType 一致） */
+/** 全部合法的提示词类型 */
 const HINT_TYPES = ["给动词", "给名词", "给形容词", "给副词", "无提示词"];
 
-/** 空格占位符字面量（与 src/utils/validate.ts 一致） */
+/** 空格占位符字面量 */
 const BLANK_PLACEHOLDER = "______";
 
 /**
@@ -265,7 +265,7 @@ function cleanJson(text) {
     .trim();
 }
 
-/** 取每段文本里占位符的起始下标（迁移自 src/utils/validate.ts） */
+/** 取每段文本里占位符的起始下标（迁移自原校验实现） */
 function findPlaceholderPositions(sentence) {
   const positions = [];
   const step = BLANK_PLACEHOLDER.length;
@@ -279,7 +279,7 @@ function findPlaceholderPositions(sentence) {
   return positions;
 }
 
-/** 校验一道题目是否合法（迁移自 src/utils/validate.ts 的 validateQuestion） */
+/** 校验一道题目是否合法（迁移自原校验实现 的 validateQuestion） */
 function validateQuestion(question, tagDictionary, existingIds = []) {
   const errors = [];
   const sentence = typeof question.originalSentence === "string" ? question.originalSentence : "";
@@ -287,13 +287,13 @@ function validateQuestion(question, tagDictionary, existingIds = []) {
   // 1. 原句至少有一个空格
   const positions = findPlaceholderPositions(sentence);
   if (positions.length < 1) {
-    errors.push(`原句必须包含至少一个 "${BLANK_PLACEHOLDER}" 空格`);
+    errors.push(`原句必须包含至少一个「${BLANK_PLACEHOLDER}」空格`);
   }
 
   // 2. 空格数量与 blanks 数量一致
   if (positions.length !== question.blanks.length) {
     errors.push(
-      `原句中的空格数量(${positions.length})与 blanks 数量(${question.blanks.length})不一致`
+      `原句中的空格数量（${positions.length}）与 blanks 数量（${question.blanks.length}）不一致`
     );
   }
 
@@ -301,7 +301,7 @@ function validateQuestion(question, tagDictionary, existingIds = []) {
   question.blanks.forEach((blank, index) => {
     if (blank.blankIndex !== index + 1) {
       errors.push(
-        `第 ${index + 1} 个空的 blankIndex 应为 ${index + 1}，实际为 ${blank.blankIndex}（需从 1 开始连续递增）`
+        `第 ${index + 1} 个空的 blankIndex 应为 ${index + 1}，实际为 ${blank.blankIndex}（须从 1 开始连续递增）`
       );
     }
   });
@@ -311,11 +311,11 @@ function validateQuestion(question, tagDictionary, existingIds = []) {
     const label = `第 ${index + 1} 个空`;
 
     if (!Array.isArray(blank.answer) || blank.answer.length === 0) {
-      errors.push(`${label}: answer 数组不能为空`);
+      errors.push(`${label}：answer 不能为空`);
     } else {
       blank.answer.forEach((ans, ansIndex) => {
         if (typeof ans !== "string" || ans.trim() === "") {
-          errors.push(`${label}: answer[${ansIndex}] 不能为空字符串`);
+          errors.push(`${label}：answer 不能包含空字符串`);
         }
       });
 
@@ -324,48 +324,48 @@ function validateQuestion(question, tagDictionary, existingIds = []) {
       const normalized = blank.answer.map((ans) => ans.trim());
       const unique = new Set(normalized);
       if (unique.size !== normalized.length) {
-        errors.push(`${label}: answer 存在完全重复的项`);
+        errors.push(`${label}：answer 存在完全重复的项`);
       }
     }
 
     if (!HINT_TYPES.includes(blank.hintType)) {
-      errors.push(`${label}: hintType 必须是 ${HINT_TYPES.join(" / ")} 之一`);
+      errors.push(`${label}：hintType「${blank.hintType}」无效，应为 ${HINT_TYPES.join(" / ")} 之一`);
     }
 
     if (blank.hintType !== "无提示词" && (blank.hintWord === null || blank.hintWord.trim() === "")) {
-      errors.push(`${label}: hintType 为「${blank.hintType}」时 hintWord 不能为空`);
+      errors.push(`${label}：hintType 为「${blank.hintType}」时必须填写 hintWord`);
     }
 
     if (blank.hintType === "无提示词" && blank.hintWord !== null && blank.hintWord.trim() !== "") {
-      errors.push(`${label}: hintType 为「无提示词」时 hintWord 应为 null`);
+      errors.push(`${label}：hintType 为「无提示词」时 hintWord 必须为 null`);
     }
 
     const tagMap = new Map(tagDictionary.tags.map((tag) => [tag.id, tag]));
     (blank.tagIds ?? []).forEach((tagId) => {
       const tag = tagMap.get(tagId);
       if (!tag) {
-        errors.push(`${label}: 标签 ${tagId} 在标签字典中不存在`);
+        errors.push(`${label}：标签 ${tagId} 在标签字典中不存在`);
       } else if (!tag.isActive) {
-        errors.push(`${label}: 标签 ${tagId}(${tag.name}) 已停用`);
+        errors.push(`${label}：标签 ${tagId}（${tag.name}）已停用`);
       }
     });
 
     // 解析只要求非空：内容质量靠人工复核，不做字数下限，
     // 免得为了凑字数写废话或编造内容
     if ((blank.trapAnalysis ?? "").trim() === "") {
-      errors.push(`${label}: trapAnalysis 不能为空`);
+      errors.push(`${label}：trapAnalysis 不能为空`);
     }
   });
 
   // 5. id 查重
   if (existingIds.includes(question.id)) {
-    errors.push(`题目 id 重复: ${question.id}`);
+    errors.push(`题目 ID 重复：${question.id}`);
   }
 
   return { isValid: errors.length === 0, errors };
 }
 
-/** 批量校验，逐条收集全部错误（迁移自 src/utils/validate.ts 的 validateQuestions） */
+/** 批量校验，逐条收集全部错误（迁移自原校验实现 的 validateQuestions） */
 function validateQuestions(questions, tagDictionary) {
   const existingIds = [];
   const results = [];
@@ -387,7 +387,7 @@ function validateQuestions(questions, tagDictionary) {
 }
 
 /* ------------------------------------------------------------------ */
-/* 组件状态（对应 React 的 useState）与 DOM 引用                        */
+/* 组件状态与 DOM 引用                                                     */
 /* ------------------------------------------------------------------ */
 
 /** 标签字典，由 setupAiAssistant 注入；主脚本刷新字典后可再次调用以更新 */
@@ -424,9 +424,9 @@ function activeTagCount() {
 /* 渲染                                                                */
 /* ------------------------------------------------------------------ */
 
-/** 复制按钮文案（对应原版 {copied ? "已复制，去问 AI 吧" : "复制提示词"}） */
+/** 复制按钮文案（copied 为真时显示「已复制，去问 AI」） */
 function renderCopyButton() {
-  if (els.copyBtn) els.copyBtn.textContent = copied ? "已复制，去问 AI 吧" : "复制提示词";
+  if (els.copyBtn) els.copyBtn.textContent = copied ? "已复制，去问 AI" : "复制提示词";
 }
 
 /** 「字典里没有的标签」提示块 */

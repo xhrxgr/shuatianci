@@ -2,14 +2,13 @@
 /**
  * 页面渲染。
  *
- * 与 Node 版「React SPA」的对应关系：
- *   src/App.tsx 的布局与导航 -> views/layout.php
- *   src/pages/*.tsx         -> views/*.php
- *   页面里需要交互的部分    -> assets/js/*.js（原生 JS，浏览器直接加载，不打包）
+ * 分工：
+ *   布局与导航 -> views/layout.php
+ *   各页面骨架 -> views/*.php
+ *   页面内交互 -> assets/js/*.js（原生 JS，浏览器直接加载，不打包）
  *
- * 关键差别（对用户无感知）：
- * - 首屏由 PHP 直接从 SQLite 读数据渲染，不再「先下载 JS 再请求接口」，
- *   页面更快，也不再依赖 /api 才能出内容
+ * 与「先下载 JS 再请求接口」的传统做法相比：
+ * - 首屏由 PHP 直接从 SQLite 读数据渲染，页面更快，也不依赖 /api 才能出内容
  * - /api/* 全部保留且契约不变，只被 JS 的交互动作调用（提交答案、保存标签等）
  * - 页面跳转是普通链接（服务端渲染），刷题/录题等页面内部的交互仍不刷新
  */
@@ -49,7 +48,7 @@ function asset_url($path)
  * @param array  $data  传给模板的变量
  * @param string $title 页面标题
  */
-function render_page($view, array $data = [], $title = '高考英语短文填空题库')
+function render_page($view, array $data = [], $title = '高考英语短文填空穷举题库')
 {
     $user = current_user();
     $viewFile = dirname(__DIR__) . '/views/' . $view . '.php';
@@ -75,7 +74,7 @@ function render_page($view, array $data = [], $title = '高考英语短文填空
 }
 
 /**
- * 导航栏项目（与 src/App.tsx 的 PUBLIC_ITEMS / USER_ITEMS / ADMIN_ITEMS 一致）。
+ * 导航栏项目。
  *
  * @param array|null $user
  * @return array
@@ -100,8 +99,8 @@ function nav_items($user)
 
 /**
  * 判断导航项是否处于选中态。
- * 与 React Router 的 NavLink 口径一致：只有 "/" 与 "/admin" 需要精确匹配，
- * 其余按前缀匹配（/admin/users 会同时点亮 /admin）。
+ * 只有 "/" 与 "/admin" 需要精确匹配，其余按前缀匹配
+ * （/admin/users 会同时点亮 /admin）。
  */
 function nav_is_active($to, $currentPath)
 {

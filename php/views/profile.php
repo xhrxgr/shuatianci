@@ -1,6 +1,6 @@
 <?php
 /**
- * 个人中心（对应 src/pages/Profile.tsx，结构与类名逐项一致）。
+ * 个人中心。
  *
  * 登录用户的统计由 PHP 直接查库渲染（原版是 JS 拉 /api/records/summary，
  * 数据完全一样，只是少一次往返）；
@@ -26,7 +26,7 @@ $isGuest = $user === null;
   <?php if ($isGuest): ?>
     <section class="rounded-xl border border-line bg-surface p-6">
       <p class="mb-4 text-sm text-muted">
-        当前为游客模式，作答记录只保存在本机浏览器，不会同步到服务器。
+        当前为游客模式，作答记录仅保存在本设备浏览器，不会同步到服务器。
       </p>
       <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div class="rounded-lg bg-surface-alt p-3">

@@ -2,15 +2,13 @@
 /**
  * 页面布局模板。
  *
- * 与 React 版的对应关系：
- *   src/App.tsx 的 <div class="flex min-h-full flex-col"> + NavBar + <main>
- *   src/main.tsx 的挂载节点 #root
+ * 结构：纵向 flex 容器 + 导航栏 + <main>，整体由 PHP 直出。
  *
  * 两个刻意的细节：
  * 1. 容器 id 保持 #root——样式里有 `html, body, #root { height: 100% }`，
  *    沿用同一个 id 才能直接复用同一份 CSS，不用改样式。
- * 2. 导航结构、类名、图标（内联 SVG）逐项照搬 App.tsx，视觉与交互一致；
- *    移动端菜单的展开收起改由 assets/js/app.js 处理（原来是 React 状态）。
+ * 2. 导航结构与类名沿用既有设计，视觉与交互一致；
+ *    移动端菜单的展开收起由 assets/js/app.js 处理。
  *
  * @var string      $content     页面主体 HTML
  * @var array|null  $user        当前登录用户
@@ -36,7 +34,7 @@ $items = nav_items($user);
     <div class="flex min-h-full flex-col">
       <header class="sticky top-0 z-50 border-b border-line bg-surface/90 backdrop-blur">
         <div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6">
-          <a href="/" class="text-sm font-semibold text-ink sm:text-base">英语短文填空题库</a>
+          <a href="/" class="text-sm font-semibold text-ink sm:text-base">短文填空穷举题库</a>
 
           <!-- 移动端汉堡按钮 -->
           <button

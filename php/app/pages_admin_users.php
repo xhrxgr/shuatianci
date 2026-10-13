@@ -1,13 +1,13 @@
 <?php
 /**
- * GET /admin/users —— 用户管理页（对应 src/pages/UserAdmin.tsx）。
+ * GET /admin/users —— 用户管理页。
  *
- * 与 React 版的对应关系：
- *   src/pages/UserAdmin.tsx 的 <RequireAdmin>  -> guard_admin_page()
- *   UserAdmin 里的 users / roles 首屏数据      -> 这里直接查库，交给 views/admin-users.php 直出
- *   新建 / 重置密码 / 改角色 / 启停 / 删除      -> assets/js/admin-users.js 调 /api/admin/*
+ * 实现要点：
+ *   权限守卫 -> guard_admin_page()
+ *   首屏数据（users / roles）-> 直接查库，交给 views/admin-users.php 直出
+ *   新建 / 重置密码 / 改角色 / 启停 / 删除 -> assets/js/admin-users.js 调 /api/admin/*
  *
- * 权限口径与 React 版一致：未登录给「去登录」入口，非管理员提示无权限；
+ * 权限口径：未登录给「去登录」入口，非管理员提示无权限；
  * 后端接口本身也有鉴权保护（routes_admin.php 要求 user:read / user:write）。
  */
 

@@ -1,6 +1,6 @@
 <?php
 /**
- * 页面不存在（对应 src/App.tsx 里 path="*" 的兜底）。
+ * 页面不存在。
  *
  * @var string $currentPath
  */

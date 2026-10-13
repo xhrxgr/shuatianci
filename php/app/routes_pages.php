@@ -2,7 +2,7 @@
 /**
  * 页面路由（前端 PHP 化后的「页面」部分）。
  *
- * 与 React 版 src/App.tsx 的 <Routes> 一一对应：
+ * 页面路由表，与前端单页应用的路由一一对应：
  *   path="/"            -> page_home
  *   path="/practice"    -> page_practice
  *   path="/login"       -> page_login
@@ -72,7 +72,7 @@ function dispatch_page($method, $path)
 /* 首页                                                                */
 /* ------------------------------------------------------------------ */
 
-/** GET / —— 题库概览与快捷入口（对应 src/pages/Home.tsx） */
+/** GET / —— 题库概览与快捷入口 */
 function page_home()
 {
     $user = current_user();
@@ -155,7 +155,7 @@ function page_home()
 /* 刷题                                                                */
 /* ------------------------------------------------------------------ */
 
-/** GET /practice —— 练习页（对应 src/pages/Practice.tsx） */
+/** GET /practice —— 刷题页 */
 function page_practice()
 {
     $user = current_user();
@@ -175,7 +175,7 @@ function page_practice()
 /* ------------------------------------------------------------------ */
 
 /**
- * GET /profile —— 个人中心（对应 src/pages/Profile.tsx）。
+ * GET /profile —— 个人中心。
  * 登录用户的统计直接查库渲染；游客统计在本地，由页面脚本填充。
  */
 function page_profile()
@@ -223,7 +223,7 @@ function page_profile()
 }
 
 /**
- * GET /collection —— 我的收藏（对应 src/pages/Collection.tsx）。
+ * GET /collection —— 我的收藏。
  * 收藏的试卷与标记的题目都由 PHP 查库渲染，标记项带上题目原句与来源。
  */
 function page_collection()
@@ -280,10 +280,10 @@ function page_collection()
     render_page('collection', $data);
 }
 
-/** GET /login —— 登录 / 注册（对应 src/pages/Login.tsx） */
+/** GET /login —— 登录 / 注册 */
 function page_login()
 {
-    // 已登录则直接回首页，与 React 版行为一致
+    // 已登录则直接回首页
     if (current_user() !== null) {
         header('Location: /');
         exit;

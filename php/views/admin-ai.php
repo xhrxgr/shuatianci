@@ -1,16 +1,16 @@
 <?php
 /**
- * AI 助手标签页（对应 src/components/AiAssistant.tsx，结构与类名逐项一致）。
+ * AI 助手标签页。
  *
- * 本文件是「录题后台」的一个页签片段，被 php/views/admin.php 用 include 引入，
+ * 本文件是「题库管理」的一个页签片段，被 php/views/admin.php 用 include 引入，
  * 因此这里只放两段内容结构，不写 <script>（脚本由 admin.php 统一以
  * <script type="module"> 引入，再由它调用 window.setupAdminAi(...)）。
  *
- * 与 React 版的差别（对用户无感知）：
- * - 第一步文案里的「当前 N 个标签」由 PHP 依据 $tagDictionary 直出
- *   （原版由 JS 计算），JS 挂载时会再同步一次，保证一致
- * - 原版组件内部的 notice（成功导入 / 已创建标签 / 复制失败）迁移到页面顶部的
- *   统一提示条，由 assets/js/admin-ai.js 通过 onNotice 回调触发，这里不再渲染提示行
+ * 两点实现说明（对用户无感知）：
+ * - 第一步文案里的「当前 N 个标签」由 PHP 依据 $tagDictionary 直出，
+ *   JS 挂载时会再同步一次，保证一致
+ * - 操作结果提示（成功导入 / 已创建标签 / 复制失败）统一显示在页面顶部，
+ *   由 assets/js/admin-ai.js 通过 onNotice 回调触发，这里不再渲染提示行
  *
  * 所有动态文本都由 assets/js/admin-ai.js 输出并自行转义（本片段为纯静态结构）。
  * 供脚本使用的钩子：
@@ -42,11 +42,11 @@ foreach ($aiTags as $aiTag) {
   <section class="rounded-xl border border-line bg-surface p-5">
     <h3 class="mb-1 text-sm font-semibold text-ink">第一步：复制提示词</h3>
     <p class="mb-2 text-xs leading-5 text-muted">
-      点一下复制完整提示词（已自动带上当前 <span data-tag-count><?= e($aiActiveCount) ?></span> 个标签），
-      去任意支持图片的 AI 工具提问。
+      点击下方按钮复制完整提示词（已自动附带当前 <span data-tag-count><?= e($aiActiveCount) ?></span> 个标签），
+      再在任意支持图片的 AI 工具中提交。
     </p>
     <div class="mb-4 rounded-lg bg-surface-alt p-3">
-      <p class="mb-1.5 text-xs font-medium text-ink">提问时请一并发送两张图：</p>
+      <p class="mb-1.5 text-xs font-medium text-ink">提问时请同时提供以下两张图片：</p>
       <ul class="space-y-1 text-xs text-muted">
         <li>· 卷子封面图（可选，AI 能从里面读出学校、学期、考试名，用于自动填写来源）</li>
         <li>· 题目页图片（一整段语篇，通常带 56、57 这样的题号）</li>

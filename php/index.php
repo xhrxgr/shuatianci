@@ -29,7 +29,7 @@ require_once __DIR__ . '/app/routes_pages.php';
 /**
  * 路由表。
  *
- * 顺序与 Node 版的挂载顺序一致：health -> auth -> admin -> records
+ * 分组顺序：health -> auth -> admin -> records
  * -> bank -> collection -> system。占位符用 {name} 表示。
  *
  * @return array

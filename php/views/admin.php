@@ -1,10 +1,9 @@
 <?php
 /**
- * 录题后台（对应 src/pages/Admin.tsx + ManualEntry.tsx + TagManager.tsx，
- * AI 助手在 admin-ai.php）。
+ * 题库管理：手动精录、AI 助手（片段见 admin-ai.php）、题库导入与标签管理。
  *
- * 四个页签的内容一次性渲染，非当前页签用 hidden 收起（React 是条件渲染，
- * 视觉结果相同）；页签切换、表单交互、预览都由 assets/js/admin.js 处理。
+ * 四个页签的内容一次性渲染，非当前页签用 hidden 收起；
+ * 页签切换、表单交互、预览都由 assets/js/admin.js 处理。
  *
  * @var array      $tagDictionary 标签字典
  * @var array      $questions     题目列表（导出与「当前题库」用）
@@ -52,14 +51,14 @@ $adminTabs = [
           ></textarea>
           <p class="mt-1.5 text-xs text-faint" id="admin-blank-count">输入或粘贴原句后，这里会自动拆出各个空位</p>
 
-          <label class="mb-1.5 mt-4 block text-sm font-medium text-ink" for="admin-source">题目来源</label>
+          <label class="mb-1.5 mt-4 block text-sm font-medium text-ink" for="admin-source">试卷来源</label>
           <input
             id="admin-source"
             type="text"
             placeholder="如：某某中学2026-2027学年高三上学期10月阶段检测试题"
             class="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition focus:border-primary"
           >
-          <p class="mt-1.5 text-xs text-faint">保存后来源会保留，题目列表里可直接看到出处。</p>
+          <p class="mt-1.5 text-xs text-faint">保存后来源会保留，可在题目列表中直接查看。</p>
         </div>
 
         <!-- 逐空配置（由 admin.js 按原句动态生成） -->
@@ -128,7 +127,7 @@ $adminTabs = [
         </div>
         <p class="mt-3 text-xs text-faint">
           「浏览器题库上云」用于首次迁移：把本浏览器里已有的题目与标签整体上传到服务端并覆盖。
-          迁移完成后就不再需要它了。
+          迁移完成后即不再需要。
         </p>
       </section>
 

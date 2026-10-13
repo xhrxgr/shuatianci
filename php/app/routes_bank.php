@@ -201,7 +201,7 @@ function route_questions_update($id)
     // 否则「只改 blanks 不改原句」会让空格数量与 blanks 数量对不上
     $rows = query('SELECT id, original_sentence, blanks_json, source FROM questions WHERE id = ?', [$id]);
     if (count($rows) === 0) {
-        throw http_error(404, '题目不存在');
+        throw http_error(404, '题目不存在或已删除');
     }
     $row = $rows[0];
 
@@ -229,7 +229,7 @@ function route_questions_update($id)
     $result = execute('UPDATE questions SET ' . implode(', ', $fields) . ' WHERE id = ?', $values);
 
     if ($result['affectedRows'] === 0) {
-        throw http_error(404, '题目不存在');
+        throw http_error(404, '题目不存在或已删除');
     }
     json_response(['ok' => true]);
 }
@@ -240,7 +240,7 @@ function route_questions_delete($id)
     require_permission('question:write');
     $result = execute('DELETE FROM questions WHERE id = ?', [$id]);
     if ($result['affectedRows'] === 0) {
-        throw http_error(404, '题目不存在');
+        throw http_error(404, '题目不存在或已删除');
     }
     json_response(['ok' => true]);
 }

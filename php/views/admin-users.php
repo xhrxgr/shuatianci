@@ -1,14 +1,13 @@
 <?php
 /**
- * 用户管理（对应 src/pages/UserAdmin.tsx，结构与类名逐项一致）。
+ * 用户管理页。
  *
- * 与 React 版的两点差别（对用户无感知）：
- * - 账号列表由 PHP 直接查库直出（原版是 JS 先拉 /api/admin/users），少一次往返
+ * 与纯前端实现的两点差别（对用户无感知）：
+ * - 账号列表由 PHP 直接查库直出（前端原为 JS 拉 /api/admin/users），少一次往返
  * - 角色下拉的选项由 PHP 从 list_roles() 渲染，新建与行内两处共用同一份
  *
  * 交互（新建 / 重置密码 / 改角色 / 启停 / 删除）交给
- * assets/js/admin-users.js：动作调 /api/admin/*，成功后整页刷新，
- * 等价于 React 版重新拉取列表。
+ * assets/js/admin-users.js：动作调 /api/admin/*，成功后整页刷新以更新列表。
  *
  * @var string|null $guard 非空时为权限提示 HTML（未登录 / 非管理员），页面只输出它
  * @var array       $users [['id','username','displayName','role','status','createdAt','recordCount','wrongCount'], ...]
@@ -68,7 +67,7 @@
     <section class="rounded-xl border border-line bg-surface p-5">
       <h3 class="mb-3 text-sm font-semibold text-ink">账号列表</h3>
       <?php if (count($users) === 0): ?>
-        <p class="py-6 text-center text-sm text-muted">还没有用户</p>
+        <p class="py-6 text-center text-sm text-muted">暂无账号</p>
       <?php else: ?>
         <ul class="space-y-2">
           <?php foreach ($users as $item): ?>

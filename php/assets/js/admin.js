@@ -1,6 +1,5 @@
 /**
- * 录题后台交互（对应 src/pages/Admin.tsx + ManualEntry.tsx + TagPicker.tsx
- * + TagManager.tsx；AI 助手在 admin-ai.js，由本文件初始化）。
+ * 题库管理交互（AI 助手在 admin-ai.js，由本文件初始化）。
  *
  * 覆盖：
  * - 页签切换
@@ -8,7 +7,7 @@
  * - 题库导入：导出、导入 JSON、浏览器题库上云、恢复内置示例、清空、题目列表操作
  * - 标签管理：改色、重命名、启用停用、删除、新增子标签
  *
- * 校验口径与 src/utils/validate.ts 完全一致（错误文案逐条对齐）。
+ * 校验口径与后端 php/app/validate.php 一致（错误文案逐条对齐）。
  */
 
 import { api } from "./api.js";
@@ -41,7 +40,7 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
-/** 顶部提示条（等价于 React 版 Admin 的 notice） */
+/** 顶部提示条 */
 function showNotice(message) {
   const box = document.getElementById("admin-notice");
   if (!box) return;
@@ -352,7 +351,7 @@ function clearErrors() {
 }
 
 /**
- * 校验一道题目（口径与 src/utils/validate.ts 完全一致）。
+ * 校验一道题目（口径与后端一致）。
  * @returns {string[]} 错误列表，空数组表示通过
  */
 function validateQuestion(question) {
@@ -370,18 +369,18 @@ function validateQuestion(question) {
   }
 
   if (positions.length < 1) {
-    errors.push(`原句必须包含至少一个 "${BLANK_PLACEHOLDER}" 空格`);
+    errors.push(`原句必须包含至少一个「${BLANK_PLACEHOLDER}」空格`);
   }
   if (positions.length !== question.blanks.length) {
     errors.push(
-      `原句中的空格数量(${positions.length})与 blanks 数量(${question.blanks.length})不一致`
+      `原句中的空格数量（${positions.length}）与 blanks 数量（${question.blanks.length}）不一致`
     );
   }
 
   question.blanks.forEach((blank, index) => {
     if (blank.blankIndex !== index + 1) {
       errors.push(
-        `第 ${index + 1} 个空的 blankIndex 应为 ${index + 1}，实际为 ${blank.blankIndex}（需从 1 开始连续递增）`
+        `第 ${index + 1} 个空的 blankIndex 应为 ${index + 1}，实际为 ${blank.blankIndex}（须从 1 开始连续递增）`
       );
     }
   });
@@ -391,45 +390,45 @@ function validateQuestion(question) {
     const label = `第 ${index + 1} 个空`;
 
     if (!Array.isArray(blank.answer) || blank.answer.length === 0) {
-      errors.push(`${label}: answer 数组不能为空`);
+      errors.push(`${label}：answer 不能为空`);
     } else {
       blank.answer.forEach((ans, ansIndex) => {
         if (typeof ans !== "string" || ans.trim() === "") {
-          errors.push(`${label}: answer[${ansIndex}] 不能为空字符串`);
+          errors.push(`${label}：answer 不能包含空字符串`);
         }
       });
       const normalized = blank.answer.map((ans) => ans.trim());
       if (new Set(normalized).size !== normalized.length) {
-        errors.push(`${label}: answer 存在完全重复的项`);
+        errors.push(`${label}：answer 存在完全重复的项`);
       }
     }
 
     if (!HINT_TYPES.includes(blank.hintType)) {
-      errors.push(`${label}: hintType 必须是 ${HINT_TYPES.join(" / ")} 之一`);
+      errors.push(`${label}：hintType「${blank.hintType}」无效，应为 ${HINT_TYPES.join(" / ")} 之一`);
     }
     if (blank.hintType !== "无提示词" && (blank.hintWord === null || String(blank.hintWord).trim() === "")) {
-      errors.push(`${label}: hintType 为「${blank.hintType}」时 hintWord 不能为空`);
+      errors.push(`${label}：hintType 为「${blank.hintType}」时必须填写 hintWord`);
     }
     if (blank.hintType === "无提示词" && blank.hintWord !== null && String(blank.hintWord).trim() !== "") {
-      errors.push(`${label}: hintType 为「无提示词」时 hintWord 应为 null`);
+      errors.push(`${label}：hintType 为「无提示词」时 hintWord 必须为 null`);
     }
 
     (blank.tagIds ?? []).forEach((tagId) => {
       const tag = tagMap.get(tagId);
       if (!tag) {
-        errors.push(`${label}: 标签 ${tagId} 在标签字典中不存在`);
+        errors.push(`${label}：标签 ${tagId} 在标签字典中不存在`);
       } else if (!tag.isActive) {
-        errors.push(`${label}: 标签 ${tagId}(${tag.name}) 已停用`);
+        errors.push(`${label}：标签 ${tagId}（${tag.name}）已停用`);
       }
     });
 
     if (String(blank.trapAnalysis ?? "").trim() === "") {
-      errors.push(`${label}: trapAnalysis 不能为空`);
+      errors.push(`${label}：trapAnalysis 不能为空`);
     }
   });
 
   if (existingIds.includes(question.id)) {
-    errors.push(`题目 id 重复: ${question.id}`);
+    errors.push(`题目 ID 重复：${question.id}`);
   }
 
   return errors;
@@ -596,7 +595,7 @@ async function handleRestoreSeed() {
   try {
     await api.pushQuestions(seedQuestions, true);
     if (seedTags?.tags?.length) await api.saveTags(seedTags);
-    // 提示文案与 React 版一致（原版为 setNotice + 重新拉数据，这里改为刷新后展示）
+    // 提示在整页刷新后由启动处取出显示（见 flash.js）
     setFlash(`已恢复内置示例数据，共 ${seedQuestions.length} 道题、${seedTags?.tags?.length ?? 0} 个标签`);
     window.location.reload();
   } catch (error) {
@@ -609,7 +608,7 @@ async function handleClearAll() {
   if (!window.confirm("再次确认：清空后数据无法恢复，建议先导出备份。")) return;
   try {
     await api.resetBank();
-    // 提示文案与 React 版一致（原版为 setNotice + 重新拉数据，这里改为刷新后展示）
+    // 提示在整页刷新后由启动处取出显示（见 flash.js）
     setFlash("已清空服务端数据");
     window.location.reload();
   } catch (error) {

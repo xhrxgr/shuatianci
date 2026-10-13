@@ -1,8 +1,8 @@
 /**
  * 全站脚本：移动端菜单、退出登录。
  *
- * 对应 React 版里由状态控制的两个交互：
- * - src/App.tsx 的汉堡菜单展开 / 收起
+ * 两个交互：
+ * - 汉堡菜单展开 / 收起
  * - 导航栏的「退出」按钮
  *
  * 切换到其它页面是普通链接跳转（服务端渲染），不在这里拦截。
@@ -49,7 +49,7 @@ function setupMenu() {
     setOpen(menu.hidden);
   });
 
-  // 点到菜单里的链接就收起（等价于 React 版路由变化后自动关闭）
+  // 点到菜单里的链接就收起
   menu.querySelectorAll("a").forEach((link) => {
     link.addEventListener("click", () => setOpen(false));
   });

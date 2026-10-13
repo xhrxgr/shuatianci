@@ -1,11 +1,11 @@
 /**
- * 用户管理交互（对应 src/pages/UserAdmin.tsx）。
+ * 用户管理交互。
  *
  * 列表由 PHP 直出，本脚本负责全部写操作与按需读取：
  * - 新建用户 / 重置密码 / 调整角色 / 启用禁用 / 删除：调 /api/admin/*
  *
- * 成功后整页刷新，等价于 React 版重新拉取列表（load()）。
- * 提示文案与 React 版逐字一致；三条自我保护（不能改自己角色 / 禁用自己 /
+ * 成功后整页刷新以更新列表。
+ * 三条自我保护（不能改自己角色 / 禁用自己 /
  * 删自己）由后端拦截，这里只负责把后端返回的错误原样提示。
  */
 
@@ -32,7 +32,7 @@ function showMessage(kind, message) {
   box.hidden = false;
 }
 
-/** 清掉上一条提示（与 React 版操作前 setError("") / setNotice("") 一致） */
+/** 清掉上一条提示（每次操作前先调用） */
 function clearMessages() {
   ["admin-users-error", "admin-users-notice"].forEach((id) => {
     const box = document.getElementById(id);
@@ -43,13 +43,13 @@ function clearMessages() {
   });
 }
 
-/** 成功：暂存提示并整页刷新（刷新后由启动处取出显示；对应 React 版 setNotice + load，提示可见） */
+/** 成功：暂存提示并整页刷新（刷新后由启动处取出显示） */
 function succeed(message) {
   setFlash(message);
   window.location.reload();
 }
 
-/** 失败：展示后端错误信息（与 React 版一致，取 err.message） */
+/** 失败：展示后端返回的错误信息（取 err.message） */
 function fail(error, fallback) {
   showMessage("error", error?.message ?? fallback);
 }
@@ -114,7 +114,7 @@ async function handleDelete(row) {
 
 /* ---------------- 重置密码 ---------------- */
 
-/** 展开 / 收起重置面板（对应 React 的 resetting 状态） */
+/** 展开 / 收起重置面板 */
 function toggleResetPanel(row) {
   const panel = row.querySelector('[data-panel="reset"]');
   if (panel) panel.hidden = !panel.hidden;
@@ -179,7 +179,7 @@ if (root) {
     }
   });
 
-  // 角色下拉：change 时立即提交（与 React 的 onChange 一致）
+  // 角色下拉：change 时立即提交
   root.addEventListener("change", (event) => {
     const select = event.target.closest('select[data-action="change-role"]');
     if (select) void handleRoleChange(select);

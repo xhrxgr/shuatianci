@@ -5,7 +5,7 @@
  * 前端也有一份校验，但那只在浏览器里跑；绕过前端直接调接口就能写脏数据，
  * 所以入库前必须在服务端再校验一次。
  *
- * 校验口径（与 Node 版完全一致，不得放宽或收紧）：
+ * 校验口径（不得随意放宽或收紧）：
  * - 空格占位符固定 6 个下划线，数量必须等于 blanks 数量
  * - blankIndex 从 1 开始连续递增
  * - answer 非空、不含空串、忽略大小写去重后不能重复（只 trim，不转大小写）
@@ -35,36 +35,36 @@ function validate_question_data($question)
         return ['题目数据不是对象'];
     }
 
-    $label = isset($question['id']) ? (string) $question['id'] : '(缺少 id)';
+    $label = isset($question['id']) ? (string) $question['id'] : '(缺少题目 ID)';
 
     if (empty($question['id']) || !is_string($question['id'])) {
-        $errors[] = "{$label}: 缺少 id";
+        $errors[] = "{$label}：缺少题目 ID";
     }
 
     $sentence = isset($question['originalSentence']) ? $question['originalSentence'] : '';
     if (!is_string($sentence) || trim($sentence) === '') {
-        $errors[] = "{$label}: originalSentence 不能为空";
+        $errors[] = "{$label}：originalSentence 不能为空";
         return $errors;
     }
 
     $blanks = isset($question['blanks']) && is_array($question['blanks']) ? $question['blanks'] : [];
     if (count($blanks) === 0) {
-        $errors[] = "{$label}: 原句必须包含至少一个 \"" . BLANK_PLACEHOLDER . "\" 空格";
+        $errors[] = "{$label}：原句必须包含至少一个「" . BLANK_PLACEHOLDER . "」空格";
         return $errors;
     }
 
     // 空格数量与 blanks 数量必须一致
     $blankCount = substr_count($sentence, BLANK_PLACEHOLDER);
     if ($blankCount !== count($blanks)) {
-        $errors[] = "{$label}: 原句空格数量({$blankCount})与 blanks 数量(" . count($blanks) . ")不一致";
+        $errors[] = "{$label}：原句中的空格数量（{$blankCount}）与 blanks 数量（" . count($blanks) . "）不一致";
     }
 
     $index = 0;
     foreach ($blanks as $blank) {
         $index++;
-        $at = "{$label} 第{$index}空";
+        $at = "{$label} 第 {$index} 个空";
         if (!is_array($blank)) {
-            $errors[] = "{$at}: 空格数据格式不正确";
+            $errors[] = "{$at}：空格数据格式不正确";
             continue;
         }
 
@@ -72,22 +72,22 @@ function validate_question_data($question)
         $blankIndex = isset($blank['blankIndex']) ? $blank['blankIndex'] : null;
         if ($blankIndex !== $index) {
             $shown = $blankIndex === null ? 'null' : (string) $blankIndex;
-            $errors[] = "{$at}: blankIndex 应为 {$index}，实际为 {$shown}";
+            $errors[] = "{$at}：blankIndex 应为 {$index}，实际为 {$shown}（须从 1 开始连续递增）";
         }
 
         // 答案不能为空且不能重复
         $answers = isset($blank['answer']) && is_array($blank['answer']) ? $blank['answer'] : [];
         if (count($answers) === 0) {
-            $errors[] = "{$at}: answer 不能为空";
+            $errors[] = "{$at}：answer 不能为空";
         } else {
             $trimmed = array_map(function ($item) {
                 return trim((string) $item);
             }, $answers);
             if (in_array('', $trimmed, true)) {
-                $errors[] = "{$at}: answer 不能包含空字符串";
+                $errors[] = "{$at}：answer 不能包含空字符串";
             }
             if (count(array_unique($trimmed)) !== count($trimmed)) {
-                $errors[] = "{$at}: answer 存在完全重复的项";
+                $errors[] = "{$at}：answer 存在完全重复的项";
             }
         }
 
@@ -95,19 +95,19 @@ function validate_question_data($question)
         $hintType = isset($blank['hintType']) ? $blank['hintType'] : null;
         if (!in_array($hintType, hint_types(), true)) {
             $shown = $hintType === null ? 'null' : (string) $hintType;
-            $errors[] = "{$at}: hintType \"{$shown}\" 不合法";
+            $errors[] = "{$at}：hintType「{$shown}」无效，应为 " . implode(" / ", hint_types()) . " 之一";
         }
         $hasHintWord = array_key_exists('hintWord', $blank) && $blank['hintWord'] !== null;
         if ($hintType === '无提示词' && $hasHintWord) {
-            $errors[] = "{$at}: hintType 为「无提示词」时 hintWord 必须为 null";
+            $errors[] = "{$at}：hintType 为「无提示词」时 hintWord 必须为 null";
         }
         if ($hintType !== '无提示词' && empty($blank['hintWord'])) {
-            $errors[] = "{$at}: hintType 为「{$hintType}」时必须提供 hintWord";
+            $errors[] = "{$at}：hintType 为「{$hintType}」时必须填写 hintWord";
         }
 
         // 解析不能为空
         if (empty($blank['trapAnalysis']) || trim((string) $blank['trapAnalysis']) === '') {
-            $errors[] = "{$at}: trapAnalysis 不能为空";
+            $errors[] = "{$at}：trapAnalysis 不能为空";
         }
     }
 

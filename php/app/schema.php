@@ -2,7 +2,7 @@
 /**
  * 建表与种子数据导入。
  *
- * 与 Node 版等价的两个动作：
+ * 初始化时做两件事：
  *   ensure_schema()：执行 php/sql/schema.sql
  *   seed_if_needed()：首次且库为空时导入 php/seed/*.json，只导一次
  *
@@ -16,7 +16,7 @@ require_once __DIR__ . '/util.php';
 /**
  * 首次运行时自动建表。
  *
- * 与 Node 版一样：去掉注释行后按分号切分逐条执行。
+ * 去掉注释行后按分号切分，逐条执行。
  * CREATE TABLE IF NOT EXISTS 与 INSERT OR IGNORE 都可重复执行，
  * 因此已有库不会受影响，初始管理员也不会被覆盖。
  */
@@ -32,7 +32,7 @@ function ensure_schema()
         throw http_error(500, '建表脚本读取失败');
     }
 
-    // 去掉整行注释（与 Node 版一致）
+    // 去掉整行注释
     $lines = array_filter(explode("\n", $sql), function ($line) {
         return strpos(trim($line), '--') !== 0;
     });
@@ -48,7 +48,7 @@ function ensure_schema()
     }
 }
 
-/** app_config 里的种子标记键，与 Node 版一致（换种子数据时改版本号即可重导） */
+/** app_config 里的种子标记键（换种子数据时改版本号即可重导） */
 define('SEED_FLAG', 'seed_v1_done');
 
 /**

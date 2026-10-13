@@ -2,7 +2,7 @@
 /**
  * 统一错误出口。
  *
- * 与 Node 版 middleware/error.js 等价：
+ * 错误码与提示文案的统一出口：
  * - 业务错误抛 HttpError(状态码, 可安全展示的中文文案)
  * - SQLite 约束冲突映射成对应的状态码与文案（用户名重复 -> 409 等）
  * - 绝不把 SQL、堆栈、路径泄漏给前端，详情只写服务端日志
@@ -41,7 +41,7 @@ function http_error($status, $safeMessage)
  *
  * SQLite 的扩展码是「主码 | (子码 << 8)」：
  *   19 主码为约束冲突，UNIQUE=531、PRIMARYKEY=787、FOREIGNKEY=1043、
- *   NOTNULL=1299、CHECK=1555 —— 与 Node 版判断的
+ *   NOTNULL=1299、CHECK=1555 —— 所判断的
  *   SQLITE_CONSTRAINT_UNIQUE 等字符串一一对应。
  */
 function sqlite_constraint_message($extendedCode)

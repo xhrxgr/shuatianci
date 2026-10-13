@@ -10,7 +10,7 @@
  * 1. PDO 在低版本会把整数读成字符串，这里统一由调用方按需 (int) 转换，
  *    保证 JSON 里的数字仍是数字（前端有 === 1 这类强比较）。
  * 2. SQLite 只能绑定标量，数组/对象在绑定前统一 JSON 序列化，
- *    与 Node 版 normalize() 的行为一致。
+ *    统一把参数转为字符串，避免类型隐式转换带来的意外。
  */
 
 require_once __DIR__ . '/config.php';
@@ -43,7 +43,7 @@ function db()
         PDO::ATTR_TIMEOUT => 5,
     ]);
 
-    // 与 Node 版连接层完全相同的三条 PRAGMA
+    // 连接建立后立即执行的三条 PRAGMA（外键与日志模式）
     $pdo->exec('PRAGMA journal_mode = WAL');
     $pdo->exec('PRAGMA busy_timeout = 5000');
     $pdo->exec('PRAGMA foreign_keys = ON');
@@ -106,7 +106,7 @@ function query_one($sql, array $params = [])
 }
 
 /**
- * 写入。返回与 Node 版一致的 { insertId, affectedRows, changes }。
+ * 写入。返回 { insertId, affectedRows, changes }。
  *
  * @param string $sql
  * @param array $params
@@ -143,7 +143,7 @@ function scalar_int($sql, array $params = [])
 /**
  * 在一个事务里执行 $fn。抛错自动回滚。
  *
- * 与 Node 版用法一致：「先删后写」这类操作必须包进来，
+ * 「先删后写」这类操作必须包进来，
  * 否则中途失败会留下删了一半的库。
  *
  * @param callable $fn

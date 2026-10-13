@@ -1,15 +1,14 @@
 <?php
 /**
- * 刷题页（对应 src/pages/Practice.tsx + components/QuizCard.tsx + FilterBar.tsx
- * + CollectionActions.tsx）。
+ * 刷题页。
  *
  * 分工：
  * - PHP 提供页面骨架、题目数据（登录用户的进度已在服务端合并）、标签字典
  * - assets/js/practice.js 负责全部交互渲染（模式切换、筛选、作答、判卷、解析、
- *   收藏与标记），与 React 版的行为逐条对应
+ *   收藏与标记）
  *
  * 之所以把渲染交给 JS：这一页的每一块都随状态变化（模式 / 筛选 / 当前题），
- * 与 React 版由状态驱动渲染是同一个模型，只保留一份渲染逻辑才不会两边漂移。
+ * 集中在一处渲染，可避免多处分散更新导致状态不一致。
  *
  * @var array      $questions     题目（含 status / wrongCount）
  * @var array      $tagDictionary 标签字典

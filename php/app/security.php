@@ -2,7 +2,7 @@
 /**
  * 安全响应头。
  *
- * 与 Node 版 middleware/security.js 逐条对应：同样的默认 CSP、
+ * 逐条设置以下响应头：默认 CSP、
  * 同样的 X-Content-Type-Options / Referrer-Policy / X-Frame-Options，
  * 同样的「CSP_POLICY=off 可关闭、非空则整体替换」规则。
  *
@@ -12,7 +12,7 @@
 
 require_once __DIR__ . '/config.php';
 
-/** 默认 CSP，与 Node 版 DEFAULT_CSP 完全一致 */
+/** 默认 CSP */
 function default_csp()
 {
     return implode('; ', [
@@ -48,7 +48,7 @@ function send_security_headers()
 }
 
 /**
- * CORS。与 Node 版一样默认关闭（同域部署不需要）；
+ * CORS 默认关闭（同域部署不需要）；
  * 只有显式设置 CORS_ORIGINS 才开启。
  *
  * @return bool 是否本次请求已按预检结束（调用方应立即返回）

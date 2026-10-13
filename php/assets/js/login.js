@@ -1,7 +1,7 @@
 /**
- * 登录 / 注册页交互（对应 src/pages/Login.tsx 的状态逻辑）。
+ * 登录 / 注册页交互。
  *
- * 行为与 React 版一致：
+ * 行为：
  * - 登录 / 注册两种模式，切换时清空错误提示
  * - 空用户名或空密码提示「请填写用户名和密码」
  * - 注册成功后直接登录
@@ -51,7 +51,7 @@ if (form && submit && switchButton) {
       passwordInput.autocomplete = isLogin ? "current-password" : "new-password";
     }
     submit.textContent = isLogin ? "登录" : "注册并登录";
-    switchButton.textContent = isLogin ? "还没有账号？去注册" : "已有账号？去登录";
+    switchButton.textContent = isLogin ? "还没有账号？立即注册" : "已有账号？立即登录";
   };
 
   switchButton.addEventListener("click", () => {

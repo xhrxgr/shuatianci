@@ -1,9 +1,9 @@
 <?php
 /**
- * 登录 / 注册页（对应 src/pages/Login.tsx，结构与类名逐项一致）。
+ * 登录 / 注册页。
  *
  * 登录态的切换、提交、错误提示由 assets/js/login.js 处理；
- * 页面首次渲染按「登录」模式输出，与 React 版的初始状态一致。
+ * 页面首次渲染按「登录」模式输出。
  *
  * @var string $currentPath
  */
@@ -55,10 +55,10 @@
       type="button"
       id="login-switch"
       class="mt-4 w-full text-center text-xs text-muted transition hover:text-primary"
-    >还没有账号？去注册</button>
+    >还没有账号？立即注册</button>
   </div>
 
-  <p class="mt-4 text-center text-xs text-faint">不登录也可以正常刷题，只是不会记录数据。</p>
+  <p class="mt-4 text-center text-xs text-faint">未登录同样可以正常刷题，但不会记录作答数据。</p>
 </div>
 
 <script type="module" src="<?= e(asset_url('/js/login.js')) ?>"></script>

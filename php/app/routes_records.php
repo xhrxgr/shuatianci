@@ -6,7 +6,7 @@
  *   routes/records.js     -> records_* 系列
  *   routes/collection.js  -> favorites_* / marks_* 系列
  *
- * 未登录时的行为与 Node 版一致：游客记录由前端存在本地，
+ * 未登录时的行为：游客记录由前端存在本地，
  * 接口返回 { ok: true, stored: false }（不落库、不报错），
  * 读取类接口返回 authenticated: false + 空集合。
  */
@@ -26,7 +26,7 @@ function assert_question_exists($questionId)
 {
     $rows = query('SELECT id FROM questions WHERE id = ?', [$questionId]);
     if (count($rows) === 0) {
-        throw http_error(404, '题目不存在或已被删除');
+        throw http_error(404, '题目不存在或已删除');
     }
 }
 
@@ -47,7 +47,7 @@ function route_records_create()
     $answers = body_param('answers');
 
     if ($questionId === '') {
-        throw http_error(400, '缺少 questionId');
+        throw http_error(400, '缺少题目 ID');
     }
     assert_question_exists($questionId);
 
@@ -234,7 +234,7 @@ function route_favorites_toggle()
 {
     $user = current_user();
     if ($user === null) {
-        throw http_error(401, '请先登录后使用收藏功能');
+        throw http_error(401, '请先登录后使用该功能');
     }
 
     $source = trim((string) body_param('source', ''));
@@ -298,12 +298,12 @@ function route_marks_toggle()
 {
     $user = current_user();
     if ($user === null) {
-        throw http_error(401, '请先登录后使用标记功能');
+        throw http_error(401, '请先登录后使用该功能');
     }
 
     $questionId = trim((string) body_param('questionId', ''));
     if ($questionId === '') {
-        throw http_error(400, '缺少题目 id');
+        throw http_error(400, '缺少题目 ID');
     }
 
     $exists = query('SELECT id FROM user_marks WHERE user_id = ? AND question_id = ?', [
@@ -322,7 +322,7 @@ function route_marks_toggle()
     // 确认题目存在，避免标记到已删除的题
     $question = query('SELECT id FROM questions WHERE id = ?', [$questionId]);
     if (count($question) === 0) {
-        throw http_error(404, '题目不存在');
+        throw http_error(404, '题目不存在或已删除');
     }
 
     execute('INSERT INTO user_marks (user_id, question_id, label, note) VALUES (?, ?, ?, ?)', [

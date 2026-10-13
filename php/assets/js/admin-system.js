@@ -1,13 +1,13 @@
 /**
- * 系统设置交互（对应 src/pages/System.tsx）。
+ * 系统设置交互。
  *
  * 页面骨架由 PHP 直出，本脚本负责全部动态内容与交互：
  * - 加载当前版本：GET /api/system/version
  * - 检查更新：POST /api/system/check-update（列出待更新提交）
  * - 执行更新：POST /api/system/update，随后每 2 秒轮询 GET /api/system/update-status
- *   （与 React 版同一节奏；服务重启期间轮询失败属预期内，继续等待）
+ *   （服务重启期间轮询失败属预期内，继续等待）
  *
- * 状态机与 React 版逐项对应（version / gitAvailable / check / loading /
+ * 状态机（version / gitAvailable / check / loading /
  * checking / updating / stage / logs / error / notice / restarting），
  * 所有动态文本都经过 escapeHtml。
  */
@@ -37,7 +37,7 @@ function showMessage(kind, message) {
   box.hidden = false;
 }
 
-/** 清掉上一条提示（与 React 版操作前 setError("") / setNotice("") 一致） */
+/** 清掉上一条提示（每次操作前先调用） */
 function clearMessages() {
   [errorBox, noticeBox].forEach((box) => {
     if (box) {
@@ -47,7 +47,7 @@ function clearMessages() {
   });
 }
 
-/** ISO 时间转本地可读格式（与 React 版 formatTime 一致） */
+/** ISO 时间转本地可读格式 */
 function formatTime(iso) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
@@ -70,7 +70,7 @@ if (root) {
   const updatingHint = document.getElementById("admin-system-updating-hint");
   const reloadBtn = document.getElementById("admin-system-reload");
 
-  /* ---------------- 状态（对应 React 的 useState） ---------------- */
+  /* ---------------- 状态 ---------------- */
 
   let version = null;
   /** 项目目录是否为 git 仓库。复制粘贴部署的目录没有 .git，在线更新不可用 */
@@ -229,7 +229,7 @@ if (root) {
     if (logsEl) {
       logsEl.innerHTML =
         logs.length === 0
-          ? `<p class="text-xs text-muted">等待服务器响应...</p>`
+          ? `<p class="text-xs text-muted">等待服务器响应……</p>`
           : logs
               .map((line) => `<p class="font-mono text-xs leading-6 text-ink">${escapeHtml(line)}</p>`)
               .join("");
@@ -239,7 +239,7 @@ if (root) {
     if (reloadBtn) reloadBtn.hidden = !(restarting && !updating);
   }
 
-  /** 页面主体在首次加载完成后才显示（对应 React 的 loading 判断） */
+  /** 页面主体在首次加载完成后才显示 */
   function revealPage() {
     if (loadingEl) loadingEl.hidden = true;
     root.hidden = false;
@@ -280,7 +280,7 @@ if (root) {
     renderCheckResult();
   }
 
-  /** 轮询更新进度（每 2 秒一次，与 React 版一致） */
+  /** 轮询更新进度（每 2 秒一次） */
   function startPolling() {
     if (pollTimer !== null) window.clearInterval(pollTimer);
     pollTimer = window.setInterval(async () => {
@@ -365,7 +365,7 @@ if (root) {
     }
   });
 
-  // 组件卸载时停止轮询（原生页面直接离开即可，这里保持与 React 版一致的清理习惯）
+  // 离开页面时停止轮询（原生页面直接离开即可）
   window.addEventListener("beforeunload", () => {
     if (pollTimer !== null) window.clearInterval(pollTimer);
   });

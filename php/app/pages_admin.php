@@ -1,6 +1,6 @@
 <?php
 /**
- * GET /admin —— 录题后台（对应 src/pages/Admin.tsx）。
+ * GET /admin —— 题库管理。
  *
  * 管理员才能进；题目与标签由 PHP 查库渲染，其余交互（精录、导入、
  * 标签管理、AI 助手）交给 assets/js/admin.js。
@@ -8,7 +8,7 @@
 
 require_once __DIR__ . '/views.php';
 
-/** 录题后台 */
+/** 题库管理 */
 function page_admin()
 {
     $user = current_user();
