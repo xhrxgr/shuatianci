@@ -158,10 +158,11 @@ async function main() {
   });
   const first = questions.data.questions[0];
   check(
-    "题目字段结构完整（id/originalSentence/blanks/source/schemaVersion/status/wrongCount/createdAt）",
+    // paperId 是 v3.0.22 起新增：题目归属的试卷，未归卷时为 null
+    "题目字段结构完整（id/originalSentence/blanks/source/paperId/schemaVersion/status/wrongCount/createdAt）",
     first &&
       Object.keys(first).sort().join(",") ===
-        "blanks,createdAt,id,originalSentence,schemaVersion,source,status,wrongCount",
+        "blanks,createdAt,id,originalSentence,paperId,schemaVersion,source,status,wrongCount",
     Object.keys(first || {})
   );
   record("questions", questions.status, { count: questions.data.questions?.length, first });
@@ -419,6 +420,207 @@ async function main() {
     (cloudList.data.questions ?? []).length === 1,
     cloudList.data.questions?.length
   );
+
+  /* ---------------- 试卷 ---------------- */
+  const paperName = `测试卷${Date.now().toString(36)}`;
+  const paperCreated = await request("POST", "/papers", {
+    token: adminToken,
+    body: { name: paperName, examDate: "2026-10-13", note: "接口自测用" },
+  });
+  check(
+    "POST /papers 新建试卷（201，带日期与备注）",
+    paperCreated.status === 201 &&
+      paperCreated.data.paper.name === paperName &&
+      paperCreated.data.paper.examDate === "2026-10-13" &&
+      paperCreated.data.paper.note === "接口自测用",
+    paperCreated.data.paper
+  );
+  const paperId = paperCreated.data.paper.id;
+  record("paper-create", paperCreated.status, paperCreated.data.paper);
+
+  const dupPaper = await request("POST", "/papers", { token: adminToken, body: { name: paperName } });
+  check("同名试卷 -> 409", dupPaper.status === 409 && dupPaper.data.error === "同名试卷已存在", dupPaper.data);
+
+  const noName = await request("POST", "/papers", { token: adminToken, body: { name: "   " } });
+  check("试卷名为空 -> 400", noName.status === 400 && noName.data.error === "试卷名不能为空", noName.data);
+
+  const badDate = await request("PUT", `/papers/${paperId}`, {
+    token: adminToken,
+    body: { examDate: "2026/10/13" },
+  });
+  check(
+    "非法考试日期 -> 400「考试日期格式应为 YYYY-MM-DD」",
+    badDate.status === 400 && badDate.data.error === "考试日期格式应为 YYYY-MM-DD",
+    badDate.data
+  );
+
+  const impossibleDate = await request("PUT", `/papers/${paperId}`, {
+    token: adminToken,
+    body: { examDate: "2026-13-01" },
+  });
+  check("不存在的日期 -> 400", impossibleDate.status === 400, impossibleDate.data);
+
+  // 按 source 自动归卷：同一来源的题目落到同一张卷
+  const autoPaper = await request("POST", "/questions", {
+    token: adminToken,
+    body: {
+      questions: [
+        {
+          originalSentence: "Auto paper ______ sentence one.",
+          blanks: [
+            {
+              blankIndex: 1,
+              answer: ["auto"],
+              hintWord: null,
+              hintType: "无提示词",
+              tagIds: ["t_004", "t_026"],
+              trapAnalysis: "自动归卷测试。",
+            },
+          ],
+          source: paperName,
+        },
+        {
+          originalSentence: "Auto paper ______ sentence two.",
+          blanks: [
+            {
+              blankIndex: 1,
+              answer: ["auto"],
+              hintWord: null,
+              hintType: "无提示词",
+              tagIds: ["t_004", "t_026"],
+              trapAnalysis: "自动归卷测试。",
+            },
+          ],
+          source: paperName,
+        },
+      ],
+    },
+  });
+  const afterAuto = await request("GET", "/papers", { token: adminToken });
+  const autoPaperRow = (afterAuto.data.papers ?? []).find((p) => p.id === paperId);
+  check(
+    "题目按 source 自动归卷（2 道题挂到同一张卷）",
+    autoPaper.status === 201 && autoPaperRow?.questionCount === 2,
+    { resp: autoPaper.data, count: autoPaperRow?.questionCount }
+  );
+
+  const filtered = await request("GET", `/questions?paperId=${paperId}`, { token: adminToken });
+  check(
+    "GET /questions?paperId= 只返回该卷题目",
+    filtered.status === 200 &&
+      (filtered.data.questions ?? []).length === 2 &&
+      filtered.data.questions.every((q) => q.paperId === paperId),
+    filtered.data.questions?.length
+  );
+
+  const badFilter = await request("GET", "/questions?paperId=p_not_exist", { token: adminToken });
+  check("筛选不存在的试卷 -> 404", badFilter.status === 404, badFilter.data);
+
+  const show = await request("GET", `/papers/${paperId}`, { token: adminToken });
+  check(
+    "GET /papers/{id} 返回试卷与题目",
+    show.status === 200 &&
+      show.data.paper.id === paperId &&
+      Array.isArray(show.data.questions) &&
+      show.data.questions.length === 2 &&
+      show.data.questions.every((q) => q.schemaVersion >= 1),
+    { paper: show.data.paper?.id, questions: show.data.questions?.length }
+  );
+
+  // 批量改归属
+  const firstId = filtered.data.questions[0].id;
+  const otherPaper = await request("POST", "/papers", {
+    token: adminToken,
+    body: { name: `${paperName}-副卷` },
+  });
+  const moved = await request("PUT", "/questions/paper", {
+    token: adminToken,
+    body: { questionIds: [firstId], paperId: otherPaper.data.paper.id },
+  });
+  const afterMove = await request("GET", "/papers", { token: adminToken });
+  check(
+    "PUT /questions/paper 批量改归属",
+    moved.status === 200 && moved.data.moved === 1,
+    moved.data
+  );
+  const mainCount = (afterMove.data.papers ?? []).find((p) => p.id === paperId)?.questionCount;
+  const subCount = (afterMove.data.papers ?? []).find((p) => p.id === otherPaper.data.paper.id)?.questionCount;
+  check("改归属后题数正确（原卷 1、副卷 1）", mainCount === 1 && subCount === 1, { mainCount, subCount });
+
+  const unlink = await request("PUT", "/questions/paper", {
+    token: adminToken,
+    body: { questionIds: [firstId], paperId: null },
+  });
+  const afterUnlink = await request("GET", "/papers", { token: adminToken });
+  check(
+    "paperId 传 null -> 移出试卷",
+    unlink.status === 200 &&
+      (afterUnlink.data.papers ?? []).find((p) => p.id === otherPaper.data.paper.id)?.questionCount === 0,
+    afterUnlink.data.papers?.map((p) => `${p.name}:${p.questionCount}`)
+  );
+
+  const noSelection = await request("PUT", "/questions/paper", {
+    token: adminToken,
+    body: { questionIds: [], paperId: null },
+  });
+  check("未选题目 -> 400「请先选择题目」", noSelection.status === 400, noSelection.data);
+
+  // 改来源会按名重新归卷
+  const renamed = await request("PUT", `/questions/${filtered.data.questions[1].id}`, {
+    token: adminToken,
+    body: { source: `${paperName}-副卷` },
+  });
+  const afterRename = await request("GET", "/papers", { token: adminToken });
+  check(
+    "改题目来源 -> 自动归到同名卷",
+    renamed.status === 200 &&
+      (afterRename.data.papers ?? []).find((p) => p.id === otherPaper.data.paper.id)?.questionCount === 1,
+    renamed.data
+  );
+
+  const paperNoAuth = await request("POST", "/papers", { body: { name: "未登录试卷" } });
+  check("未登录建卷 -> 401", paperNoAuth.status === 401, paperNoAuth.data);
+
+  // 用本段现注册的临时普通用户验证权限（后面的 userToken 此时还没定义）
+  const paperUser = `paperuser${Date.now().toString(36)}`;
+  await request("POST", "/auth/register", { body: { username: paperUser, password: "123456" } });
+  const paperUserLogin = await request("POST", "/auth/login", {
+    body: { username: paperUser, password: "123456" },
+  });
+  const paperAsUser = await request("POST", "/papers", {
+    token: paperUserLogin.data.token,
+    body: { name: "普通用户建的卷" },
+  });
+  check("普通用户建卷 -> 403", paperAsUser.status === 403, paperAsUser.data);
+
+  const paperNotFound = await request("GET", "/papers/p_not_exist", { token: adminToken });
+  check("查不存在的试卷 -> 404", paperNotFound.status === 404, paperNotFound.data);
+
+  // 删除试卷：题目保留，只解除归属
+  const questionCountBefore = (await request("GET", "/questions", { token: adminToken })).data.questions.length;
+  const deletedPaper = await request("DELETE", `/papers/${otherPaper.data.paper.id}`, {
+    token: adminToken,
+  });
+  const afterDelete = await request("GET", "/questions", { token: adminToken });
+  const stillLinked = (afterDelete.data.questions ?? []).some(
+    (q) => q.paperId === otherPaper.data.paper.id
+  );
+  check(
+    "DELETE /papers/{id} -> 题目保留、归属清空",
+    deletedPaper.status === 200 &&
+      afterDelete.data.questions.length === questionCountBefore &&
+      stillLinked === false,
+    { before: questionCountBefore, after: afterDelete.data.questions.length }
+  );
+  record("paper-delete", deletedPaper.status, deletedPaper.data);
+
+  // 剩下的题清理掉，避免影响后面的标签用例
+  for (const q of afterDelete.data.questions) {
+    if (q.originalSentence.startsWith("Auto paper")) {
+      await request("DELETE", `/questions/${q.id}`, { token: adminToken });
+    }
+  }
+  await request("DELETE", `/papers/${paperId}`, { token: adminToken });
 
   /* ---------------- 标签 ---------------- */
   const tagList = await request("GET", "/tags");

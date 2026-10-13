@@ -26,16 +26,20 @@ require_once __DIR__ . '/validate.php';
  */
 function map_question(array $row)
 {
-    $blanks = json_decode((string) $row['blanks_json'], true);
+    $blanks = json_decode((string) ($row['blanks_json'] ?? '[]'), true);
     return [
-        'id' => (string) $row['id'],
-        'originalSentence' => (string) $row['original_sentence'],
+        'id' => (string) ($row['id'] ?? ''),
+        'originalSentence' => (string) ($row['original_sentence'] ?? ''),
         'blanks' => is_array($blanks) ? $blanks : [],
-        'source' => (string) $row['source'],
-        'schemaVersion' => (int) $row['schema_version'],
+        'source' => (string) ($row['source'] ?? ''),
+        'paperId' => !empty($row['paper_id']) ? (string) $row['paper_id'] : null,
+        // schema_version 等列一律用 ?? 兜底：调用方少选一列时，
+        // 直接取下标会触发 PHP 警告，而警告会被输出到 JSON 响应前面，
+        // 前端 JSON.parse 立刻失败——比字段缺失更糟
+        'schemaVersion' => (int) ($row['schema_version'] ?? 1),
         'status' => 'unmastered',
         'wrongCount' => 0,
-        'createdAt' => to_iso($row['created_at']),
+        'createdAt' => to_iso($row['created_at'] ?? null),
     ];
 }
 
@@ -75,11 +79,27 @@ function next_question_id($attempt = 0)
 /** GET /api/questions */
 function route_questions_list()
 {
-    $rows = query(
-        'SELECT id, original_sentence, blanks_json, source, schema_version, created_at
-           FROM questions
-          ORDER BY created_at DESC, id'
-    );
+    // 支持按卷筛选：/api/questions?paperId=p_xxx
+    // SQL 走参数绑定，paperId 不拼进语句
+    $paperId = isset($_GET['paperId']) ? trim((string) $_GET['paperId']) : '';
+    if ($paperId !== '') {
+        if (query_one('SELECT id FROM papers WHERE id = ?', [$paperId]) === null) {
+            throw http_error(404, '试卷不存在或已删除');
+        }
+        $rows = query(
+            'SELECT id, original_sentence, blanks_json, source, paper_id, schema_version, created_at
+               FROM questions
+              WHERE paper_id = ?
+              ORDER BY created_at DESC, id',
+            [$paperId]
+        );
+    } else {
+        $rows = query(
+            'SELECT id, original_sentence, blanks_json, source, paper_id, schema_version, created_at
+               FROM questions
+              ORDER BY created_at DESC, id'
+        );
+    }
     json_response(['questions' => array_map('map_question', $rows)]);
 }
 
@@ -152,6 +172,7 @@ function route_questions_create()
 
         foreach ($valid as $question) {
             $id = isset($question['id']) && is_string($question['id']) ? trim($question['id']) : '';
+            $source = !empty($question['source']) ? trim((string) $question['source']) : '手动录入';
 
             // 整库覆盖（浏览器题库上云）要保留原编号，删库后不会冲突；
             // 增量追加时若编号缺失或已被占用，就换一个新编号——
@@ -171,13 +192,14 @@ function route_questions_create()
 
             execute(
                 'INSERT INTO questions
-                   (id, original_sentence, blanks_json, source, schema_version, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?)',
+                   (id, original_sentence, blanks_json, source, paper_id, schema_version, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)',
                 [
                     $id,
                     isset($question['originalSentence']) ? $question['originalSentence'] : '',
                     json_encode(isset($question['blanks']) ? $question['blanks'] : [], JSON_UNESCAPED_UNICODE),
-                    !empty($question['source']) ? $question['source'] : '手动录入',
+                    $source,
+                    ensure_paper_by_name($source),
                     isset($question['schemaVersion']) ? $question['schemaVersion'] : 1,
                     to_sql_date(isset($question['createdAt']) ? $question['createdAt'] : null),
                 ]
@@ -223,13 +245,29 @@ function route_questions_update($id)
         $values[] = (string) $patch['originalSentence'];
     }
 
+    // 显式指定所属试卷（null 表示移出该卷）
+    if (array_key_exists('paperId', $patch)) {
+        $paperId = $patch['paperId'];
+        if ($paperId === null || $paperId === '') {
+            $fields[] = 'paper_id = ?';
+            $values[] = null;
+        } else {
+            $paperId = (string) $paperId;
+            if (query_one('SELECT id FROM papers WHERE id = ?', [$paperId]) === null) {
+                throw http_error(404, '试卷不存在或已删除');
+            }
+            $fields[] = 'paper_id = ?';
+            $values[] = $paperId;
+        }
+    }
+
     if (count($fields) === 0) {
         throw http_error(400, '没有需要更新的字段');
     }
 
     // 与新增走同一套校验：未提及的字段取库里的现值一起校验，
     // 否则「只改 blanks 不改原句」会让空格数量与 blanks 数量对不上
-    $rows = query('SELECT id, original_sentence, blanks_json, source FROM questions WHERE id = ?', [$id]);
+    $rows = query('SELECT id, original_sentence, blanks_json, source, paper_id FROM questions WHERE id = ?', [$id]);
     if (count($rows) === 0) {
         throw http_error(404, '题目不存在或已删除');
     }
@@ -252,6 +290,13 @@ function route_questions_update($id)
             'error' => '校验未通过，' . count($errors) . ' 处问题，本次未修改',
             'details' => $errors,
         ], 400);
+    }
+
+    // 改了来源但没指定试卷时，按试卷名自动归卷——
+    // 同一场考试再次录入时，题目会落到同一张卷子下
+    if (array_key_exists('source', $patch) && !array_key_exists('paperId', $patch)) {
+        $fields[] = 'paper_id = ?';
+        $values[] = ensure_paper_by_name($merged['source']);
     }
 
     // WHERE id = ? 的参数放最后

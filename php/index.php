@@ -22,6 +22,8 @@ require_once __DIR__ . '/app/schema.php';
 require_once __DIR__ . '/app/routes_auth.php';
 require_once __DIR__ . '/app/routes_records.php';
 require_once __DIR__ . '/app/routes_bank.php';
+// 试卷路由在题库之后加载：routes_bank 写入题目时会调用 ensure_paper_by_name
+require_once __DIR__ . '/app/routes_papers.php';
 require_once __DIR__ . '/app/routes_admin.php';
 require_once __DIR__ . '/app/routes_system.php';
 require_once __DIR__ . '/app/routes_pages.php';
@@ -71,11 +73,21 @@ function route_table()
         // 题库与标签
         ['GET', '/questions', 'route_questions_list'],
         ['POST', '/questions', 'route_questions_create'],
+        // 具体路径必须排在 /questions/{id} 之前：
+        // 路由是顺序匹配的，占位符在前会把 paper 当成题目 id 吞掉
+        ['PUT', '/questions/paper', 'route_questions_set_paper'],
         ['PUT', '/questions/{id}', 'route_questions_update'],
         ['DELETE', '/questions/{id}', 'route_questions_delete'],
         ['GET', '/tags', 'route_tags_list'],
         ['PUT', '/tags', 'route_tags_save'],
         ['POST', '/bank/reset', 'route_bank_reset'],
+
+        // 试卷
+        ['GET', '/papers', 'route_papers_list'],
+        ['POST', '/papers', 'route_papers_create'],
+        ['GET', '/papers/{id}', 'route_papers_show'],
+        ['PUT', '/papers/{id}', 'route_papers_update'],
+        ['DELETE', '/papers/{id}', 'route_papers_delete'],
 
         // 系统维护
         ['GET', '/system/version', 'route_system_version'],
@@ -124,6 +136,9 @@ function route_matches($pattern, $path, &$params)
  *
  * 建表只在缺表时执行；种子靠 app_config 的标记位判断，
  * 正常请求只多一次主键查询，开销可忽略。
+ *
+ * migrate_schema 必须每次都跑：已有部署不会重新建表，
+ * 但新增字段靠 ALTER 补列，否则升级后 SELECT 会因缺列直接失败。
  */
 function bootstrap()
 {
@@ -131,6 +146,8 @@ function bootstrap()
     $table = query_one("SELECT name FROM sqlite_master WHERE type='table' AND name='users'");
     if ($table === null) {
         ensure_schema();
+    } else {
+        migrate_schema();
     }
     $flag = query_one('SELECT config_value FROM app_config WHERE config_key = ?', [SEED_FLAG]);
     if ($flag === null) {

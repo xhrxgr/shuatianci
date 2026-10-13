@@ -16,6 +16,9 @@ import { setFlash, takeFlash } from "./flash.js";
 // 而 admin-ai.js 没有被任何 script 标签加载，导致整个 AI 面板（含"复制提示词"）
 // 从未绑定事件、点击无反应。import 由模块依赖图保证求值顺序，不依赖标签顺序。
 import { setupAiAssistant } from "./admin-ai.js";
+// 试卷管理与题目编辑：拆成独立模块，因为那部分只服务两个页签，
+// 与精录、导入、标签管理没有共用状态，混在一个文件里会互相干扰
+import { setupPaperAndQuestionPanels } from "./admin-papers.js";
 
 const BLANK_PLACEHOLDER = "______";
 const HINT_TYPES = ["给动词", "给名词", "给形容词", "给副词", "无提示词"];
@@ -31,7 +34,15 @@ let existingIds = boot.existingIds ?? [];
 const tagUsage = boot.tagUsage ?? {};
 const colorOptions = boot.colorOptions ?? [];
 
-function escapeHtml(value) {
+/** 供 admin-papers.js 复用的上下文（该模块不重复解析 boot） */
+export const adminContext = {
+  boot,
+  api,
+  getTagDictionary: () => tagDictionary,
+  hintTypes: HINT_TYPES,
+};
+
+export function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -789,15 +800,8 @@ if (root) {
         break;
       }
       case "delete-question": {
-        const id = actionButton.dataset.id;
-        if (!window.confirm(`确定删除题目 ${id} 吗？`)) return;
-        api
-          .deleteQuestion(id)
-          .then(() => {
-            setFlash(`已删除 ${id}`);
-            window.location.reload();
-          })
-          .catch((error) => showNotice(error?.message ?? "删除失败"));
+        // 题目删除已移到 admin-papers.js（连同确认文案与刷新逻辑），
+        // 这里不再处理——同一个 data-action 被两个模块响应会重复删
         break;
       }
       case "toggle-tag": {
@@ -1023,6 +1027,9 @@ function init() {
     onCreateTags: handleCreateTags,
     onNotice: showNotice,
   });
+
+  // 试卷与题目列表（独立模块，只服务这两个页签）
+  setupPaperAndQuestionPanels(adminContext);
 }
 
 init();

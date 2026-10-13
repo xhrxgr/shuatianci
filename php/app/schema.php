@@ -46,6 +46,53 @@ function ensure_schema()
         }
         db()->exec($trimmed);
     }
+
+    migrate_schema();
+}
+
+/**
+ * 已有库的表结构变更。
+ *
+ * CREATE TABLE IF NOT EXISTS 只保证「表不存在才建」，
+ * **不会给已存在的表补列**。所以新增字段必须在这里显式 ALTER，
+ * 否则老部署升上来后 SELECT 就会因为缺列报错。
+ *
+ * 每条迁移都要幂等：先查列在不在，不在才加。
+ */
+function migrate_schema()
+{
+    // questions.paper_id：题目归属的试卷
+    $columns = table_columns('questions');
+    if (!in_array('paper_id', $columns, true)) {
+        db()->exec('ALTER TABLE questions ADD COLUMN paper_id TEXT');
+        db()->exec('CREATE INDEX IF NOT EXISTS idx_questions_paper ON questions(paper_id)');
+    }
+
+    // papers.note：试卷备注（后续若再加列，按同样方式追加）
+    $paperColumns = table_columns('papers');
+    if (!in_array('note', $paperColumns, true)) {
+        db()->exec("ALTER TABLE papers ADD COLUMN note TEXT NOT NULL DEFAULT ''");
+    }
+}
+
+/**
+ * 取表的列名数组。
+ *
+ * @param string $table
+ * @return string[]
+ */
+function table_columns($table)
+{
+    // 表名来自代码内部，不接受外部输入；这里仍做白名单校验避免拼进 SQL
+    $allowed = ['users', 'questions', 'tags', 'papers', 'user_progress',
+        'practice_records', 'user_favorites', 'user_marks', 'sessions', 'app_config'];
+    if (!in_array($table, $allowed, true)) {
+        return [];
+    }
+    $rows = query('PRAGMA table_info(' . $table . ')');
+    return array_map(function ($row) {
+        return (string) $row['name'];
+    }, $rows);
 }
 
 /** app_config 里的种子标记键（换种子数据时改版本号即可重导） */

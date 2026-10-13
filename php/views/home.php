@@ -5,6 +5,7 @@
  * @var array $stats   total / mastered / wrong / blankCount
  * @var array $topTags 高频错题考点 Top5，元素 ['tag' => [...], 'count' => int]
  * @var array $recent  最近录入的题目
+ * @var array $papers  最近三张卷，按考试日期倒序
  * @var bool  $isAdmin
  */
 $cards = [
@@ -61,6 +62,43 @@ $cards = [
               style="background-color: <?= e($item['tag']['color']) ?>"
             ><?= e($item['tag']['name']) ?></span>
             <span class="ml-auto text-xs text-danger">错 <?= e($item['count']) ?> 次</span>
+          </li>
+        <?php endforeach; ?>
+      </ul>
+    <?php endif; ?>
+  </section>
+
+  <section class="rounded-xl border border-line bg-surface p-5">
+    <div class="mb-4 flex items-center justify-between gap-3">
+      <h3 class="text-sm font-semibold text-ink">最近的卷</h3>
+      <?php if (count($papers) > 0): ?>
+        <a href="/papers" class="text-xs text-primary transition hover:opacity-80">全部试卷</a>
+      <?php endif; ?>
+    </div>
+    <?php if (count($papers) === 0): ?>
+      <p class="py-6 text-center text-xs text-faint">
+        还没有试卷。题目按来源自动归卷，录完同一场考试的题目就会出现在这里。
+      </p>
+    <?php else: ?>
+      <ul class="space-y-2">
+        <?php foreach ($papers as $paper): ?>
+          <li class="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-surface-alt p-3">
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm text-ink"><?= e($paper['name']) ?></p>
+              <p class="mt-0.5 text-xs text-faint">
+                <?php if (!empty($paper['examDate'])): ?>
+                  <?= e($paper['examDate']) ?> ·
+                <?php endif; ?>
+                共 <?= e($paper['questionCount']) ?> 道题
+                <?php if ($paper['questionCount'] > 0): ?>
+                  · 已完成 <?= e($paper['doneCount']) ?>
+                <?php endif; ?>
+              </p>
+            </div>
+            <a
+              href="/papers/<?= e($paper['id']) ?>"
+              class="min-h-11 rounded-lg bg-primary px-4 py-2 text-center text-xs font-medium text-on-primary transition hover:bg-primary-hover"
+            >整卷做</a>
           </li>
         <?php endforeach; ?>
       </ul>

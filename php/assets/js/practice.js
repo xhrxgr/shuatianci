@@ -52,6 +52,8 @@ if (!boot) {
 const authenticated = Boolean(boot.authenticated);
 const tagDictionary = boot.tagDictionary;
 const sourceFilter = boot.sourceFilter || null;
+/** 按试卷筛选（从「自由刷这卷」进来时），与 sourceFilter 可同时存在 */
+const paperIdFilter = boot.paperIdFilter || null;
 
 /* ---------------- 游客本地存储（key 与原版一致） ---------------- */
 
@@ -171,9 +173,15 @@ function blankList(question) {
 /* ---------------- 筛选与统计 ---------------- */
 
 function byTab() {
-  const scoped = sourceFilter
-    ? questions.filter((question) => question.source === sourceFilter)
+  // 两级作用域：先按试卷收窄（从「自由刷这卷」进来时），再按页签筛选。
+  // 试卷优先于 source——同一场考试的 source 文本可能因手改而略有出入，
+  // paperId 才是可靠归属。
+  let scoped = paperIdFilter
+    ? questions.filter((question) => question.paperId === paperIdFilter)
     : questions;
+  if (sourceFilter) {
+    scoped = scoped.filter((question) => question.source === sourceFilter);
+  }
 
   if (tab === "wrong") return scoped.filter((question) => question.wrongCount > 0);
   if (tab === "mastered") return scoped.filter((question) => question.status === "mastered");
@@ -402,7 +410,18 @@ function renderCard() {
     if (collection) collection.innerHTML = "";
     if (wrongHint) wrongHint.hidden = true;
     if (emptyBox) emptyBox.hidden = false;
-    if (emptyText) emptyText.textContent = EMPTY_TEXT[tab];
+    if (emptyText) {
+      // 按卷筛选时空，说清是哪一卷没有符合条件的题，
+      // 否则用户会以为是整个题库空了
+      const scope = paperIdFilter
+        ? `${boot.paperName ?? "这一卷"}`
+        : sourceFilter
+          ? sourceFilter
+          : "";
+      emptyText.textContent = scope
+        ? `${EMPTY_TEXT[tab]}（当前范围：${scope}）`
+        : EMPTY_TEXT[tab];
+    }
     return;
   }
 

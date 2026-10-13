@@ -14,9 +14,23 @@
  * @var array      $tagDictionary 标签字典
  * @var bool       $authenticated 是否已登录（决定游客记录走本地还是服务端）
  * @var string|null $sourceFilter 从「我的收藏」跳转过来时带的试卷来源
+ * @var string|null $paperIdFilter 从「自由刷这卷」跳转过来时带的试卷 id
+ * @var string|null $paperName    $paperIdFilter 对应的卷名，用于提示
  * @var string     $currentPath
  */
 ?>
+<div class="space-y-5" id="practice-root">
+  <!-- 当前范围：按卷筛选时说明正在刷哪一卷 -->
+  <?php if (!empty($paperIdFilter) && !empty($paperName)): ?>
+    <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary-soft px-4 py-3">
+      <p class="text-sm text-ink">
+        正在刷：<span class="font-medium"><?= e($paperName) ?></span>
+      </p>
+      <a href="/practice" class="min-h-11 rounded-lg border border-line bg-surface px-4 py-2 text-xs text-muted transition hover:bg-surface-alt">
+        看全部题目
+      </a>
+    </div>
+  <?php endif; ?>
 <div class="space-y-5" id="practice-root">
   <!-- 模式切换 -->
   <div class="flex flex-wrap items-center justify-between gap-3">
@@ -81,5 +95,7 @@
     'questions' => $questions,
     'tagDictionary' => $tagDictionary,
     'sourceFilter' => $sourceFilter,
+    'paperIdFilter' => $paperIdFilter,
+    'paperName' => $paperName,
 ]) ?>
 <script type="module" src="<?= e(asset_url('/js/practice.js')) ?>"></script>

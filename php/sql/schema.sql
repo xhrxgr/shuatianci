@@ -30,6 +30,25 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 
 -- ------------------------------------------------------------
+-- 试卷表
+-- 一套试卷 = 一行。同一场考试的题目都挂在同一张试卷下，
+-- 这样「按卷练习」「整卷做」「按日期看最近的卷」才有落点。
+-- source 文本仍保留在 questions 上：它是对外展示的来源描述，
+-- paper 才是可管理的实体（可改名、设考试日期、加备注）。
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS papers (
+  id            TEXT PRIMARY KEY,              -- 如 p_0001
+  name          TEXT NOT NULL,                 -- 试卷名，同名即同卷
+  exam_date     TEXT,                          -- 考试日期 YYYY-MM-DD，可空
+  note          TEXT NOT NULL DEFAULT '',      -- 备注
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_papers_name ON papers(name);
+CREATE INDEX IF NOT EXISTS idx_papers_date ON papers(exam_date);
+
+-- ------------------------------------------------------------
 -- 题库表
 -- 题目结构嵌套较深（原句 + 多空 + 答案数组 + 标签数组），用 JSON 文本存
 -- id 用题目自身 id，不用自增主键，方便与 practice_records.question_id 对应
@@ -39,12 +58,14 @@ CREATE TABLE IF NOT EXISTS questions (
   original_sentence TEXT NOT NULL,            -- 原句，空格用 ______ 表示
   blanks_json      TEXT NOT NULL,             -- JSON 数组：各空配置
   source           TEXT NOT NULL DEFAULT '手动录入',
+  paper_id         TEXT,                      -- 所属试卷，可空（未归卷的题）
   schema_version   INTEGER NOT NULL DEFAULT 1,-- 数据结构版本，用于迁移
   created_at       TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_questions_source ON questions(source);
 CREATE INDEX IF NOT EXISTS idx_questions_created ON questions(created_at);
+CREATE INDEX IF NOT EXISTS idx_questions_paper ON questions(paper_id);
 
 -- ------------------------------------------------------------
 -- 标签表（两级结构：parent_id 为 NULL 表示顶级分类）

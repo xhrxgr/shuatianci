@@ -144,6 +144,16 @@ export const api = {
   saveTags: (tagDictionary) => request("/tags", { method: "PUT", body: { tagDictionary } }),
   resetBank: () => request("/bank/reset", { method: "POST" }),
 
+  /* 试卷 */
+  getPapers: () => request("/papers"),
+  getPaper: (id) => request(`/papers/${id}`),
+  createPaper: (paper) => request("/papers", { method: "POST", body: paper }),
+  updatePaper: (id, patch) => request(`/papers/${id}`, { method: "PUT", body: patch }),
+  deletePaper: (id) => request(`/papers/${id}`, { method: "DELETE" }),
+  /** 批量把题目移到某张卷；paperId 传 null 表示移出 */
+  setQuestionsPaper: (questionIds, paperId) =>
+    request("/questions/paper", { method: "PUT", body: { questionIds, paperId } }),
+
   /* 系统维护 */
   systemVersion: () => request("/system/version"),
   checkUpdate: () => request("/system/check-update", { method: "POST" }),

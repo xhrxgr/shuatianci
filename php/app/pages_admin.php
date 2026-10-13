@@ -7,6 +7,8 @@
  */
 
 require_once __DIR__ . '/views.php';
+// 试卷页签要列出全部试卷
+require_once __DIR__ . '/routes_papers.php';
 
 /** 题库管理 */
 function page_admin()
@@ -21,6 +23,7 @@ function page_admin()
             'guard' => $guard,
             'tagDictionary' => ['schemaVersion' => 1, 'tags' => []],
             'questions' => [],
+            'papers' => [],
             'tagUsage' => [],
         ]);
         return;
@@ -28,6 +31,7 @@ function page_admin()
 
     $questions = load_questions_with_progress($user);
     $tagDictionary = load_tag_dictionary();
+    $papers = array_map('map_paper', query_papers_with_counts());
 
     // 各标签被多少道题引用，供标签管理页删除前提示影响范围
     $tagUsage = [];
@@ -45,6 +49,7 @@ function page_admin()
         'guard' => null,
         'tagDictionary' => $tagDictionary,
         'questions' => $questions,
+        'papers' => $papers,
         'tagUsage' => $tagUsage,
     ]);
 }

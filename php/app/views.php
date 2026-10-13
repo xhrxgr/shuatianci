@@ -151,10 +151,42 @@ function guard_admin_page($user)
  * @param array|null $user
  * @return array
  */
+/**
+ * 把个人进度合并进题目列表。
+ *
+ * 题目与进度分表存，渲染前必须合并——只查题目的话，
+ * 已掌握 / 错题数对登录用户永远是 0。
+ *
+ * @param array $questions map_question() 的结果
+ * @param array|null $user 游客传 null，此时全部为默认进度
+ * @return array
+ */
+function merge_progress(array $questions, $user)
+{
+    if ($user === null || count($questions) === 0) {
+        return $questions;
+    }
+
+    $progress = [];
+    foreach (query('SELECT question_id, wrong_count, status FROM user_progress WHERE user_id = ?', [(int) $user['id']]) as $row) {
+        $progress[$row['question_id']] = $row;
+    }
+
+    foreach ($questions as $index => $question) {
+        $item = $progress[$question['id']] ?? null;
+        if ($item === null) {
+            continue;
+        }
+        $questions[$index]['status'] = (string) $item['status'];
+        $questions[$index]['wrongCount'] = (int) $item['wrong_count'];
+    }
+    return $questions;
+}
+
 function load_questions_with_progress($user)
 {
     $rows = query(
-        'SELECT id, original_sentence, blanks_json, source, schema_version, created_at
+        'SELECT id, original_sentence, blanks_json, source, paper_id, schema_version, created_at
            FROM questions
           ORDER BY created_at DESC, id'
     );
@@ -175,6 +207,7 @@ function load_questions_with_progress($user)
             'originalSentence' => (string) $row['original_sentence'],
             'blanks' => is_array($blanks) ? $blanks : [],
             'source' => (string) $row['source'],
+            'paperId' => $row['paper_id'] !== null ? (string) $row['paper_id'] : null,
             'schemaVersion' => (int) $row['schema_version'],
             'status' => $item !== null ? (string) $item['status'] : 'unmastered',
             'wrongCount' => $item !== null ? (int) $item['wrong_count'] : 0,

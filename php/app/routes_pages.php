@@ -21,6 +21,8 @@ require_once __DIR__ . '/views.php';
 require_once __DIR__ . '/pages_admin_users.php';
 require_once __DIR__ . '/pages_admin.php';
 require_once __DIR__ . '/pages_admin_system.php';
+// 试卷：页面层要用 map_paper 与 query_papers_with_counts
+require_once __DIR__ . '/routes_papers.php';
 
 /**
  * 页面路由表。
@@ -35,6 +37,9 @@ function page_route_table()
         ['GET', '/practice', 'page_practice'],
         ['GET', '/profile', 'page_profile'],
         ['GET', '/collection', 'page_collection'],
+        // 试卷：列表与整卷练习。具体路径排在 {id} 之前
+        ['GET', '/papers', 'page_papers'],
+        ['GET', '/papers/{id}', 'page_paper_practice'],
         ['GET', '/admin', 'page_admin'],
         ['GET', '/admin/users', 'page_admin_users'],
         ['GET', '/admin/system', 'page_admin_system'],
@@ -72,7 +77,9 @@ function dispatch_page($method, $path)
 /* 首页                                                                */
 /* ------------------------------------------------------------------ */
 
-/** GET / —— 题库概览与快捷入口 */
+/**
+ * GET / —— 题库概览与快捷入口
+ */
 function page_home()
 {
     $user = current_user();
@@ -143,7 +150,64 @@ function page_home()
         ],
         'topTags' => $topTags,
         'recent' => $recent,
+        // 最近三张卷，按考试日期倒序（首页不必再排一次）
+        'papers' => array_map('map_paper', array_slice(query_papers_with_counts(), 0, 3)),
         'isAdmin' => $user !== null && $user['role'] === ROLE_ADMIN,
+    ]);
+}
+
+/* ------------------------------------------------------------------ */
+/* 试卷                                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * GET /papers —— 试卷列表。
+ *
+ * 按考试日期倒序；没填日期的排在后面（按创建时间）。
+ * 登录用户能看到每卷的完成进度，游客只有题数。
+ */
+function page_papers()
+{
+    render_page('papers', [
+        'currentPath' => '/papers',
+        'papers' => array_map('map_paper', query_papers_with_counts()),
+        'authenticated' => current_user() !== null,
+    ]);
+}
+
+/**
+ * GET /papers/{id} —— 整卷练习。
+ *
+ * 一题一屏逐题做：这是「拿一整套卷子直接做」最贴近考试的方式，
+ * 顺序固定、做完能看到本卷进度。需要自由筛选、打乱顺序时用刷题页。
+ */
+function page_paper_practice($id)
+{
+    $user = current_user();
+    $row = query_one(
+        'SELECT p.*, (SELECT COUNT(*) FROM questions q WHERE q.paper_id = p.id) AS question_count
+           FROM papers p WHERE p.id = ?',
+        [$id]
+    );
+    if ($row === null) {
+        http_response_code(404);
+        render_page('404', [], '试卷不存在');
+        return;
+    }
+
+    // 直接取该卷题目并合并个人进度，省掉前端再请求一次
+    $questionRows = query(
+        'SELECT id, original_sentence, blanks_json, source, paper_id, schema_version, created_at
+           FROM questions WHERE paper_id = ? ORDER BY created_at, id',
+        [$id]
+    );
+    $questions = merge_progress(array_map('map_question', $questionRows), $user);
+
+    render_page('paper-practice', [
+        'currentPath' => '/papers',
+        'paper' => map_paper($row),
+        'questions' => $questions,
+        'authenticated' => $user !== null,
     ]);
 }
 
@@ -159,6 +223,20 @@ function page_home()
 function page_practice()
 {
     $user = current_user();
+    $paperId = isset($_GET['paperId']) ? trim((string) $_GET['paperId']) : '';
+
+    // 从「自由刷这卷」进来：把该卷的名称一并带过去，空状态与提示都要用
+    $paperName = null;
+    if ($paperId !== '') {
+        $row = query_one('SELECT id, name FROM papers WHERE id = ?', [$paperId]);
+        if ($row === null) {
+            // 试卷不存在时退回全库，而不是 404——刷题页本身仍然可用
+            $paperId = '';
+        } else {
+            $paperName = (string) $row['name'];
+        }
+    }
+
     render_page('practice', [
         'currentPath' => '/practice',
         // 登录用户的进度在这里就合并好了，游客的本地进度由 JS 再叠加
@@ -167,6 +245,8 @@ function page_practice()
         'authenticated' => $user !== null,
         // 从「我的收藏」跳转过来时只看这一卷
         'sourceFilter' => isset($_GET['source']) && $_GET['source'] !== '' ? (string) $_GET['source'] : null,
+        'paperIdFilter' => $paperId !== '' ? $paperId : null,
+        'paperName' => $paperName,
     ]);
 }
 

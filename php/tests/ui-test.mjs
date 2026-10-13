@@ -421,7 +421,8 @@ async function main() {
 
   /* ---------------- 题库管理 ---------------- */
   await page.goto(`${BASE}/admin`, { waitUntil: "networkidle" });
-  check("题库管理有 4 个页签", (await page.locator("[data-admin-tab]").count()) === 4);
+  // v3.0.22 起为 6 个页签（新增「试卷」「题目列表」）
+  check("题库管理有 6 个页签", (await page.locator("[data-admin-tab]").count()) === 6);
   check("默认停在手动精录", await page.locator('[data-admin-panel="manual"]').isVisible());
   check("其它页签默认收起", !(await page.locator('[data-admin-panel="import"]').isVisible()));
 
@@ -860,7 +861,175 @@ async function main() {
   // 导入页签
   await page.locator('[data-admin-tab="import"]').click();
   check("导入页签显示导出按钮", await page.locator("#admin-export").isVisible());
-  check("导入页签列出当前题库", (await page.locator("[data-admin-question]").count()) >= 1);
+
+  // ============ 试卷页签与题目列表（v3.0.22） ============
+  const paperName = `界面测试卷${Date.now().toString(36)}`;
+  await page.locator('[data-admin-tab="papers"]').click();
+  check("试卷页签有新建表单", await page.locator("#paper-name").isVisible());
+  await page.locator("#paper-name").fill(paperName);
+  await page.locator("#paper-date").fill("2026-10-13");
+  await page.locator("#paper-create").click();
+  await page.waitForTimeout(1500);
+  const paperCreated = await page.evaluate(async (name) => {
+    const res = await fetch("/api/papers", { credentials: "include" });
+    const papers = (await res.json()).papers;
+    return papers.find((p) => p.name === name) ?? null;
+  }, paperName);
+  check("新建试卷成功且带考试日期", paperCreated?.examDate === "2026-10-13", paperCreated);
+
+  // 录两道题到这套卷，验证自动归卷
+  await page.locator('[data-admin-tab="ai"]').click();
+  await page.locator("#admin-ai-json").fill(
+    JSON.stringify([
+      {
+        originalSentence: "UI paper ______ on time.",
+        blanks: [
+          {
+            blankIndex: 1,
+            answer: ["on"],
+            hintWord: null,
+            hintType: "无提示词",
+            tagIds: ["t_004", "t_026"],
+            trapAnalysis: "界面测试解析。",
+          },
+        ],
+        source: paperName,
+      },
+      {
+        originalSentence: "UI paper arrives ______ noon.",
+        blanks: [
+          {
+            blankIndex: 1,
+            answer: ["at"],
+            hintWord: null,
+            hintType: "无提示词",
+            tagIds: ["t_004", "t_026"],
+            trapAnalysis: "界面测试解析。",
+          },
+        ],
+        source: paperName,
+      },
+    ])
+  );
+  await page.locator("#admin-ai-submit").click();
+  await page.waitForTimeout(1800);
+  const paperCount = await page.evaluate(async (id) => {
+    const res = await fetch(`/api/papers/${id}`, { credentials: "include" });
+    return (await res.json()).paper.questionCount;
+  }, paperCreated.id);
+  check("录题时按来源自动归卷（2 道）", paperCount === 2, paperCount);
+
+  // 试卷列表页
+  await page.locator('[data-admin-tab="papers"]').click();
+  check("试卷列表列出刚建的卷", (await page.locator(`[data-paper-manage="${paperCreated.id}"]`).count()) === 1);
+  check("试卷有「整卷做」入口", (await page.locator(`[data-paper-manage="${paperCreated.id}"] a[href^="/papers/"]`).count()) >= 1);
+
+  // 试卷页（学生视角）
+  await page.goto(`${BASE}/papers`, { waitUntil: "networkidle" });
+  check("试卷页列出该卷", (await page.locator(`[data-paper-id="${paperCreated.id}"]`).count()) === 1);
+  check("试卷页有「整卷做」与「自由刷这卷」两个入口", (await page.locator(`[data-paper-id="${paperCreated.id}"] a`).count()) >= 2);
+
+  // 整卷练习：一题一屏 + 答题卡
+  await page.goto(`${BASE}/papers/${paperCreated.id}`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(600);
+  check("整卷页显示卷名与题数", (await page.locator("#paper-practice-root").innerText()).includes("共 2 道题"));
+  check("整卷页答题卡列出全部题", (await page.locator("#paper-sheet button").count()) === 2);
+  check("整卷页默认停在第 1 题", (await page.locator("#paper-counter").innerText()).includes("第 1 / 2 题"));
+
+  // 答对后自动跳下一题。卷内顺序由 createdAt 决定，不假设哪题在前，
+  // 直接读出当前题的正确答案再填——写死顺序会让这条断言随导入顺序漂移
+  const firstAnswer = await page.evaluate(() => {
+    const boot = JSON.parse(document.getElementById("paper-practice-boot").textContent);
+    return boot.questions[0].blanks[0].answer[0];
+  });
+  await page.locator('#paper-card input[data-blank]').fill(firstAnswer);
+  await page.locator('#paper-card [data-action="submit"]').click();
+  await page.waitForTimeout(900);
+  check("整卷页答对后自动进入下一题", (await page.locator("#paper-counter").innerText()).includes("第 2 / 2 题"));
+  check("答题卡标记已完成", (await page.locator("#paper-sheet button").first().innerText()).includes("1"));
+
+  // 判卷口径：大小写敏感（把正确答案改成首字母大写）
+  const secondAnswer = await page.evaluate(() => {
+    const boot = JSON.parse(document.getElementById("paper-practice-boot").textContent);
+    const answer = boot.questions[1].blanks[0].answer[0];
+    return answer.charAt(0).toUpperCase() + answer.slice(1);
+  });
+  await page.locator('#paper-card input[data-blank]').fill(secondAnswer);
+  await page.locator('#paper-card [data-action="submit"]').click();
+  await page.waitForTimeout(800);
+  check("整卷页判卷大小写敏感（首字母大写不算对）", (await page.locator("#paper-card").innerText()).includes("答错"));
+
+  // 最后一题点「完成本卷」给小结
+  await page.locator("#paper-next").click();
+  await page.waitForTimeout(600);
+  check("整卷做完给出小结", await page.locator("#paper-finish").isVisible());
+  check("小结含正确率", (await page.locator("#paper-finish-text").innerText()).includes("正确率"));
+
+  // 按卷筛选刷题
+  await page.goto(`${BASE}/practice?paperId=${paperCreated.id}`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(700);
+  const scopedText = (await page.locator("#root").innerText()).replace(/\s+/g, " ");
+  check("按卷筛选刷题：显示当前卷名", scopedText.includes("正在刷"));
+  // 筛选栏计数文案是「共 N 题，当前 M 题」：N 是库内总数，M 才是筛选后的可见数
+  const counter = scopedText.match(/共 \d+ 题，当前 (\d+) 题/);
+  check("按卷筛选刷题：可见题数为该卷题数", counter?.[1] === "2", counter?.[0] ?? scopedText.slice(0, 160));
+
+  // 题目列表页签：筛选、勾选、编辑
+  await page.goto(`${BASE}/admin`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(500);
+  await page.locator('[data-admin-tab="questions"]').click();
+  await page.waitForSelector("#question-paper-filter", { state: "visible" });
+  check("题目列表页签有按卷筛选", await page.locator("#question-paper-filter").isVisible());
+  await page.locator("#question-paper-filter").selectOption(paperCreated.id);
+  await page.waitForTimeout(400);
+  check(
+    "题目列表按卷筛选生效",
+    (await page.locator("#question-manage-list [data-admin-question]:visible").count()) === 2
+  );
+
+  await page.locator('#question-manage-list [data-question-check]').first().check();
+  await page.waitForTimeout(300);
+  check("勾选后出现批量操作条", await page.locator("#question-bulk-bar").isVisible());
+  check("批量条显示已选数量", (await page.locator("#question-selected-count").innerText()) === "1");
+
+  // 编辑题目
+  await page.locator('#question-manage-list [data-action="edit-question"]').first().click();
+  await page.waitForTimeout(500);
+  check("编辑弹窗打开", await page.locator("#question-edit-dialog").isVisible());
+  check("编辑弹窗带出原句", (await page.locator("#edit-question-sentence").inputValue()).includes("______"));
+  check("编辑弹窗带出解析", (await page.locator("[data-edit-trap='0']").inputValue()).length > 0);
+
+  await page.locator("[data-edit-answer='0']").fill("in / on");
+  await page.locator("[data-edit-trap='0']").fill("改过的解析内容。");
+  await page.locator("#edit-question-save").click();
+  await page.waitForTimeout(1600);
+  const editSaved = await page.evaluate(async () => {
+    const res = await fetch("/api/questions", { credentials: "include" });
+    const questions = (await res.json()).questions;
+    return questions.find((q) => q.blanks[0].trapAnalysis === "改过的解析内容。") ?? null;
+  });
+  check(
+    "编辑题目后答案与解析已入库",
+    JSON.stringify(editSaved?.blanks[0].answer) === JSON.stringify(["in", "on"]),
+    editSaved?.blanks[0]
+  );
+
+  // 校验：清空答案应被拦下
+  await page.locator('[data-admin-tab="questions"]').click();
+  await page.waitForTimeout(400);
+  await page.locator('#question-manage-list [data-action="edit-question"]').first().click();
+  await page.waitForTimeout(500);
+  await page.locator("[data-edit-answer='0']").fill("");
+  await page.locator("#edit-question-save").click();
+  await page.waitForTimeout(500);
+  check(
+    "清空答案被拦并说明原因",
+    (await page.locator("#edit-question-errors").innerText()).includes("答案不能为空")
+  );
+  await page.locator('[data-action="close-edit-question"]').first().click();
+  await page.waitForTimeout(300);
+
+  // 导入页签
 
   // 标签页签
   await page.locator('[data-admin-tab="tags"]').click();
@@ -868,12 +1037,15 @@ async function main() {
   check("标签页签列出子标签", (await page.locator("[data-tag]").count()) >= 30);
 
   /* ---------------- 题库管理：数据操作（flash 提示在刷新后仍可见） ---------------- */
+  // 点一个会触发整页刷新的按钮，然后等新页面就绪。
+  // 不用 Promise.all 并发「等导航 + 点击」：并发下点击可能发生在导航之前，
+  // 元素随旧页面卸载而丢失，后续定位全部超时。这里顺序执行。
   const clickReload = async (locator) => {
-    await Promise.all([
-      page.waitForNavigation({ waitUntil: "networkidle", timeout: 12000 }).catch(() => {}),
-      locator.click(),
-    ]);
-    await page.waitForTimeout(400);
+    await locator.click();
+    // 等 DOM 重新就绪：刷新后旧元素会失效，这里等一个必然存在的节点
+    await page.waitForLoadState("domcontentloaded", { timeout: 20000 });
+    await page.waitForFunction(() => document.readyState === "complete", null, { timeout: 20000 });
+    await page.waitForTimeout(600);
   };
   const adminFlash = async () => {
     const box = page.locator("#admin-notice");
@@ -883,7 +1055,8 @@ async function main() {
   };
 
   // 删除题目（数量用接口取真实值——页面 DOM 可能是旧快照）
-  await page.locator('[data-admin-tab="import"]').click();
+  // 删题按钮在「题目列表」页签里
+  await page.locator('[data-admin-tab="questions"]').click();
   await page.waitForTimeout(200);
   const totalBeforeDelete = await page.evaluate(async () => {
     const res = await fetch("/api/questions");
@@ -900,7 +1073,7 @@ async function main() {
 
   // 恢复内置示例（reload 后页面回到手动精录页签，需先切回导入页签）
   await page.locator('[data-admin-tab="import"]').click();
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(300);
   await clickReload(page.locator("#admin-restore-seed"));
   check(
     "恢复示例后 flash 文案与原版一致",
