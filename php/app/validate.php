@@ -11,6 +11,8 @@
  * - answer 非空、不含空串、忽略大小写去重后不能重复（只 trim，不转大小写）
  * - hintType 必须合法；「无提示词」时 hintWord 必须为 null，其余必须有 hintWord
  * - trapAnalysis 只校验非空，不设字数下限
+ * - id 可缺省：AI 导入时编号由系统生成（见 routes_bank.php 的 next_question_id），
+ *   只有浏览器整库上云这类需要保留原编号的场景才要求带 id
  */
 
 /** 空格占位符 */
@@ -35,10 +37,12 @@ function validate_question_data($question)
         return ['题目数据不是对象'];
     }
 
-    $label = isset($question['id']) ? (string) $question['id'] : '(缺少题目 ID)';
+    $label = !empty($question['id']) ? (string) $question['id'] : '(未命名题目)';
 
-    if (empty($question['id']) || !is_string($question['id'])) {
-        $errors[] = "{$label}：缺少题目 ID";
+    // id 允许缺省：缺省或不是字符串时都交给写入环节生成，
+    // 这里不报错——AI 导入本来就不该由它决定编号
+    if (isset($question['id']) && !is_string($question['id'])) {
+        $errors[] = "{$label}：id 必须是字符串";
     }
 
     $sentence = isset($question['originalSentence']) ? $question['originalSentence'] : '';

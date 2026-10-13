@@ -89,7 +89,7 @@ foreach ($aiTags as $aiTag) {
     <textarea
       id="admin-ai-json"
       rows="10"
-      placeholder='[{"id":"q_0001","originalSentence":"...","blanks":[...]}]'
+      placeholder='[{"originalSentence":"...","blanks":[...]}]（不需要写 id，编号由系统自动生成）'
       class="blank-slot w-full rounded-lg border border-line bg-surface-alt px-3 py-2 text-xs leading-5 outline-none transition focus:border-primary"
     ></textarea>
 

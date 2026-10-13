@@ -82,11 +82,50 @@ interface Blank {
 Question（一道题，即一个句子）：
 
 interface Question {
-  id: string;                 // 唯一 id，形如 q_0001
   originalSentence: string;   // 该句原文，空格用 6 个下划线 ______ 表示
   blanks: Blank[];
   source: string;             // 试卷来源
 }
+
+注意：**不要输出 id 字段**。题目编号由我的系统在你返回之后自行生成，
+你不需要知道、也不要猜测现有题库里已有哪些编号。
+
+## JSON 格式要求（最容易出错的地方，务必逐条遵守）
+
+你的输出会被程序直接用 JSON 解析器读取，**只要有一处引号或逗号不合法，整批题目就全部作废**。
+
+### 1. 原句里的引号必须换成中文引号
+
+英文原句中经常出现对话引语或引号强调，例如试卷原文可能是：
+
+    "New Chinese Style" reflects a shift in mindset...
+    "It's not simply a fashion trend," Yang said.
+
+这些**英文直引号（"）会提前结束 JSON 字符串，导致解析失败**。处理办法只有一个：
+
+> **把原句里所有的英文直引号 " 换成中文引号 “ ”。**
+> 成对的引号，前一个用 “（左），后一个用 ”（右）。
+
+改写后写成这样，中文引号在 JSON 里完全不需要转义：
+
+    "originalSentence": "“New Chinese Style” reflects a shift in mindset..."
+    "originalSentence": "“It's not simply a fashion trend,” Yang said."
+
+其他标点（逗号、句号、括号、破折号）都照原样保留，不要改动。
+
+### 2. 其余格式规则
+
+- **字符串里不能有真实换行**。原句请写成一行；如果确实要换行，写成 \\\\n 两个字符。
+- 整个数组可以分成多行写（便于你阅读），但**每个字符串值内部不能断行**。
+- 数组与对象之间不要漏逗号，**最后一个元素后面不要多逗号**（JSON 不允许尾逗号）。
+- 字段名和层级严格按上面的结构定义，字段名一个字都不要改、不要多写、不要少写。
+- 不要用 markdown 代码块包裹（不要出现 \`\`\`json 这种标记）。
+- 除了 JSON 本身，不要输出任何解释、前言、结语。
+
+### 3. 输出前自查
+
+返回之前，请自己检查一遍：这份内容如果直接存成 .json 文件，能否被正常打开？
+若不能，请找出并修正引号与逗号的问题后重新输出。
 
 ## 可用标签清单（tagIds 只能从中选择）
 
@@ -134,9 +173,32 @@ ${activeTags.map((tag) => `- ${tag.id} ${tag.name}`).join("\n")}
 - 句子里空后面**没有括号**，hintWord 必须是 null，不要自己编一个提示词出来
 - 括号里的提示词要照抄，包括中文标注（如「礼仪器」的 \`(ritual (礼仪器))\` 要完整保留）
 
+## 「无提示词」是高考语法填空的固定题型（极重要）
+
+高考语法填空的空格按提示方式分成两类，答案的可推理性完全不同：
+
+- **有提示词的空**：括号里已给出原词，学生只需做**词性转换或形式变化**。
+- **无提示词的空**：不给任何提示，学生必须**仅凭语法位置和上下文**推出唯一答案。
+
+所以无提示词的空，答案只能是**功能词**——冠词、介词、连词、代词、助动词、情态动词、
+关系副词（where / when / why）、连接副词等。它们是虚词，**在句中的位置本身就限定了答案**，
+不依赖上下文，所以任何一套卷子都能推出唯一答案。
+
+这带来三条必须遵守的要求：
+
+1. **answer 必须是功能词**。如果某个无提示词空只能靠语义或搭配才能确定（需要猜测作者意图、
+   有多种说法都成立），那它不是合格的填空，**不要把它当作无提示词的空输出**。
+2. **tagIds 必须从「无提示词」这个分类下的子标签里选**（冠词、介词、连词、关系副词等），
+   不要挂到「动词」「名词」这类需要词性转换的分类下——那些是有提示词的空才用的。
+3. **不要给无提示词的空编造 hintWord**。原卷没提示就是没提示。
+
+判断方法很简单：这个答案换成另一个词，句子还会通顺、还会是原卷的答案吗？
+如果换一个也说得通，那它就不该出现在无提示词的位置上。
+
 ## 输出要求
 
 1. 只输出一个 JSON 数组，不要输出任何解释文字，不要用 markdown 代码块包裹。
+   格式细节见上文「JSON 格式要求」，尤其是**原句里的引号必须换成中文引号**。
 2. 每道题都要写 trapAnalysis，说清两件事即可：命题人为什么这么设计、正确的判断依据是什么。
    只写正确的形式与依据，不要把错误的写法或错误选项列出来（展示错误形式会误导学生）。
    写具体、写到点子上即可，不要为凑字数重复或编造内容。
@@ -145,6 +207,7 @@ ${activeTags.map((tag) => `- ${tag.id} ${tag.name}`).join("\n")}
 5. answer 只收录结构上真正成立的答案，不要塞入冗余或凑数选项。
    每个词按标准拼写和大小写书写。
 6. 注意原文中还有中文注释（如"新石器""礼仪器"），这些是原卷的一部分，**原样保留在 originalSentence 里**。
+7. **不要输出 id 字段**。
 
 ## source 字段怎么填（每道题都要填）
 
@@ -179,16 +242,15 @@ tagIds 的判定规则已经按类别分好标签，**不要凭语感随意归�
 
 假设试卷上有这样一段：
 
-  "Among the foundational cornerstones of early Chinese civilization, Hongshan Culture holds a place of
-   profound significance. Hongshan Culture, flourishing roughly from 4700 to 2900 BCE in 56 is now
-   Liaoning Province and neighboring regions, stands 57 one of China's most remarkable Neolithic (新石器)
-   cultures."
+  “Among the foundational cornerstones of early Chinese civilization, Hongshan Culture holds a place
+   of profound significance. Hongshan Culture, flourishing roughly from 4700 to 2900 BCE in 56 is now
+   Liaoning Province and neighboring regions, stands 57 one of China's most remarkable Neolithic
+   (新石器) cultures.”
 
 应该输出**两条**：
 
 [
   {
-    "id": "q_0001",
     "originalSentence": "Hongshan Culture, flourishing roughly from 4700 to 2900 BCE in ______ is now Liaoning Province and neighboring regions, stands ______ one of China's most remarkable Neolithic (新石器) cultures.",
     "blanks": [
       {
@@ -211,7 +273,6 @@ tagIds 的判定规则已经按类别分好标签，**不要凭语感随意归�
     "source": "某某中学2026-2027学年高三上学期10月阶段检测试题"
   },
   {
-    "id": "q_0002",
     "originalSentence": "The most famous site, Niuheliang, ______ (feature) a magnificent temple and rubble-mound stone tombs.",
     "blanks": [
       {
@@ -227,7 +288,12 @@ tagIds 的判定规则已经按类别分好标签，**不要凭语感随意归�
   }
 ]
 
+若试卷里有带引号的句子，例如原文是 “It's not simply a fashion trend,” Yang said.
+则原句写成 “It's not simply a fashion trend,” Yang said.——用中文引号 “ ”，
+不要用英文直引号 "。
+
 注意示例中：
+- **每条都没有 id 字段**，编号由系统生成
 - **第 1 条里的两个空在同一句话里，就放在一起**，学生要在一个语境里同时填出来，
   没有拆成两道题
 - 句子前面的 "Among the foundational cornerstones of early Chinese civilization, Hongshan Culture
@@ -265,6 +331,66 @@ function cleanJson(text) {
     .trim();
 }
 
+/**
+ * 生成题目 id。
+ *
+ * 外部 AI 不知道题库里已有哪些编号，每次都会从 q_0001 重新数，
+ * 所以 id 一律由本系统生成，不采信 AI 返回的值。
+ *
+ * 格式与 admin.js 的手动精录保持一致：q_{时间戳36进制}，
+ * 末尾再拼一段随机数以防同一批内多次调用撞号。
+ */
+function generateQuestionId() {
+  return `q_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+/**
+ * 把 JSON.parse 的报错变成能照着改的信息。
+ *
+ * 浏览器的原生报错只给一个字符下标（"at position 2350"），
+ * 面对几百行的粘贴内容根本无从下手。这里补三样东西：
+ * 出错位置落在第几行、该行的内容、以及最可能的原因。
+ *
+ * @param {string}   text  清洗后的待解析文本
+ * @param {Error}    error JSON.parse 抛出的异常
+ * @param {string[]} lines 原始文本按行切分
+ * @returns {string} 可直接展示给用户的多行提示
+ */
+function explainJsonError(text, error, lines) {
+  const messages = [`JSON 格式有误：${error.message}`];
+
+  // 从报错信息里取出字符下标（各浏览器措辞不同）
+  const match = /position (\d+)/.exec(error.message ?? "");
+  const position = match ? Number(match[1]) : null;
+
+  if (position !== null && text.length > 0) {
+    const before = text.slice(0, position);
+    const line = before.split("\n").length;
+    const column = position - before.lastIndexOf("\n");
+    messages.push(`出错位置在第 ${line} 行、第 ${column} 个字符。`);
+    if (lines[line - 1] !== undefined) {
+      messages.push(`该行内容：${lines[line - 1].trim().slice(0, 100)}`);
+    }
+  }
+
+  // 最常见的原因：原句里的英文直引号提前截断了字符串
+  const suspicious = lines.find(
+    (item) => /"originalSentence"\s*:\s*"[^"]*"[^"]/.test(item)
+  );
+  if (suspicious) {
+    messages.push(
+      "这一行的 originalSentence 里出现了英文直引号 \"，它会提前结束 JSON 字符串。" +
+        "请把原句中的英文双引号改成中文引号 “ ”。"
+    );
+    messages.push(`可疑的一行：${suspicious.trim().slice(0, 100)}`);
+  }
+
+  messages.push(
+    "另外请确认：没有用 markdown 代码块包裹；字符串内部没有真实换行（需要换行请写 \\n）；最后一项后面没有多余逗号。"
+  );
+  return messages.join("\n");
+}
+
 /** 取每段文本里占位符的起始下标（迁移自原校验实现） */
 function findPlaceholderPositions(sentence) {
   const positions = [];
@@ -280,7 +406,7 @@ function findPlaceholderPositions(sentence) {
 }
 
 /** 校验一道题目是否合法（迁移自原校验实现 的 validateQuestion） */
-function validateQuestion(question, tagDictionary, existingIds = []) {
+function validateQuestion(question, tagDictionary) {
   const errors = [];
   const sentence = typeof question.originalSentence === "string" ? question.originalSentence : "";
 
@@ -357,27 +483,20 @@ function validateQuestion(question, tagDictionary, existingIds = []) {
     }
   });
 
-  // 5. id 查重
-  if (existingIds.includes(question.id)) {
-    errors.push(`题目 ID 重复：${question.id}`);
-  }
-
   return { isValid: errors.length === 0, errors };
 }
 
 /** 批量校验，逐条收集全部错误（迁移自原校验实现 的 validateQuestions） */
 function validateQuestions(questions, tagDictionary) {
-  const existingIds = [];
   const results = [];
   const validIndexes = [];
   const allErrors = [];
 
   questions.forEach((question, index) => {
-    const result = validateQuestion(question, tagDictionary, existingIds);
+    const result = validateQuestion(question, tagDictionary);
     results.push(result);
     if (result.isValid) {
       validIndexes.push(index);
-      existingIds.push(question.id);
     } else {
       result.errors.forEach((error) => allErrors.push(`第 ${index + 1} 条: ${error}`));
     }
@@ -518,15 +637,29 @@ async function handleParse() {
 
 /** 实际解析与导入流程 */
 function parseAndImport() {
+  const raw = els.textarea.value;
+  const cleaned = cleanJson(raw);
+
   let parsed;
   try {
-    parsed = JSON.parse(cleanJson(els.textarea.value));
+    parsed = JSON.parse(cleaned);
   } catch (error) {
-    renderError(`JSON 格式错误：${error.message}`);
+    renderError(explainJsonError(cleaned, error, cleaned.split("\n")));
     return;
   }
 
   const list = Array.isArray(parsed) ? parsed : [parsed];
+
+  // 数组里混入非对象（null、数字、字符串）时后续会崩，先拦下来给出可读的提示
+  const badIndex = list.findIndex(
+    (item) => item === null || typeof item !== "object" || Array.isArray(item)
+  );
+  if (badIndex !== -1) {
+    renderError(
+      `第 ${badIndex + 1} 条不是题目对象。请确认粘贴的是一个 JSON 数组，且数组里每一项都是 { } 形式的对象。`
+    );
+    return;
+  }
 
   // 先规范化每题原句的占位符（全角下划线 / 中文破折号 / 数量不为 6），
   // 保证后续校验与入库都使用标准格式
@@ -570,6 +703,8 @@ function runImport(list) {
   const finalSource = els.source.value.trim();
   const stamped = list.map((question) => ({
     ...question,
+    // 编号一律由本系统生成，丢弃 AI 返回的 id（它无从得知题库现状）
+    id: generateQuestionId(),
     source: finalSource || question.source || "AI 生成",
     status: "unmastered",
     wrongCount: 0,

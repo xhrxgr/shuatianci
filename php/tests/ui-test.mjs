@@ -564,12 +564,11 @@ async function main() {
   check("AI 页签有「手动复制」降级按钮", (await page.locator("#admin-ai-manual-copy").count()) === 1);
 
   // AI 导入的来源：输入框留空 -> 采用 JSON 里 AI 生成的来源；填写 -> 覆盖
-  const aiSrcId = `q_ai_src_${Date.now().toString(36)}`;
+  // 注意这里不写 id：编号由系统生成（AI 无从得知题库现状）
   await page.locator("#ai-source").fill("");
   await page.locator("#admin-ai-json").fill(
     JSON.stringify([
       {
-        id: aiSrcId,
         originalSentence: "AI source check ______ done.",
         blanks: [
           {
@@ -587,24 +586,35 @@ async function main() {
   );
   await page.locator("#admin-ai-submit").click();
   await page.waitForTimeout(800);
-  const aiSourceValue = await page.evaluate(async (id) => {
+  const aiSourceValue = await page.evaluate(async (sentence) => {
     const res = await fetch("/api/questions");
     const data = await res.json();
-    const found = (data.questions ?? []).find((q) => q.id === id);
+    const found = (data.questions ?? []).find((q) => q.originalSentence === sentence);
     return found ? found.source : null;
-  }, aiSrcId);
+  }, "AI source check ______ done.");
   check(
     "AI 导入（来源留空）采用 JSON 里 AI 生成的来源",
     aiSourceValue === "某某测试中学2026-2027学年高三上学期10月阶段检测试题",
     aiSourceValue
   );
 
-  const aiOverrideId = `q_ai_ovr_${Date.now().toString(36)}`;
+  // 不带 id 的 JSON 也要能入库，且编号由系统生成 q_ 前缀
+  const generatedId = await page.evaluate(async () => {
+    const res = await fetch("/api/questions");
+    const data = await res.json();
+    const found = (data.questions ?? []).find((q) => q.originalSentence === "AI source check ______ done.");
+    return found ? found.id : null;
+  });
+  check(
+    "不带 id 的题目由系统生成编号（q_ 前缀）",
+    typeof generatedId === "string" && generatedId.startsWith("q_"),
+    generatedId
+  );
+
   await page.locator("#ai-source").fill("手动覆盖来源");
   await page.locator("#admin-ai-json").fill(
     JSON.stringify([
       {
-        id: aiOverrideId,
         originalSentence: "AI override check ______ done.",
         blanks: [
           {
@@ -622,14 +632,65 @@ async function main() {
   );
   await page.locator("#admin-ai-submit").click();
   await page.waitForTimeout(800);
-  const overriddenSource = await page.evaluate(async (id) => {
+  const overriddenSource = await page.evaluate(async (sentence) => {
     const res = await fetch("/api/questions");
     const data = await res.json();
-    const found = (data.questions ?? []).find((q) => q.id === id);
+    const found = (data.questions ?? []).find((q) => q.originalSentence === sentence);
     return found ? found.source : null;
-  }, aiOverrideId);
+  }, "AI override check ______ done.");
   check("手填来源覆盖 AI 生成的来源", overriddenSource === "手动覆盖来源", overriddenSource);
   await page.locator("#ai-source").fill(""); // 复位，避免影响后续断言
+
+  // 原句里带中文引号（AI 换掉英文直引号后的形态）必须能入库
+  await page.locator("#admin-ai-json").fill(
+    JSON.stringify([
+      {
+        originalSentence: "“New Chinese Style” reflects ______ mindset among Chinese people.",
+        blanks: [
+          {
+            blankIndex: 1,
+            answer: ["a"],
+            hintWord: null,
+            hintType: "无提示词",
+            tagIds: ["t_024"],
+            trapAnalysis: "冠词 a/an 考查，New 以辅音音素开头。",
+          },
+        ],
+        source: "引号测试卷",
+      },
+    ])
+  );
+  await page.locator("#admin-ai-submit").click();
+  await page.waitForTimeout(800);
+  const quotedOk = await page.evaluate(async () => {
+    const res = await fetch("/api/questions");
+    const data = await res.json();
+    return (data.questions ?? []).some((q) =>
+      q.originalSentence.startsWith("“New Chinese Style”")
+    );
+  });
+  check("原句含中文引号的题目能入库", quotedOk, quotedOk);
+
+  // 原句里残留英文直引号 -> JSON 解析失败，且报错要能定位到行与原因
+  await page.locator("#admin-ai-json").fill(
+    '[\n  {\n    "originalSentence": ""New Chinese Style" reflects ______ mindset.",\n' +
+      '    "blanks": [{ "blankIndex": 1, "answer": ["a"], "hintWord": null, "hintType": "无提示词", "tagIds": ["t_024"], "trapAnalysis": "x" }],\n' +
+      '    "source": "坏数据"\n  }\n]'
+  );
+  await page.locator("#admin-ai-submit").click();
+  await page.waitForTimeout(500);
+  const aiErrorText = await page.locator("#admin-ai-error").innerText();
+  check(
+    "英文直引号导致解析失败时，提示能定位到行号",
+    /第 \d+ 行/.test(aiErrorText),
+    aiErrorText.slice(0, 120)
+  );
+  check(
+    "解析失败提示指出英文直引号这个原因",
+    aiErrorText.includes("英文直引号"),
+    aiErrorText.slice(0, 160)
+  );
+  await page.locator("#admin-ai-json").fill("");
 
   // 导入页签
   await page.locator('[data-admin-tab="import"]').click();

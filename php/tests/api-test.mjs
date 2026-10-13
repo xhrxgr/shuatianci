@@ -289,13 +289,78 @@ async function main() {
   const created = await request("POST", "/questions", { token: adminToken, body: { question: SAMPLE_QUESTION } });
   check(
     "POST /questions 新增成功（201，added=1）",
-    created.status === 201 && created.data.added === 1 && created.data.skipped === 0,
+    created.status === 201 && created.data.added === 1 && created.data.renamed === 0,
     created.data
   );
   record("question-create", created.status, created.data);
 
+  // 重复 id 不再静默跳过（那会让用户以为导入成功，实际一题没进库），改为自动换新编号
   const dup = await request("POST", "/questions", { token: adminToken, body: { question: SAMPLE_QUESTION } });
-  check("同 id 重复导入 -> skipped=1 不覆盖", dup.status === 201 && dup.data.skipped === 1, dup.data);
+  const dupList = await request("GET", "/questions", { token: adminToken });
+  const dupKept = (dupList.data.questions ?? []).filter((q) => q.originalSentence === SAMPLE_QUESTION.originalSentence);
+  check(
+    "同 id 重复导入 -> 自动换新编号，added=2（不再跳过）",
+    dup.status === 201 && dup.data.added === 1 && dup.data.renamed === 1 && dupKept.length === 2,
+    dup.data
+  );
+
+  // 缺 id 时由服务端生成，AI 导入不再要求 AI 输出编号
+  const noId = await request("POST", "/questions", {
+    token: adminToken,
+    body: {
+      question: {
+        originalSentence: "Server generated id ______ test.",
+        blanks: [
+          {
+            blankIndex: 1,
+            answer: ["ok"],
+            hintWord: null,
+            hintType: "无提示词",
+            tagIds: ["t_001"],
+            trapAnalysis: "缺 id 时由服务端生成编号。",
+          },
+        ],
+      },
+    },
+  });
+  const noIdList = await request("GET", "/questions", { token: adminToken });
+  const generated = (noIdList.data.questions ?? []).find(
+    (q) => q.originalSentence === "Server generated id ______ test."
+  );
+  check(
+    "缺 id 的题目 -> 服务端生成 q_ 前缀编号",
+    noId.status === 201 && noId.data.added === 1 && /^q_[0-9a-z]+(_[0-9a-z]+)?$/.test(generated?.id ?? ""),
+    { resp: noId.data, id: generated?.id }
+  );
+
+  // 同批内多条缺 id 也不能撞号
+  const batchNoId = await request("POST", "/questions", {
+    token: adminToken,
+    body: {
+      questions: ["A ______ b.", "C ______ d.", "E ______ f."].map((sentence) => ({
+        originalSentence: sentence,
+        blanks: [
+          {
+            blankIndex: 1,
+            answer: ["x"],
+            hintWord: null,
+            hintType: "无提示词",
+            tagIds: ["t_001"],
+            trapAnalysis: "同批缺 id 不得撞号。",
+          },
+        ],
+      })),
+    },
+  });
+  const batchList = await request("GET", "/questions", { token: adminToken });
+  const batchIds = ["A ______ b.", "C ______ d.", "E ______ f."].map(
+    (s) => (batchList.data.questions ?? []).find((q) => q.originalSentence === s)?.id
+  );
+  check(
+    "同批多条缺 id -> 编号互不相同",
+    batchNoId.status === 201 && batchNoId.data.added === 3 && new Set(batchIds).size === 3 && !batchIds.includes(undefined),
+    { resp: batchNoId.data, ids: batchIds }
+  );
 
   const invalid = await request("POST", "/questions", {
     token: adminToken,
@@ -317,6 +382,43 @@ async function main() {
   check("DELETE /questions/{id} 删除成功", deleted.status === 200 && deleted.data.ok === true, deleted.data);
   const deletedAgain = await request("DELETE", `/questions/${SAMPLE_QUESTION.id}`, { token: adminToken });
   check("删除不存在的题目 -> 404", deletedAgain.status === 404 && deletedAgain.data.error === "题目不存在或已删除", deletedAgain.data);
+
+  // 整库上云必须保留原编号，不能因为与库中已有 id 相同就换新。
+  // 放在删除用例之后：replaceAll 会清空整个题库，不能影响上面依赖 SAMPLE_QUESTION.id 的用例
+  const cloud = await request("POST", "/questions", {
+    token: adminToken,
+    body: {
+      replaceAll: true,
+      questions: [
+        {
+          id: "q_cloud_keep",
+          originalSentence: "Cloud upload ______ keeps id.",
+          blanks: [
+            {
+              blankIndex: 1,
+              answer: ["must"],
+              hintWord: null,
+              hintType: "无提示词",
+              tagIds: ["t_001"],
+              trapAnalysis: "整库上云需保留原编号。",
+            },
+          ],
+        },
+      ],
+    },
+  });
+  const cloudList = await request("GET", "/questions", { token: adminToken });
+  const kept = (cloudList.data.questions ?? []).find((q) => q.id === "q_cloud_keep");
+  check(
+    "整库上云（replaceAll）-> 保留原编号",
+    cloud.status === 201 && cloud.data.renamed === 0 && kept?.originalSentence === "Cloud upload ______ keeps id.",
+    { resp: cloud.data, id: kept?.id }
+  );
+  check(
+    "replaceAll 后题库仅剩上云的那一道",
+    (cloudList.data.questions ?? []).length === 1,
+    cloudList.data.questions?.length
+  );
 
   /* ---------------- 标签 ---------------- */
   const tagList = await request("GET", "/tags");

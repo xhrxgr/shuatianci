@@ -51,6 +51,25 @@ function is_list_array($value)
     return array_keys($value) === range(0, count($value) - 1);
 }
 
+/**
+ * 生成题目 id。
+ *
+ * AI 导入时不采信 AI 返回的编号——外部 AI 无从得知题库现状，
+ * 每次都会从 q_0001 重新数。因此缺 id、或 id 与库中已有冲突时，都在这里重新生成。
+ *
+ * 格式与前端 admin.js 的手动精录保持一致：q_{时间戳36进制}_{随机}。
+ *
+ * @param int $attempt 重试次数（同一毫秒内批量生成时避免撞号）
+ * @return string
+ */
+function next_question_id($attempt = 0)
+{
+    $suffix = $attempt > 0 ? '_' . $attempt : '';
+    return 'q_' . base_convert((string) (int) (microtime(true) * 1000), 10, 36)
+        . $suffix
+        . '_' . substr(bin2hex(random_bytes(3)), 0, 6);
+}
+
 /* ---------------- 读取（公开） ---------------- */
 
 /** GET /api/questions */
@@ -128,23 +147,34 @@ function route_questions_create()
         }
 
         $added = 0;
-        $skipped = 0;
+        $renamed = 0;
+        $attempt = 0;
 
         foreach ($valid as $question) {
-            if (empty($question['id'])) {
-                continue;
+            $id = isset($question['id']) && is_string($question['id']) ? trim($question['id']) : '';
+
+            // 整库覆盖（浏览器题库上云）要保留原编号，删库后不会冲突；
+            // 增量追加时若编号缺失或已被占用，就换一个新编号——
+            // 直接跳过会让用户以为导入成功，实际一题都没进库
+            if ($replaceAll) {
+                if ($id === '') {
+                    $id = next_question_id($attempt++);
+                }
+            } else {
+                $taken = $id !== ''
+                    && count(query('SELECT id FROM questions WHERE id = ?', [$id])) > 0;
+                if ($id === '' || $taken) {
+                    $id = next_question_id($attempt++);
+                    $renamed++;
+                }
             }
-            $exists = query('SELECT id FROM questions WHERE id = ?', [$question['id']]);
-            if (count($exists) > 0) {
-                $skipped++;
-                continue;
-            }
+
             execute(
                 'INSERT INTO questions
                    (id, original_sentence, blanks_json, source, schema_version, created_at)
                  VALUES (?, ?, ?, ?, ?, ?)',
                 [
-                    $question['id'],
+                    $id,
                     isset($question['originalSentence']) ? $question['originalSentence'] : '',
                     json_encode(isset($question['blanks']) ? $question['blanks'] : [], JSON_UNESCAPED_UNICODE),
                     !empty($question['source']) ? $question['source'] : '手动录入',
@@ -155,11 +185,11 @@ function route_questions_create()
             $added++;
         }
 
-        return ['added' => $added, 'skipped' => $skipped];
+        return ['added' => $added, 'renamed' => $renamed];
     });
 
     // 部分题目校验不通过时照常导入合法的，并说明被拒原因
-    $response = ['ok' => true, 'added' => $result['added'], 'skipped' => $result['skipped']];
+    $response = ['ok' => true, 'added' => $result['added'], 'renamed' => $result['renamed']];
     if (count($errors) > 0) {
         $response['rejected'] = count($list) - count($valid);
         $response['details'] = $errors;
