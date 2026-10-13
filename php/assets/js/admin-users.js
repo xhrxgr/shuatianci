@@ -10,6 +10,7 @@
  */
 
 import { api } from "./api.js";
+import { setFlash, takeFlash } from "./flash.js";
 
 const root = document.getElementById("admin-users-root");
 
@@ -42,9 +43,9 @@ function clearMessages() {
   });
 }
 
-/** 成功：提示并整页刷新 */
+/** 成功：暂存提示并整页刷新（刷新后由启动处取出显示；对应 React 版 setNotice + load，提示可见） */
 function succeed(message) {
-  showMessage("notice", message);
+  setFlash(message);
   window.location.reload();
 }
 
@@ -183,4 +184,8 @@ if (root) {
     const select = event.target.closest('select[data-action="change-role"]');
     if (select) void handleRoleChange(select);
   });
+
+  // 显示上一次操作留下的提示（操作成功后整页刷新，见 succeed）
+  const flash = takeFlash();
+  if (flash) showMessage("notice", flash);
 }

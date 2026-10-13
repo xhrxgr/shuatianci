@@ -8,6 +8,7 @@
  */
 
 import { api } from "./api.js";
+import { setFlash, takeFlash } from "./flash.js";
 
 const root = document.getElementById("collection-root");
 
@@ -56,7 +57,7 @@ if (root) {
       favoriteButton.disabled = true;
       try {
         await api.toggleFavorite(source);
-        showMessage("notice", "已取消收藏");
+        setFlash("已取消收藏");
         window.location.reload();
       } catch (error) {
         showMessage("error", error?.message ?? "操作失败");
@@ -71,7 +72,7 @@ if (root) {
       markButton.disabled = true;
       try {
         await api.toggleMark(questionId);
-        showMessage("notice", "已取消标记");
+        setFlash("已取消标记");
         window.location.reload();
       } catch (error) {
         showMessage("error", error?.message ?? "操作失败");
@@ -79,4 +80,8 @@ if (root) {
       }
     }
   });
+
+  // 显示上一次操作留下的提示（操作成功后整页刷新，见上面的 setFlash）
+  const flash = takeFlash();
+  if (flash) showMessage("notice", flash);
 }

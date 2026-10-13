@@ -12,6 +12,7 @@
  */
 
 import { api } from "./api.js";
+import { setFlash, takeFlash } from "./flash.js";
 // AI 助手必须走 import 引入：此前靠 window.setupAdminAi 全局约定，
 // 而 admin-ai.js 没有被任何 script 标签加载，导致整个 AI 面板（含"复制提示词"）
 // 从未绑定事件、点击无反应。import 由模块依赖图保证求值顺序，不依赖标签顺序。
@@ -548,10 +549,10 @@ async function handleImportFile(file) {
   try {
     if (overwrite) {
       const result = await api.pushQuestions(parsed.questions, true);
-      showNotice(`已覆盖导入 ${result.added ?? parsed.questions.length} 道题目`);
+      setFlash(`已覆盖导入 ${result.added ?? parsed.questions.length} 道题目`);
     } else {
       const result = await api.pushQuestions(parsed.questions, false);
-      showNotice(`已导入 ${result.added ?? 0} 道题目`);
+      setFlash(`已导入 ${result.added ?? 0} 道题目`);
     }
     window.location.reload();
   } catch (error) {
@@ -573,7 +574,7 @@ async function handleMigrateLocal() {
   try {
     await api.pushQuestions(localQuestions, true);
     if (localTags?.tags?.length) await api.saveTags(localTags);
-    showNotice(`已上传 ${localQuestions.length} 道题目、${localTags?.tags?.length ?? 0} 个标签到服务端`);
+    setFlash(`已上传 ${localQuestions.length} 道题目、${localTags?.tags?.length ?? 0} 个标签到服务端`);
     clearLocalCache();
     window.location.reload();
   } catch (error) {
@@ -595,6 +596,8 @@ async function handleRestoreSeed() {
   try {
     await api.pushQuestions(seedQuestions, true);
     if (seedTags?.tags?.length) await api.saveTags(seedTags);
+    // 提示文案与 React 版一致（原版为 setNotice + 重新拉数据，这里改为刷新后展示）
+    setFlash(`已恢复内置示例数据，共 ${seedQuestions.length} 道题、${seedTags?.tags?.length ?? 0} 个标签`);
     window.location.reload();
   } catch (error) {
     showNotice(error?.message ?? "恢复失败");
@@ -606,6 +609,8 @@ async function handleClearAll() {
   if (!window.confirm("再次确认：清空后数据无法恢复，建议先导出备份。")) return;
   try {
     await api.resetBank();
+    // 提示文案与 React 版一致（原版为 setNotice + 重新拉数据，这里改为刷新后展示）
+    setFlash("已清空服务端数据");
     window.location.reload();
   } catch (error) {
     showNotice(error?.message ?? "清空失败");
@@ -673,7 +678,7 @@ async function handleCreateTags(names) {
     });
   });
   await persistTags({ ...tagDictionary, tags: next });
-  showNotice(`已创建 ${names.length} 个标签`);
+  setFlash(`已创建 ${names.length} 个标签`);
   window.location.reload();
 }
 
@@ -790,7 +795,7 @@ if (root) {
         api
           .deleteQuestion(id)
           .then(() => {
-            showNotice(`已删除 ${id}`);
+            setFlash(`已删除 ${id}`);
             window.location.reload();
           })
           .catch((error) => showNotice(error?.message ?? "删除失败"));
@@ -1007,6 +1012,10 @@ function init() {
   const sourceInput = document.getElementById("admin-source");
   if (sourceInput) draft.source = sourceInput.value;
   renderBlanks();
+
+  // 显示上一次操作留下的提示（部分操作整页刷新后展示，见各处 setFlash 调用）
+  const flash = takeFlash();
+  if (flash) showNotice(flash);
 
   // 初始化 AI 助手（模块自带幂等，重复调用只更新字典与回调）
   setupAiAssistant({

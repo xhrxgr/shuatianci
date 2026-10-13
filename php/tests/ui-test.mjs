@@ -54,8 +54,15 @@ async function main() {
 
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(String(error)));
+  // 删除 / 清空 / 取消收藏等操作都有 confirm，自动确认以便脚本走通
+  page.on("dialog", (dialog) => dialog.accept());
 
   console.log(`\n页面交互测试：${BASE}\n`);
+
+  /* ---------------- 404 页（未登录） ---------------- */
+  const resp404 = await page.goto(`${BASE}/no-such-page`, { waitUntil: "networkidle" });
+  check("未匹配路径渲染 404 页", (await page.getByText("页面不存在").count()) >= 1);
+  check("404 页返回 404 状态码", resp404.status() === 404, resp404.status());
 
   /* ---------------- 刷题页 ---------------- */
   await page.goto(`${BASE}/practice`, { waitUntil: "networkidle" });
@@ -389,6 +396,29 @@ async function main() {
   check("标记面板可见", await page.locator('[data-panel="marks"]').isVisible());
   check("收藏面板已隐藏", !(await page.locator('[data-panel="favorites"]').isVisible()));
 
+  /* ---------------- 取消收藏 / 取消标记（flash 提示在刷新后仍可见） ---------------- */
+  await page.locator('[data-collection-tab="favorites"]').click();
+  await page.waitForTimeout(200);
+  const favCountBefore = await page.locator("[data-favorite-item]").count();
+  await page.locator('[data-favorite-item] [data-action="remove-favorite"]').first().click();
+  await page.waitForTimeout(1200);
+  check(
+    "取消收藏后 flash 提示可见「已取消收藏」",
+    (await page.locator("#collection-notice").innerText().catch(() => "")).includes("已取消收藏")
+  );
+  check("取消收藏后列表减少", (await page.locator("[data-favorite-item]").count()) === favCountBefore - 1);
+
+  await page.locator('[data-collection-tab="marks"]').click();
+  await page.waitForTimeout(300);
+  const markCountBefore = await page.locator("[data-mark-item]").count();
+  await page.locator('[data-mark-item] [data-action="remove-mark"]').first().click();
+  await page.waitForTimeout(1200);
+  check(
+    "取消标记后 flash 提示可见「已取消标记」",
+    (await page.locator("#collection-notice").innerText().catch(() => "")).includes("已取消标记")
+  );
+  check("取消标记后列表减少", (await page.locator("[data-mark-item]").count()) === markCountBefore - 1);
+
   /* ---------------- 录题后台 ---------------- */
   await page.goto(`${BASE}/admin`, { waitUntil: "networkidle" });
   check("录题后台有 4 个页签", (await page.locator("[data-admin-tab]").count()) === 4);
@@ -610,6 +640,206 @@ async function main() {
   await page.locator('[data-admin-tab="tags"]').click();
   check("标签页签有 4 个顶级分类", (await page.locator("[data-tag-group]").count()) === 4);
   check("标签页签列出子标签", (await page.locator("[data-tag]").count()) >= 30);
+
+  /* ---------------- 录题后台：数据操作（flash 提示在刷新后仍可见） ---------------- */
+  const clickReload = async (locator) => {
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: "networkidle", timeout: 12000 }).catch(() => {}),
+      locator.click(),
+    ]);
+    await page.waitForTimeout(400);
+  };
+  const adminFlash = async () => {
+    const box = page.locator("#admin-notice");
+    if ((await box.count()) === 0) return "";
+    const visible = await box.isVisible().catch(() => false);
+    return visible ? await box.innerText().catch(() => "") : "";
+  };
+
+  // 删除题目（数量用接口取真实值——页面 DOM 可能是旧快照）
+  await page.locator('[data-admin-tab="import"]').click();
+  await page.waitForTimeout(200);
+  const totalBeforeDelete = await page.evaluate(async () => {
+    const res = await fetch("/api/questions");
+    return (await res.json()).questions.length;
+  });
+  const deletedId = await page.locator("[data-action='delete-question']").first().getAttribute("data-id");
+  await clickReload(page.locator("[data-action='delete-question']").first());
+  check("删除题目后 flash 提示「已删除 xxx」", (await adminFlash()).includes(`已删除 ${deletedId}`), await adminFlash());
+  const totalAfterDelete = await page.evaluate(async () => {
+    const res = await fetch("/api/questions");
+    return (await res.json()).questions.length;
+  });
+  check("删除后题目数减少", totalAfterDelete === totalBeforeDelete - 1, { totalBeforeDelete, totalAfterDelete });
+
+  // 恢复内置示例（reload 后页面回到手动精录页签，需先切回导入页签）
+  await page.locator('[data-admin-tab="import"]').click();
+  await page.waitForTimeout(200);
+  await clickReload(page.locator("#admin-restore-seed"));
+  check(
+    "恢复示例后 flash 文案与原版一致",
+    (await adminFlash()).includes("已恢复内置示例数据，共 3 道题、42 个标签"),
+    await adminFlash()
+  );
+  await page.locator('[data-admin-tab="import"]').click();
+  await page.waitForTimeout(200);
+  check("恢复后题目数为 3", (await page.locator("[data-admin-question]").count()) === 3);
+
+  // 标签启停（来回切换）
+  await page.locator('[data-admin-tab="tags"]').click();
+  await page.waitForTimeout(300);
+  const toggleBefore = (await page.locator('[data-tag="t_038"] [data-action="toggle-tag"]').innerText()).trim();
+  await clickReload(page.locator('[data-tag="t_038"] [data-action="toggle-tag"]'));
+  await page.locator('[data-admin-tab="tags"]').click();
+  await page.waitForTimeout(300);
+  const toggleAfter = (await page.locator('[data-tag="t_038"] [data-action="toggle-tag"]').innerText()).trim();
+  check("标签启停后状态文字翻转", toggleBefore !== toggleAfter, { toggleBefore, toggleAfter });
+  await clickReload(page.locator('[data-tag="t_038"] [data-action="toggle-tag"]'));
+  await page.locator('[data-admin-tab="tags"]').click();
+  await page.waitForTimeout(300);
+  check(
+    "再次点击恢复原状态",
+    (await page.locator('[data-tag="t_038"] [data-action="toggle-tag"]').innerText()).trim() === toggleBefore
+  );
+
+  // 新增子标签 -> 删除（标签名在 input[data-tag-name] 的 value 中，用属性选择器定位）
+  const auditTagName = `审查标签${Date.now().toString(36).slice(-4)}`;
+  await page.locator('[data-tag-group]').first().locator('[data-action="add-tag-open"]').click();
+  await page.waitForTimeout(300);
+  await page.locator("[data-new-tag-name]").fill(auditTagName);
+  await clickReload(page.locator('[data-action="add-tag-confirm"]'));
+  await page.locator('[data-admin-tab="tags"]').click();
+  await page.waitForTimeout(300);
+  const auditTagLi = page.locator(`[data-tag]:has(input[data-tag-name][value="${auditTagName}"])`);
+  check("新增子标签出现在列表", (await auditTagLi.count()) >= 1);
+  await clickReload(auditTagLi.first().locator('[data-action="delete-tag"]'));
+  await page.locator('[data-admin-tab="tags"]').click();
+  await page.waitForTimeout(300);
+  check(
+    "删除后标签消失",
+    (await page.locator(`[data-tag]:has(input[data-tag-name][value="${auditTagName}"])`).count()) === 0
+  );
+
+  // 清空后恢复（结束在种子状态）
+  await page.locator('[data-admin-tab="import"]').click();
+  await page.waitForTimeout(200);
+  await clickReload(page.locator("#admin-clear-all"));
+  check("清空后 flash 提示「已清空服务端数据」", (await adminFlash()).includes("已清空服务端数据"), await adminFlash());
+  await page.locator('[data-admin-tab="import"]').click();
+  await page.waitForTimeout(200);
+  check("清空后题目数为 0", (await page.locator("[data-admin-question]").count()) === 0);
+  await page.locator('[data-admin-tab="import"]').click();
+  await page.waitForTimeout(200);
+  await clickReload(page.locator("#admin-restore-seed"));
+  await page.locator('[data-admin-tab="import"]').click();
+  await page.waitForTimeout(200);
+  check("再次恢复后回到种子状态（3 道题）", (await page.locator("[data-admin-question]").count()) === 3);
+
+  /* ---------------- 用户管理页 ---------------- */
+  await page.goto(`${BASE}/admin/users`, { waitUntil: "networkidle" });
+  check("用户管理页渲染", (await page.locator("#admin-users-root").count()) === 1);
+  const managedUser = `audit_u_${Date.now().toString(36)}`;
+  await page.locator("#admin-new-username").fill(managedUser);
+  await page.locator("#admin-new-password").fill("123456");
+  await page.locator("#admin-create").click();
+  await page.waitForTimeout(1200);
+  check("新建用户后列表出现该用户", (await page.locator(`li[data-username="${managedUser}"]`).count()) === 1);
+  check(
+    "新建成功提示在刷新后仍可见（flash）",
+    await page.locator("#admin-users-notice").isVisible().catch(() => false)
+  );
+  await page.locator(`li[data-username="${managedUser}"] [data-action="reset-password"]`).click();
+  await page.waitForTimeout(200);
+  await page.locator(`li[data-username="${managedUser}"] [data-reset-input]`).fill("654321");
+  await page.locator(`li[data-username="${managedUser}"] [data-action="reset-confirm"]`).click();
+  await page.waitForTimeout(1200);
+  const resetLogin = await page.evaluate(async (user) => {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "omit",
+      body: JSON.stringify({ username: user, password: "654321" }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return res.status === 200 && typeof data.token === "string";
+  }, managedUser);
+  check("重置密码生效（新密码可登录）", resetLogin);
+  await page.locator(`li[data-username="${managedUser}"] select[data-action="change-role"]`).selectOption("admin");
+  await page.waitForTimeout(1200);
+  check(
+    "改角色后下拉选中 admin",
+    (await page.locator(`li[data-username="${managedUser}"] select[data-action="change-role"]`).inputValue()) === "admin"
+  );
+  await page.locator(`li[data-username="${managedUser}"] [data-action="change-status"]`).click();
+  await page.waitForTimeout(1200);
+  check(
+    "禁用后行内出现「已禁用」",
+    (await page.locator(`li[data-username="${managedUser}"]`).innerText()).includes("已禁用")
+  );
+  await page.locator(`li[data-username="${managedUser}"] [data-action="delete"]`).click();
+  await page.waitForTimeout(1200);
+  check("删除后列表不再有该用户", (await page.locator(`li[data-username="${managedUser}"]`).count()) === 0);
+
+  /* ---------------- 系统设置页 ---------------- */
+  await page.goto(`${BASE}/admin/system`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(800);
+  const systemText = await page.locator("#admin-system-root").innerText();
+  check(
+    "系统设置页渲染并显示版本",
+    (await page.locator("#admin-system-root").count()) === 1 && /[0-9a-f]{7}/.test(systemText),
+    systemText.slice(0, 120)
+  );
+  check("版本区显示 PHP 版本", /PHP/.test(systemText));
+  await page.locator('[data-action="check"]').click();
+  let systemCheckText = "";
+  for (let i = 0; i < 30; i++) {
+    await page.waitForTimeout(1000);
+    systemCheckText = await page.locator("[data-check-result]").innerText().catch(() => "");
+    if (systemCheckText.trim() !== "") break;
+  }
+  check(
+    "检查更新返回结果（已是最新 或 发现新提交）",
+    /已是最新|发现\s*\d+\s*个新提交|无法连接|失败/.test(systemCheckText),
+    systemCheckText.slice(0, 120)
+  );
+  if (systemCheckText.includes("已是最新")) {
+    check("已是最新时不显示「立即更新」按钮", (await page.locator('[data-action="update"]').count()) === 0);
+  }
+
+  /* ---------------- 改密成功 / 退出 / 注册 ---------------- */
+  await page.goto(`${BASE}/profile`, { waitUntil: "networkidle" });
+  await page.locator("#profile-old-password").fill("123456");
+  await page.locator("#profile-new-password").fill("audit654321");
+  await page.locator("#profile-submit").click();
+  await page
+    .waitForFunction(
+      () => (document.getElementById("profile-notice")?.textContent ?? "").includes("密码已修改"),
+      { timeout: 5000 }
+    )
+    .catch(() => {});
+  check("改密成功提示「密码已修改」", (await page.locator("#profile-notice").innerText()).includes("密码已修改"));
+  await page.locator("#profile-old-password").fill("audit654321");
+  await page.locator("#profile-new-password").fill("123456");
+  await page.locator("#profile-submit").click();
+  await page.waitForTimeout(800);
+  check("密码改回成功", (await page.locator("#profile-notice").innerText()).includes("密码已修改"));
+
+  await page.locator('[data-action="logout"]').first().click();
+  await page.waitForTimeout(1500);
+  check("退出后回到首页", new URL(page.url()).pathname === "/", page.url());
+  check("退出后导航为游客态", (await page.locator('a[href="/profile"]').count()) === 0);
+  check("退出后 token 已清除", (await page.evaluate(() => window.localStorage.getItem("eq_token"))) === null);
+
+  const registeredUser = `audit_reg_${Date.now().toString(36)}`;
+  await page.goto(`${BASE}/login`, { waitUntil: "networkidle" });
+  await page.locator("#login-switch").click();
+  await page.waitForTimeout(200);
+  await page.locator("#username").fill(registeredUser);
+  await page.locator("#password").fill("123456");
+  await page.locator("#login-submit").click();
+  await page.waitForTimeout(1500);
+  check("注册成功后跳转首页", new URL(page.url()).pathname === "/", page.url());
+  check("注册后 token 已保存", (await page.evaluate(() => window.localStorage.getItem("eq_token"))) !== null);
 
   check("页面无 JS 报错", pageErrors.length === 0, pageErrors.slice(0, 2));
 
