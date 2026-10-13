@@ -31,12 +31,19 @@ export function setToken(token) {
   }
 }
 
-/** 请求错误 */
+/**
+ * 请求错误。
+ *
+ * details 放服务端给的原始原因（如 git 失败时的 stderr）。
+ * 主文案是人话，details 是给排查看的——两者都要，
+ * 只有前者用户会看到「失败了」却不知道该查什么。
+ */
 export class ApiError extends Error {
-  constructor(message, status) {
+  constructor(message, status, details = "") {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.details = details;
   }
 }
 
@@ -82,7 +89,14 @@ async function request(path, options = {}) {
       data && typeof data === "object" && "error" in data
         ? String(data.error)
         : `请求失败（${response.status}）`;
-    throw new ApiError(message, response.status);
+    // detail 是服务端给的原始原因（如 git fetch 失败时的 stderr）。
+    // 以前在这里被丢掉了，界面上只剩一句套话，用户无从判断是
+    // 凭据问题、网络问题，还是超时——这一条信息要传到界面上。
+    const detail =
+      data && typeof data === "object" && typeof data.detail === "string"
+        ? data.detail
+        : "";
+    throw new ApiError(message, response.status, detail);
   }
 
   return data;

@@ -135,7 +135,18 @@ function git_cmd(array $args, $timeoutSec = 30)
  * @param string $err
  * @return string
  */
-function git_failure_hint($err)
+/**
+ * git fetch 失败时给出一句能照着做的说明。
+ *
+ * 设计要点：**永远不给「无法连接远端仓库」这种没法行动的话**。
+ * git 在连接超时被中断时**一个字的错误都不打印**（stderr 为空），
+ * 这时只能靠「没有输出」这件事本身来判断，并给出最可能的场景。
+ *
+ * @param string $err git 的 stderr（为空说明是被超时掐断的）
+ * @param array|null $result git_cmd 的完整返回（含 code / timedOut）
+ * @return string 一句带下一步操作的话
+ */
+function git_failure_hint($err, $result = null)
 {
     $err = (string) $err;
 
@@ -161,7 +172,36 @@ function git_failure_hint($err)
         || stripos($err, 'network is unreachable') !== false) {
         return '无法连接 GitHub：请检查服务器的网络与出站防火墙规则（能否正常访问 github.com）。';
     }
-    return '';
+
+    // git 报「仓库不存在 / 拒绝访问」——公开仓库不该出现，出现就是地址写错
+    if (stripos($err, 'not found') !== false
+        || stripos($err, 'Repository not found') !== false
+        || stripos($err, '403') !== false) {
+        return '远端仓库不存在或拒绝访问：请确认仓库地址与访问权限（公开仓库不该出现这个错误）。';
+    }
+
+    // 执行超时：run_command 会往 err 里追加「执行超时（Ns），已终止」
+    if (stripos($err, '执行超时') !== false) {
+        return '连接 GitHub 超时（git 一直没等到响应，已被终止）。'
+            . '常见原因：服务器出站被限制，或未配置加速通道。'
+            . '请先在服务器上以运行 PHP 的那个用户手动执行 git fetch origin 看真实报错，'
+            . '或按 README 配置 gh-proxy 加速通道。';
+    }
+
+    // 一个字都没打印 = 连接被防火墙丢弃（SYN 无响应，git 静静等到被掐断）。
+    // 本项目部署环境已知的情况是：服务器无法直连 github.com，必须走加速通道。
+    if (trim($err) === '') {
+        return '连不上 GitHub，且 git 没有输出任何错误——通常是出站连接被静默丢弃（网络不通或被防火墙拦截）。'
+            . '本项目的部署环境无法直连 github.com，需要配置加速通道：'
+            . '在项目目录执行 git config url."https://gh-proxy.com/https://github.com/".insteadOf "https://github.com/" '
+            . '并 chown www:www .git/config；'
+            . '若已配置仍失败，请以运行 PHP 的用户（通常是 www）手动执行 git fetch origin 查看真实报错。';
+    }
+
+    // 兜底：把 git 的原话带上，别让它无声消失
+    $short = trim(preg_replace('/\s+/', ' ', substr($err, 0, 160)));
+    return '拉取远端失败：' . $short . '（若为网络问题，请检查服务器能否访问 github.com，'
+        . '或配置 gh-proxy 加速通道，命令见 README）';
 }
 
 /**
@@ -338,11 +378,11 @@ function route_system_check_update()
     $fetch = git_cmd(['fetch', 'origin', '--prune'], 60);
     if ($fetch['code'] !== 0) {
         $raw = trim($fetch['err'] !== '' ? $fetch['err'] : $fetch['out']);
-        $hint = git_failure_hint($raw);
+        $hint = git_failure_hint($raw, $fetch);
         json_response([
             'ok' => false,
-            'error' => $hint !== '' ? $hint : '无法连接远端仓库，请检查服务器上的 git 凭据是否已配置',
-            'detail' => $raw,
+            'error' => $hint,
+            'detail' => $raw !== '' ? $raw : '(git fetch 没有输出任何错误信息，通常意味着连接超时被中断)',
         ], 502);
     }
 

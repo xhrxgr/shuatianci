@@ -274,7 +274,12 @@ if (root) {
       check = result;
       if (!result.hasUpdate) showMessage("notice", "已是最新版本");
     } catch (error) {
-      showMessage("error", error, { retry: () => void handleCheck() });
+      showMessage("error", error, {
+        retry: () => void handleCheck(),
+        // 后端的原始报错（git 的 stderr）——套话文案不给出下一步，
+        // 把真实原因一起列出来才排得掉
+        details: error?.details ? [error.details] : [],
+      });
     } finally {
       checking = false;
     }
@@ -343,7 +348,10 @@ if (root) {
       startPolling();
     } catch (error) {
       updating = false;
-      showMessage("error", error, { retry: () => void handleUpdate() });
+      showMessage("error", error, {
+        retry: () => void handleUpdate(),
+        details: error?.details ? [error.details] : [],
+      });
       renderUpdateActions();
       renderCheckResult();
       renderProgress();

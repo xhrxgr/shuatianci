@@ -49,7 +49,8 @@ try {
         $raw = trim($fetch['err'] !== '' ? $fetch['err'] : $fetch['out']);
         update_state_log('git 报错：' . $raw);
         // 常见的凭据 / 网络故障翻译成可操作的中文（git_failure_hint）
-        $hint = git_failure_hint($raw);
+        // 现在 hint 永不为空（含超时场景），但仍保留 $raw 兜底以防后端被改动
+        $hint = git_failure_hint($raw, $fetch);
         throw new RuntimeException($hint !== '' ? $hint : $raw);
     }
 
