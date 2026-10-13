@@ -22,6 +22,50 @@ require_once __DIR__ . '/util.php';
  */
 function ensure_schema()
 {
+    db()->exec('PRAGMA foreign_keys = ON');
+    ensure_tables();
+    migrate_schema();
+}
+
+/**
+ * 已有库的表结构变更。
+ *
+ * CREATE TABLE IF NOT EXISTS 只保证「表不存在才建」，
+ * **不会给已存在的表补列**。所以新增字段必须在这里显式 ALTER，
+ * 否则老部署升上来后 SELECT 就会因为缺列报错。
+ *
+ * 每条迁移都要幂等：先查列在不在，不在才加。
+ */
+function migrate_schema()
+{
+    // 建表脚本里全是 CREATE TABLE IF NOT EXISTS，重复执行安全。
+    // 必须先跑一遍再改列：从 v3.0.x 升上来的老库没有 papers 表，
+    // 直接 ALTER TABLE papers 会抛「no such table」，
+    // 而这个函数在每个请求的 bootstrap 里都会跑——一抛错整站 500。
+    ensure_tables();
+
+    // questions.paper_id：题目归属的试卷
+    $columns = table_columns('questions');
+    if (!in_array('paper_id', $columns, true)) {
+        db()->exec('ALTER TABLE questions ADD COLUMN paper_id TEXT');
+        db()->exec('CREATE INDEX IF NOT EXISTS idx_questions_paper ON questions(paper_id)');
+    }
+
+    // papers.note：试卷备注（后续若再加列，按同样方式追加）
+    $paperColumns = table_columns('papers');
+    if (!in_array('note', $paperColumns, true)) {
+        db()->exec("ALTER TABLE papers ADD COLUMN note TEXT NOT NULL DEFAULT ''");
+    }
+}
+
+/**
+ * 只执行建表脚本，不做列迁移。
+ *
+ * 从 migrate_schema 里拆出来，供其先调用；全新安装走 ensure_schema()，
+ * 老库升级走 migrate_schema() → ensure_tables()。
+ */
+function ensure_tables()
+{
     $sqlFile = dirname(__DIR__) . '/sql/schema.sql';
     if (!is_file($sqlFile)) {
         throw http_error(500, '缺少建表脚本 php/sql/schema.sql');
@@ -38,41 +82,34 @@ function ensure_schema()
     });
     $statements = explode(';', implode("\n", $lines));
 
-    db()->exec('PRAGMA foreign_keys = ON');
     foreach ($statements as $statement) {
         $trimmed = trim($statement);
         if ($trimmed === '') {
             continue;
         }
-        db()->exec($trimmed);
+        try {
+            db()->exec($trimmed);
+        } catch (Throwable $e) {
+            // 「对不存在的列建索引」这类语句在老库上必然失败（如 idx_questions_paper
+            // 依赖 migrate_schema 刚加的 paper_id）。跳过即可：索引缺失只影响性能，
+            // 而让异常冒出去会让每个请求都 500，整站不可用。
+            // 建表失败必须继续抛，那是真的脚本缺失或语法错。
+            if (is_index_statement($trimmed)) {
+                continue;
+            }
+            throw $e;
+        }
     }
-
-    migrate_schema();
 }
 
 /**
- * 已有库的表结构变更。
+ * 是否是建索引语句。
  *
- * CREATE TABLE IF NOT EXISTS 只保证「表不存在才建」，
- * **不会给已存在的表补列**。所以新增字段必须在这里显式 ALTER，
- * 否则老部署升上来后 SELECT 就会因为缺列报错。
- *
- * 每条迁移都要幂等：先查列在不在，不在才加。
+ * 只用于让 ensure_tables 跳过老库上注定失败的索引；不是索引的语句一律照抛。
  */
-function migrate_schema()
+function is_index_statement($statement)
 {
-    // questions.paper_id：题目归属的试卷
-    $columns = table_columns('questions');
-    if (!in_array('paper_id', $columns, true)) {
-        db()->exec('ALTER TABLE questions ADD COLUMN paper_id TEXT');
-        db()->exec('CREATE INDEX IF NOT EXISTS idx_questions_paper ON questions(paper_id)');
-    }
-
-    // papers.note：试卷备注（后续若再加列，按同样方式追加）
-    $paperColumns = table_columns('papers');
-    if (!in_array('note', $paperColumns, true)) {
-        db()->exec("ALTER TABLE papers ADD COLUMN note TEXT NOT NULL DEFAULT ''");
-    }
+    return (bool) preg_match('/^\s*CREATE\s+(UNIQUE\s+)?INDEX\b/i', $statement);
 }
 
 /**

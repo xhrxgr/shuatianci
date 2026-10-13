@@ -11,6 +11,47 @@
 当前版本写在根目录的 `VERSION` 文件里，与 `package.json` 的 `version`、git 标签 `v{VERSION}`
 三处保持一致；发版流程见 README「发版」一节。
 
+## 3.1.1（2026-10-13）
+
+### 修复：从 v3.0.x 升级后整站 500（线上故障）
+
+v3.1.0 新增了 `papers` 表和 `questions.paper_id` 列，但 `migrate_schema()`
+直接对它们执行 `ALTER TABLE` / 建索引——**老库里这两个对象都不存在**，
+于是抛 PDOException。而迁移函数在每个请求的 `bootstrap()` 里都会跑，
+**一抛错就是所有请求 500，站点完全不可用**。
+
+这是三处同源的疏漏：
+
+1. `migrate_schema()` 对不存在的 `papers` 表做 `ALTER TABLE ... ADD COLUMN note`
+2. `sql/schema.sql` 里 `CREATE INDEX idx_questions_paper ON questions(paper_id)`
+   ——老库的 `questions` 表还没有这列，建索引必然失败
+3. `ensure_tables()` 没有容错，任何一条语句失败就整站挂掉
+
+修法：
+
+- `migrate_schema()` 先调用新的 `ensure_tables()`（建表脚本全是
+  `CREATE TABLE IF NOT EXISTS`，可重复执行），再建列、最后建索引
+- `schema.sql` 去掉 `idx_questions_paper`，改由迁移在加完列之后创建
+- `ensure_tables()` 对建索引语句容错跳过；建表失败仍然照抛
+  （索引缺失只影响性能，异常冒出去整站就完了）
+
+### 新增：升级路径自测（`npm run test:upgrade`）
+
+原来的接口与页面测试**全都跑在全新库上**，「老库没有新表/新列」这类问题
+天然测不出来——而它恰恰是升级时必然踩到的。现在用夹具
+`php/tests/fixtures/schema-v3.0.21.sql`（v3.1.0 之前那一版，9 张表、
+无 papers）建库，再跑当前代码的迁移，断言 13 项：迁移不抛异常、表数不减、
+题目与标签一条不少、老内容不变、`papers` / `paper_id` / `note` 都就位、
+当前代码用到的查询全部跑得通、重复迁移 3 次幂等。
+
+夹具固定写死而不用 `git show HEAD~1`——上一版一旦也带了新表，
+这个测试就测不出问题，变成假的安全感。
+
+### 验证
+
+- 升级自测 13/13（用真实 v3.0.21 schema 模拟线上库）
+- 接口自测 82/82；页面交互自测 164/164
+
 ## 3.1.0（2026-10-13）
 
 ### 新增：试卷（一套卷 = 一次考试）

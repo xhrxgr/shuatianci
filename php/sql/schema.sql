@@ -65,7 +65,9 @@ CREATE TABLE IF NOT EXISTS questions (
 
 CREATE INDEX IF NOT EXISTS idx_questions_source ON questions(source);
 CREATE INDEX IF NOT EXISTS idx_questions_created ON questions(created_at);
-CREATE INDEX IF NOT EXISTS idx_questions_paper ON questions(paper_id);
+-- idx_questions_paper 不在这里建：老库的 questions 表还没有 paper_id 列，
+-- 对不存在的列建索引会直接报错。它由 app/schema.php 的 migrate_schema()
+-- 在 ALTER TABLE 加完列之后再建。
 
 -- ------------------------------------------------------------
 -- 标签表（两级结构：parent_id 为 NULL 表示顶级分类）
