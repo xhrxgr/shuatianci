@@ -24,7 +24,7 @@
  *   #admin-ai-missing-list    缺失标签的 <span> 容器
  *   #admin-ai-create-tags     创建这些标签
  *   #admin-ai-error           校验错误列表
- *   #admin-ai-submit          解析并入库
+ *   #admin-ai-submit          确认导入这一卷
  *
  * @var array $tagDictionary 标签字典，结构同 /api/tags 返回的 tagDictionary
  */
@@ -75,23 +75,32 @@ foreach ($aiTags as $aiTag) {
     <h3 class="mb-1 text-sm font-semibold text-ink">第二步：粘贴 AI 返回的 JSON</h3>
     <p class="mb-4 text-xs leading-5 text-muted">
       校验通过后<span class="font-medium text-success">增量追加</span>到题库，不会覆盖或删除已有题目。
+      一次粘贴就是一张卷子：AI 返回的
+      <span class="font-medium text-ink">source</span> 会自动填到下面的试卷名框里，
+      看一眼要不要改，确认后再导入。
     </p>
-
-    <!-- 试卷来源：留空时使用 AI 从封面识别出的来源（写在 JSON 每道题的 source 里） -->
-    <label class="mb-1.5 block text-sm font-medium text-ink" for="ai-source">试卷来源（可选）</label>
-    <input
-      id="ai-source"
-      type="text"
-      placeholder="留空则用 AI 从封面识别的来源；填写后将统一覆盖本批题目"
-      class="mb-4 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition focus:border-primary"
-    >
 
     <textarea
       id="admin-ai-json"
       rows="10"
-      placeholder='[{"originalSentence":"...","blanks":[...]}]（不需要写 id，编号由系统自动生成）'
+      placeholder='{"source":"试卷名","questions":[{"originalSentence":"...","blanks":[...]}]}'
       class="blank-slot w-full rounded-lg border border-line bg-surface-alt px-3 py-2 text-xs leading-5 outline-none transition focus:border-primary"
     ></textarea>
+
+    <!-- 试卷名：粘贴后由脚本自动填入 AI 给的来源，并标出它是从哪来的，
+         让用户在导入前一眼看到、有余地改 -->
+    <div class="mt-4 rounded-lg border border-line bg-surface-alt p-4" id="admin-ai-paper" hidden>
+      <label class="mb-1.5 block text-sm font-medium text-ink" for="ai-source">
+        试卷名（<span class="text-danger">*</span>）
+      </label>
+      <input
+        id="ai-source"
+        type="text"
+        placeholder="例如：某某中学2026-2027学年高三上学期10月阶段检测试题"
+        class="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition focus:border-primary"
+      >
+      <p class="mt-2 text-xs leading-5 text-muted" id="admin-ai-paper-hint"></p>
+    </div>
 
     <div class="mt-4 rounded-lg border border-warning/40 bg-warning-soft p-4" id="admin-ai-missing" hidden>
       <p class="mb-2 text-xs text-warning">
@@ -115,6 +124,6 @@ foreach ($aiTags as $aiTag) {
       type="button"
       id="admin-ai-submit"
       class="mt-4 min-h-11 w-full rounded-xl bg-primary px-6 py-3 text-sm font-medium text-on-primary transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-    >解析并入库</button>
+    >确认导入这一卷</button>
   </section>
 </div>

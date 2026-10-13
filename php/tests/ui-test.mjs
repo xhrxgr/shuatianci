@@ -428,10 +428,18 @@ async function main() {
   await page.waitForTimeout(200);
   const favCountBefore = await page.locator("[data-favorite-item]").count();
   await page.locator('[data-favorite-item] [data-action="remove-favorite"]').first().click();
-  await page.waitForTimeout(1200);
+  // 成功提示 4 秒后会自动消失，所以等「它出现」而不是等固定时间后再看
+  await page
+    .waitForFunction(
+      () => (document.getElementById("collection-notice")?.textContent ?? "").includes("已取消收藏"),
+      null,
+      { timeout: 8000 }
+    )
+    .catch(() => {});
   check(
     "取消收藏后 flash 提示可见「已取消收藏」",
-    (await page.locator("#collection-notice").innerText().catch(() => "")).includes("已取消收藏")
+    (await page.locator("#collection-notice").innerText().catch(() => "")).includes("已取消收藏"),
+    await page.locator("#collection-notice").innerText().catch(() => "(无)")
   );
   check("取消收藏后列表减少", (await page.locator("[data-favorite-item]").count()) === favCountBefore - 1);
 
@@ -439,10 +447,17 @@ async function main() {
   await page.waitForTimeout(300);
   const markCountBefore = await page.locator("[data-mark-item]").count();
   await page.locator('[data-mark-item] [data-action="remove-mark"]').first().click();
-  await page.waitForTimeout(1200);
+  await page
+    .waitForFunction(
+      () => (document.getElementById("collection-notice")?.textContent ?? "").includes("已取消标记"),
+      null,
+      { timeout: 8000 }
+    )
+    .catch(() => {});
   check(
     "取消标记后 flash 提示可见「已取消标记」",
-    (await page.locator("#collection-notice").innerText().catch(() => "")).includes("已取消标记")
+    (await page.locator("#collection-notice").innerText().catch(() => "")).includes("已取消标记"),
+    await page.locator("#collection-notice").innerText().catch(() => "(无)")
   );
   check("取消标记后列表减少", (await page.locator("[data-mark-item]").count()) === markCountBefore - 1);
 
@@ -591,40 +606,84 @@ async function main() {
   // 「手动复制」降级入口存在（clipboard 不可用时的兜底）
   check("AI 页签有「手动复制」降级按钮", (await page.locator("#admin-ai-manual-copy").count()) === 1);
 
-  // AI 导入的来源：输入框留空 -> 采用 JSON 里 AI 生成的来源；填写 -> 覆盖
-  // 注意这里不写 id：编号由系统生成（AI 无从得知题库现状）
-  await page.locator("#ai-source").fill("");
+  // 新流程：一次粘贴 = 一张卷子，source 写在顶层，粘贴后自动填进卷名框
+  const batchSource = "某某测试中学2026-2027学年高三上学期10月阶段检测试题";
+  // 后续用例只关心校验行为，不关心卷名，统一用这个占位卷名
+  const fallbackPaperName = "用例占位卷";
   await page.locator("#admin-ai-json").fill(
-    JSON.stringify([
-      {
-        originalSentence: "AI source check ______ done.",
-        blanks: [
-          {
-            blankIndex: 1,
-            answer: ["is"],
-            hintWord: null,
-            hintType: "无提示词",
-            tagIds: ["t_004", "t_026"],
-            trapAnalysis: "AI 来源字段测试。",
-          },
-        ],
-        source: "某某测试中学2026-2027学年高三上学期10月阶段检测试题",
-      },
-    ])
+    JSON.stringify({
+      source: batchSource,
+      questions: [
+        {
+          originalSentence: "AI source check ______ done.",
+          blanks: [
+            {
+              blankIndex: 1,
+              answer: ["in"],
+              hintWord: null,
+              hintType: "无提示词",
+              tagIds: ["t_004", "t_026"],
+              trapAnalysis: "AI 来源字段测试。",
+            },
+          ],
+        },
+      ],
+    })
+  );
+  await page.waitForTimeout(800);
+  check("粘贴后自动出现「试卷名」框", await page.locator("#admin-ai-paper").isVisible());
+  check(
+    "粘贴后自动把 source 填进试卷名框",
+    (await page.locator("#ai-source").inputValue()) === batchSource,
+    await page.locator("#ai-source").inputValue()
+  );
+  check(
+    "库里没有同名卷时提示将新建试卷",
+    (await page.locator("#admin-ai-paper-hint").innerText()).includes("新建"),
+    await page.locator("#admin-ai-paper-hint").innerText()
+  );
+
+  // 手动改过的卷名不能被后续粘贴冲掉
+  await page.locator("#ai-source").fill("我手动改过的卷名");
+  await page.locator("#admin-ai-json").fill(JSON.stringify({ source: batchSource, questions: [] }));
+  await page.waitForTimeout(700);
+  check(
+    "手动改过的卷名不会被后续粘贴覆盖",
+    (await page.locator("#ai-source").inputValue()) === "我手动改过的卷名",
+    await page.locator("#ai-source").inputValue()
+  );
+
+  // 改回批次来源后导入
+  await page.locator("#ai-source").fill(batchSource);
+  await page.locator("#admin-ai-json").fill(
+    JSON.stringify({
+      source: batchSource,
+      questions: [
+        {
+          originalSentence: "AI source check ______ done.",
+          blanks: [
+            {
+              blankIndex: 1,
+              answer: ["in"],
+              hintWord: null,
+              hintType: "无提示词",
+              tagIds: ["t_004", "t_026"],
+              trapAnalysis: "AI 来源字段测试。",
+            },
+          ],
+        },
+      ],
+    })
   );
   await page.locator("#admin-ai-submit").click();
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(900);
   const aiSourceValue = await page.evaluate(async (sentence) => {
     const res = await fetch("/api/questions");
     const data = await res.json();
     const found = (data.questions ?? []).find((q) => q.originalSentence === sentence);
     return found ? found.source : null;
   }, "AI source check ______ done.");
-  check(
-    "AI 导入（来源留空）采用 JSON 里 AI 生成的来源",
-    aiSourceValue === "某某测试中学2026-2027学年高三上学期10月阶段检测试题",
-    aiSourceValue
-  );
+  check("整批题目都用同一个试卷名（顶层 source）", aiSourceValue === batchSource, aiSourceValue);
 
   // 不带 id 的 JSON 也要能入库，且编号由系统生成 q_ 前缀
   const generatedId = await page.evaluate(async () => {
@@ -641,35 +700,38 @@ async function main() {
 
   await page.locator("#ai-source").fill("手动覆盖来源");
   await page.locator("#admin-ai-json").fill(
-    JSON.stringify([
-      {
-        originalSentence: "AI override check ______ done.",
-        blanks: [
-          {
-            blankIndex: 1,
-            answer: ["is"],
-            hintWord: null,
-            hintType: "无提示词",
-            tagIds: ["t_004", "t_026"],
-            trapAnalysis: "覆盖来源字段测试。",
-          },
-        ],
-        source: "不应采用的来源",
-      },
-    ])
+    JSON.stringify({
+      // 故意把每道题的 source 写成别的名字：应当被忽略，整批用卷名框里的值
+      questions: [
+        {
+          originalSentence: "AI override check ______ done.",
+          blanks: [
+            {
+              blankIndex: 1,
+              answer: ["in"],
+              hintWord: null,
+              hintType: "无提示词",
+              tagIds: ["t_004", "t_026"],
+              trapAnalysis: "覆盖来源字段测试。",
+            },
+          ],
+          source: "不应采用的来源",
+        },
+      ],
+    })
   );
   await page.locator("#admin-ai-submit").click();
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(900);
   const overriddenSource = await page.evaluate(async (sentence) => {
     const res = await fetch("/api/questions");
     const data = await res.json();
     const found = (data.questions ?? []).find((q) => q.originalSentence === sentence);
     return found ? found.source : null;
   }, "AI override check ______ done.");
-  check("手填来源覆盖 AI 生成的来源", overriddenSource === "手动覆盖来源", overriddenSource);
-  await page.locator("#ai-source").fill(""); // 复位，避免影响后续断言
+  check("每道题里写的 source 被忽略，整批用卷名框的值", overriddenSource === "手动覆盖来源", overriddenSource);
 
   // 原句里带中文引号（AI 换掉英文直引号后的形态）必须能入库
+  await page.locator("#ai-source").fill(fallbackPaperName);
   await page.locator("#admin-ai-json").fill(
     JSON.stringify([
       {
@@ -700,6 +762,7 @@ async function main() {
   check("原句含中文引号的题目能入库", quotedOk, quotedOk);
 
   // AI 忘了转义原句里的英文直引号 -> 页面应自动修复并导入，而不是整批失败
+  await page.locator("#ai-source").fill(fallbackPaperName);
   await page.locator("#admin-ai-json").fill(
     '[\n  {\n    "originalSentence": ""Loose quote" reflects ______ mindset.",\n' +
       '    "blanks": [{ "blankIndex": 1, "answer": ["a"], "hintWord": null, "hintType": "无提示词", "tagIds": ["t_024"], "trapAnalysis": "自动修复引号用例。" }],\n' +
@@ -720,6 +783,7 @@ async function main() {
   );
 
   // 卷面题号被当成空格（原样未替换）-> 页面应自动把题号换成空格
+  await page.locator("#ai-source").fill(fallbackPaperName);
   await page.locator("#admin-ai-json").fill(
     JSON.stringify([
       {
@@ -765,6 +829,7 @@ async function main() {
   );
 
   // 年份与历史时期不得被当成题号误伤
+  await page.locator("#ai-source").fill(fallbackPaperName);
   await page.locator("#admin-ai-json").fill(
     JSON.stringify([
       {
@@ -797,6 +862,7 @@ async function main() {
   );
 
   // 无提示词的空填了实词 -> 拦截并说明原因（这是命题问题，不是格式问题）
+  await page.locator("#ai-source").fill(fallbackPaperName);
   await page.locator("#admin-ai-json").fill(
     JSON.stringify([
       {
@@ -832,6 +898,7 @@ async function main() {
 
   // 校验不通过时，错误块要列出每一条具体问题（原先只渲染标题行，
   // 用户看到「共 N 处问题」却不知道是哪 N 处）
+  await page.locator("#ai-source").fill(fallbackPaperName);
   await page.locator("#admin-ai-json").fill(
     JSON.stringify([
       {
@@ -867,9 +934,11 @@ async function main() {
     errorLines.length >= 3 && strayError.includes("空格数量"),
     strayError.slice(0, 180)
   );
+  await page.locator("#ai-source").fill(fallbackPaperName);
   await page.locator("#admin-ai-json").fill("");
 
   // 结构彻底损坏（容错也救不回）-> 报错要能定位到行并给出可操作的建议
+  await page.locator("#ai-source").fill(fallbackPaperName);
   await page.locator("#admin-ai-json").fill(
     '[\n  {\n    "originalSentence": "A ______ b.",\n' +
       '    "blanks": [{ "blankIndex": 1, "answer": ["x"] "hintWord": null }]\n  }\n]'
@@ -883,6 +952,7 @@ async function main() {
     aiErrorText.includes("逗号") || aiErrorText.includes("代码块"),
     aiErrorText.slice(0, 200)
   );
+  await page.locator("#ai-source").fill(fallbackPaperName);
   await page.locator("#admin-ai-json").fill("");
 
   // 导入页签
@@ -904,39 +974,52 @@ async function main() {
   }, paperName);
   check("新建试卷成功且带考试日期", paperCreated?.examDate === "2026-10-13", paperCreated);
 
-  // 录两道题到这套卷，验证自动归卷
+  // 录两道题到这套卷：粘贴新格式 JSON，卷名自动填好，
+  // 且因为库里已有同名卷，页面应提示会归到那张卷而不是新建
   await page.locator('[data-admin-tab="ai"]').click();
   await page.locator("#admin-ai-json").fill(
-    JSON.stringify([
-      {
-        originalSentence: "UI paper ______ on time.",
-        blanks: [
-          {
-            blankIndex: 1,
-            answer: ["on"],
-            hintWord: null,
-            hintType: "无提示词",
-            tagIds: ["t_004", "t_026"],
-            trapAnalysis: "界面测试解析。",
-          },
-        ],
-        source: paperName,
-      },
-      {
-        originalSentence: "UI paper arrives ______ noon.",
-        blanks: [
-          {
-            blankIndex: 1,
-            answer: ["at"],
-            hintWord: null,
-            hintType: "无提示词",
-            tagIds: ["t_004", "t_026"],
-            trapAnalysis: "界面测试解析。",
-          },
-        ],
-        source: paperName,
-      },
-    ])
+    JSON.stringify({
+      source: paperName,
+      questions: [
+        {
+          originalSentence: "UI paper ______ on time.",
+          blanks: [
+            {
+              blankIndex: 1,
+              answer: ["on"],
+              hintWord: null,
+              hintType: "无提示词",
+              tagIds: ["t_004", "t_026"],
+              trapAnalysis: "界面测试解析。",
+            },
+          ],
+        },
+        {
+          originalSentence: "UI paper arrives ______ noon.",
+          blanks: [
+            {
+              blankIndex: 1,
+              answer: ["at"],
+              hintWord: null,
+              hintType: "无提示词",
+              tagIds: ["t_004", "t_026"],
+              trapAnalysis: "界面测试解析。",
+            },
+          ],
+        },
+      ],
+    })
+  );
+  await page.waitForTimeout(900);
+  check(
+    "粘贴后自动填入该卷名",
+    (await page.locator("#ai-source").inputValue()) === paperName,
+    await page.locator("#ai-source").inputValue()
+  );
+  check(
+    "库里已有同名卷时提示会归到那张卷",
+    (await page.locator("#admin-ai-paper-hint").innerText()).includes("归到它下面"),
+    await page.locator("#admin-ai-paper-hint").innerText()
   );
   await page.locator("#admin-ai-submit").click();
   await page.waitForTimeout(1800);

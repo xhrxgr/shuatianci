@@ -10,6 +10,7 @@
  *   不依赖 script 标签顺序（模块依赖图保证本文件先求值）。
  *   setupAiAssistant({ tagDictionary, onAppend, onCreateTags, onNotice })
  *   - tagDictionary：{ schemaVersion, tags: [{ id, name, parentId, color, isActive }] }
+ *   - papers：库里已有的试卷 [{id, name, questionCount}]，用于提示同名归卷
  *   - onAppend(questions, source)：把校验通过的题目批量入库（返回 Promise）
  *   - onCreateTags(names)：创建字典里没有的新标签
  *   - onNotice(message)：在页面顶部显示一条提示
@@ -116,11 +117,11 @@ function escapeHtml(value) {
  *
  * 适用场景：把一整段真题（可能连着多道题、带题号 56~65）
  * 连同卷子封面一起发给 AI，由 AI 按句切分成独立题目，
- * 并从封面读出试卷来源写进每道题的 source 字段。
+ * 并从封面读出试卷来源，整批只写一次（顶层 source 字段）。
  *
  * 注意：这段文本直接决定 AI 返回的 JSON 能否被解析与正确入库，
- * 修改后必须人工通读一遍（对照「解析并入库」的校验规则），
- * 并跑一次 ui-test 的 AI 页签用例。source 的示例值要与真实填写格式一致，
+ * 修改后必须人工通读一遍（对照提示词里的校验规则），
+ * 并跑一次 ui-test 的 AI 页签用例。source 的示例值要与真实填写格式一致、且格式统一，
  * 否则 AI 会照抄示例、不读封面。
  */
 function buildPrompt(tagDictionary) {
@@ -185,7 +186,6 @@ Question（一道题，即一个句子）：
 interface Question {
   originalSentence: string;   // 该句原文，空格用 6 个下划线 ______ 表示
   blanks: Blank[];
-  source: string;             // 试卷来源
 }
 
 注意：**不要输出 id 字段**。题目编号由我的系统在你返回之后自行生成，
@@ -290,16 +290,43 @@ ${activeTags.map((tag) => `- ${tag.id} ${tag.name}`).join("\n")}
 6. 注意原文中还有中文注释（如"新石器""礼仪器"），这些是原卷的一部分，**原样保留在 originalSentence 里**。
 7. **不要输出 id 字段**。
 
-## source 字段怎么填（每道题都要填）
+## 试卷来源：整批只给一次，放在数组最前面
 
-source 从封面图里读出的卷子信息生成（学校、学期、考试名称、题型），
-写成一行完整来源，例如：
-"某某中学2026-2027学年高三上学期10月阶段检测试题"
-"2024年全国甲卷·语法填空"
+一次粘贴就是**一整张卷子**，所有题目来自同一张卷。所以来源不是每道题各写一遍，
+而是在数组**第一个元素之前**单独给一次。
 
-- 同一套卷子的所有题目，source 填同一个值
-- 封面能辨认出多少信息就写多完整；只能看出考试名称（如"2024年全国甲卷"）时也照实写
-- 只有封面确实看不清、或我没有提供封面图时，才填 "AI 生成"
+返回格式（注意最前面那个 source 和 questions）：
+
+    {
+      "source": "某某中学2026-2027学年高三上学期10月阶段检测试题",
+      "questions": [
+        { "originalSentence": "...", "blanks": [ ... ] },
+        { "originalSentence": "...", "blanks": [ ... ] }
+      ]
+    }
+
+**每道题里不要再写 source 字段**，写了我也会忽略。
+
+### 来源怎么写
+
+从封面图读出卷子信息，**写成一行完整、格式统一的名称**。统一格式是：
+
+    学校 + 年学年学期 + 考试名称 + 题型
+
+对照例子（请照这个格式写，不要自由发挥）：
+
+- 某某中学2026-2027学年高三上学期10月阶段检测试题
+- 某某中学2026-2027学年高三上学期期中考试英语试题
+- 2024年全国甲卷·语法填空
+
+规则：
+
+- **同一场考试只写一次**，不要每道题重复
+- **格式与该场考试保持一致**：同校同期的卷子，写法要统一
+  （都用「2026-2027学年」而不是有的写「2026-2027 学年」、有的写「26-27学年」）
+- 考试名称用卷面原文，不要自行改写（「适应性练习」就不要写成「适应性训练」）
+- 封面能辨认出多少信息就写多完整；只能看出考试名称时也照实写
+- 只有封面确实看不清、或我没有提供封面图时，才写 "AI 生成"
 
 ## 词形转换必须逐词核实（重要）
 
@@ -335,46 +362,47 @@ tagIds 的判定规则已经按类别分好标签，**不要凭语感随意归�
 
 **题号 56 换成空格 ______，题号 57 同样换成 ______。** 题号本身不出现在任何字段里。
 
-应该输出**两条**：
+应该输出**两条**（注意最前面那个 source 只写一次）：
 
-[
-  {
-    "originalSentence": "Hongshan Culture, flourishing roughly from 4700 to 2900 BCE in ______ is now Liaoning Province and neighboring regions, stands ______ one of China's most remarkable Neolithic (新石器) cultures.",
-    "blanks": [
-      {
-        "blankIndex": 1,
-        "answer": ["Liaoning"],
-        "hintWord": null,
-        "hintType": "无提示词",
-        "tagIds": ["t_002", "t_013"],
-        "trapAnalysis": "空格作 in 的宾语，填红山文化遗址所在省份。后文 is now Liaoning Province 给出提示，考查地理常识与 archaeological site 的对应。"
-      },
-      {
-        "blankIndex": 2,
-        "answer": ["as"],
-        "hintWord": null,
-        "hintType": "无提示词",
-        "tagIds": ["t_005", "t_029"],
-        "trapAnalysis": "空格与后文 one of 构成 as one of the most... 固定结构，as 在此作介词，与 one of 搭配使用。"
-      }
-    ],
-    "source": "某某中学2026-2027学年高三上学期10月阶段检测试题"
-  },
-  {
-    "originalSentence": "The most famous site, Niuheliang, ______ (feature) a magnificent temple and rubble-mound stone tombs.",
-    "blanks": [
-      {
-        "blankIndex": 1,
-        "answer": ["features"],
-        "hintWord": "feature",
-        "hintType": "给动词",
-        "tagIds": ["t_001", "t_012"],
-        "trapAnalysis": "空格作主句谓语，主语 Niuheliang 是第三人称单数，故用 features。后文 a temple 是宾语，说明主语主动发掘出该遗址，用主动语态。"
-      }
-    ],
-    "source": "某某中学2026-2027学年高三上学期10月阶段检测试题"
-  }
-]
+{
+  "source": "某某中学2026-2027学年高三上学期10月阶段检测试题",
+  "questions": [
+    {
+      "originalSentence": "Hongshan Culture, flourishing roughly from 4700 to 2900 BCE in ______ is now Liaoning Province and neighboring regions, stands ______ one of China's most remarkable Neolithic (新石器) cultures.",
+      "blanks": [
+        {
+          "blankIndex": 1,
+          "answer": ["Liaoning"],
+          "hintWord": null,
+          "hintType": "无提示词",
+          "tagIds": ["t_002", "t_013"],
+          "trapAnalysis": "空格作 in 的宾语，填红山文化遗址所在省份。后文 is now Liaoning Province 给出提示，考查地理常识与 archaeological site 的对应。"
+        },
+        {
+          "blankIndex": 2,
+          "answer": ["as"],
+          "hintWord": null,
+          "hintType": "无提示词",
+          "tagIds": ["t_005", "t_029"],
+          "trapAnalysis": "空格与后文 one of 构成 as one of the most... 固定结构，as 在此作介词，与 one of 搭配使用。"
+        }
+      ]
+    },
+    {
+      "originalSentence": "The most famous site, Niuheliang, ______ (feature) a magnificent temple and rubble-mound stone tombs.",
+      "blanks": [
+        {
+          "blankIndex": 1,
+          "answer": ["features"],
+          "hintWord": "feature",
+          "hintType": "给动词",
+          "tagIds": ["t_001", "t_012"],
+          "trapAnalysis": "空格作主句谓语，主语 Niuheliang 是第三人称单数，故用 features。后文 a temple 是宾语，说明主语主动发掘出该遗址，用主动语态。"
+        }
+      ]
+    }
+  ]
+}
 
 若试卷里有带引号的句子，例如原文是 “It's not simply a fashion trend,” Yang said.
 则原句写成 “It's not simply a fashion trend,” Yang said.——用中文引号 “ ”，
@@ -391,8 +419,8 @@ tagIds 的判定规则已经按类别分好标签，**不要凭语感随意归�
 - 两个空后面都没有括号，所以 hintWord 都是 null
 - 原文的中文注释「(新石器)」原样保留了
 - 题号 56、57 没有出现在任何字段里
-- source 是按封面信息填的完整来源（本示例假设封面是某某中学的月考试卷），
-  两条题填的是同一个值；实际以你看到的封面为准
+- **source 写在 questions 前面，整批只写一次**（本示例假设封面是某某中学的
+  月考试卷）；两条题里都没有再写 source
 
 ## 需要拆解的内容
 
@@ -760,6 +788,18 @@ let bound = false;
 let copyTimer = null;
 /** 待确认创建的标签 */
 let pending = null;
+
+/**
+ * 上次由脚本自动填入的试卷名；用于判断用户有没有手动改过。
+ *
+ * 导入成功后会置为 IMPORTED_MARK——那时 textarea 被清空、卷名框也清空，
+ * 但卡片要保持可见，方便接着录下一卷。
+ */
+const IMPORTED_MARK = "__imported__";
+let lastAutoFilledName = "";
+
+/** 库里已有的试卷（由 setupAiAssistant 注入），用于提示同名归卷 */
+let allPapers = [];
 /** 本次导入所做的自动修复说明，导入成功后一并告知用户 */
 let pendingRepairs = [];
 /** 当前解析出的、字典里没有的标签 */
@@ -810,10 +850,10 @@ function clearError() {
   els.error.innerHTML = "";
 }
 
-/** 提交按钮文案与禁用态（对应原版 {submitting ? "导入中..." : "解析并入库"}） */
+/** 提交按钮文案与禁用态 */
 function renderSubmitting() {
   if (!els.submitBtn) return;
-  els.submitBtn.textContent = submitting ? "导入中..." : "解析并入库";
+  els.submitBtn.textContent = submitting ? "导入中…" : "确认导入这一卷";
   els.submitBtn.disabled = submitting;
 }
 
@@ -936,6 +976,157 @@ function parseJsonLoose(text) {
   }
 }
 
+/**
+ * 拆出「题目列表」与「本批的试卷名」。
+ *
+ * 目标格式（一次粘贴 = 一张卷子）：
+ *   { "source": "某某中学2026-2027学年高三上学期10月阶段检测试题",
+ *     "questions": [ {originalSentence, blanks}, ... ] }
+ *
+ * 同时兼容三种历史写法，避免旧数据/旧提示词直接失效：
+ *   1. 裸数组 [ {..}, {..} ]—— 每道题各带 source
+ *   2. 单个对象 { originalSentence, blanks }  —— 误粘了一道题
+ *   3. 新格式的变体：source 写在数组第一个元素里
+ *
+ * @returns {{list: object[], source: string, perItem: boolean}}
+ */
+function splitBatch(parsed) {
+  // 新格式：顶层有 questions
+  if (
+    parsed &&
+    typeof parsed === "object" &&
+    !Array.isArray(parsed) &&
+    Array.isArray(parsed.questions)
+  ) {
+    return {
+      list: parsed.questions,
+      source: typeof parsed.source === "string" ? parsed.source.trim() : "",
+      perItem: false,
+    };
+  }
+
+  if (Array.isArray(parsed)) {
+    const first = parsed.find((item) => item && typeof item === "object" && !Array.isArray(item));
+    // 老写法：source 写在每道题里
+    const perItem = first && typeof first.source === "string";
+    const source = perItem ? first.source.trim() : "";
+    return { list: parsed, source, perItem: Boolean(perItem) };
+  }
+
+  // 误粘了单个对象
+  if (parsed && typeof parsed === "object") {
+    return { list: [parsed], source: typeof parsed.source === "string" ? parsed.source.trim() : "", perItem: true };
+  }
+
+  return { list: [], source: "", perItem: false };
+}
+
+/** 简易防抖：粘贴大段 JSON 时不必每敲一下就解析 */
+function debounce(fn, wait) {
+  let timer = null;
+  return (...args) => {
+    if (timer !== null) window.clearTimeout(timer);
+    timer = window.setTimeout(() => {
+      timer = null;
+      fn(...args);
+    }, wait);
+  };
+}
+
+/** 试卷名是否与库里已有的某张卷同名（同名即同一张卷，会归到一起） */
+function findPaperByName(name) {
+  const target = String(name ?? "").trim();
+  if (target === "") return null;
+  return allPapers.find((paper) => String(paper.name ?? "").trim() === target) ?? null;
+}
+
+/**
+ * 试卷名下方的说明文字。
+ *
+ * 说清三件事，用户不用猜：
+ *   · 这个名字从哪来（AI 读到 / 你手填的）
+ *   · 与库里的哪张卷相同（同名会自动归到那张卷，而不是新建）
+ *   · 改这个名字会新建另一张卷
+ */
+function updatePaperHint(autoFilled) {
+  if (!els.paperHint) return;
+  const name = (els.source?.value ?? "").trim();
+
+  if (name === "") {
+    els.paperHint.textContent = "试卷名是必填项。同名会自动归到库里已有的那张卷，不会重复建卷。";
+    els.paperHint.className = "mt-2 text-xs leading-5 text-muted";
+    return;
+  }
+
+  const existing = findPaperByName(name);
+  if (existing) {
+    const count = Number(existing.questionCount ?? 0);
+    const countText = count > 0 ? "当前 " + count + " 道" : "当前 0 道";
+    els.paperHint.textContent =
+      "库里已有同名试卷「" + name + "」，这批题目会归到它下面（" + countText + "）。换个名字则会新建一张卷。";
+    els.paperHint.className = "mt-2 text-xs leading-5 text-muted";
+    return;
+  }
+
+  els.paperHint.textContent = autoFilled
+    ? "已按 AI 从封面读出的名称填好，可直接改。确认无误后点下方按钮导入。"
+    : "将新建一张试卷，题目会归到这张新卷下。确认名称无误再导入。";
+  els.paperHint.className = "mt-2 text-xs leading-5 text-muted";
+}
+
+/**
+ * 粘贴后预读卷名：能解析出source 就自动填进输入框。
+ *
+ * 只在「输入框还是空的」或「值与上次自动填的一模一样」时覆盖——
+ * 用户已经手动改过的名字不能被后续粘贴冲掉。
+ */
+function previewPaperName() {
+  const raw = els.textarea?.value ?? "";
+  if (raw.trim() === "") {
+    // 导入成功后我们主动清空 textarea 让用户接着录下一卷，
+    // 这时保留卡片（卷名框可见），只把提示改成「已清空，可继续粘贴」
+    if (lastAutoFilledName === IMPORTED_MARK) {
+      if (els.paper) els.paper.hidden = false;
+      return;
+    }
+    if (els.paper) els.paper.hidden = true;
+    return;
+  }
+
+  const result = parseJsonLoose(cleanJson(raw));
+  if (result === null) return; // 还没粘完，等下一次输入
+
+  const batch = splitBatch(result.value);
+  if (!els.paper) return;
+
+  if (batch.source !== "") {
+    const current = (els.source?.value ?? "").trim();
+    // 只在「还是上次自动填的那个」时覆盖：
+    // 用户手动改过的名字不能被后续粘贴冲掉。
+    // current === "" 的情况交给导入时提示「请先填写试卷名」，
+    // 不在这里替他填——主动清空就是想自己写。
+    if (current === lastAutoFilledName) {
+      els.source.value = batch.source;
+      lastAutoFilledName = batch.source;
+    } else if (current === "") {
+      // 输入框空着：仍然把 AI 读到的名字显示出来供参考，但不写进输入框，
+      // 用户复制过去或自己敲
+      if (els.paperHint) {
+        els.paperHint.textContent =
+          "AI 读到「" + batch.source + "」。请填入下面的试卷名框，确认或修改后再导入。";
+      }
+      els.paper.hidden = false;
+      return;
+    }
+    // 输入框里的名字（可能已被用户改过）与库里的卷比对，
+    // 不管它是不是 AI 给的那个，都要说清会不会归到已有的卷
+    updatePaperHint(current === batch.source);
+  } else {
+    updatePaperHint(false);
+  }
+  els.paper.hidden = false;
+}
+
 /** 实际解析与导入流程 */
 function parseAndImport() {
   const raw = els.textarea.value;
@@ -958,9 +1149,12 @@ function parseAndImport() {
     repairs.push("JSON 引号转义有误（多半是原句里的引号），已自动修复");
   }
 
-  let parsed = result.value;
+  const batch = splitBatch(result.value);
+  const list = batch.list;
 
-  const list = Array.isArray(parsed) ? parsed : [parsed];
+  if (batch.perItem && batch.source) {
+    repairs.push("source 写在每道题里，已取第一条作为本卷的试卷名");
+  }
 
   // 数组里混入非对象（null、数字、字符串）时后续会崩，先拦下来给出可读的提示
   const badIndex = list.findIndex(
@@ -1019,13 +1213,22 @@ function runImport(list) {
     return;
   }
 
-  // 统一打上来源：优先用户在页面上填的；留空则用 AI 写在 JSON 里、从封面识别的来源
+  // 整批共用一个试卷名：用户在页面上确认/修改过的那个值。
+  // 卷名为空不导入——「AI 生成」这种占位名会把题库塞满无意义的碎片卷。
   const finalSource = els.source.value.trim();
+  if (finalSource === "") {
+    renderError("请先填写试卷名");
+    updatePaperHint(false);
+    els.source?.focus();
+    return;
+  }
+
   const stamped = list.map((question) => ({
     ...question,
     // 编号一律由本系统生成，丢弃 AI 返回的 id（它无从得知题库现状）
     id: generateQuestionId(),
-    source: finalSource || question.source || "AI 生成",
+    // 同一批全部用这个卷名；AI 写在每道题里的 source 一律忽略
+    source: finalSource,
     status: "unmastered",
     wrongCount: 0,
     createdAt: new Date().toISOString(),
@@ -1038,14 +1241,31 @@ function runImport(list) {
   hooks.onNotice(
     `成功导入 ${stamped.length} 道题目${displaySource ? `，来源：${displaySource}` : ""}${repairText}`
   );
+  // 把这批题目所属的卷登记进本地列表。
+  // allPapers 是页面加载时的快照，不更新的话「库里已有同名卷」的提示
+  // 在导入后就没用了——刚建的卷查不到。
+  const knownPaper = allPapers.find((paper) => String(paper.name ?? "").trim() === finalSource);
+  if (!knownPaper) {
+    allPapers = [{ id: "", name: finalSource, questionCount: stamped.length }, ...allPapers];
+  } else {
+    knownPaper.questionCount = Number(knownPaper.questionCount ?? 0) + stamped.length;
+  }
+
   els.textarea.value = "";
+  if (els.paper) els.paper.hidden = false; // 保留卡片，方便连续录下一卷时直接改名字
+  lastAutoFilledName = IMPORTED_MARK;
+  if (els.source) els.source.value = "";
+  if (els.paperHint) {
+    els.paperHint.textContent =
+      "已导入 " + stamped.length + " 道题到「" + finalSource + "」。可继续粘贴下一张卷子的 JSON。";
+  }
   pending = null;
   pendingRepairs = [];
 }
 
 /**
  * 确认创建新标签。
- * 新标签由主脚本写入字典，用户再点一次「解析并入库」即可按新标签校验。
+ * 新标签由主脚本写入字典，用户再点一次「确认导入这一卷」即可按新标签校验。
  */
 function handleCreateMissing() {
   if (!pending) return;
@@ -1055,7 +1275,7 @@ function handleCreateMissing() {
   missingTags = [];
   renderMissing();
   pending = null;
-  hooks.onNotice(`已创建标签：${names.join("、")}。请再次点击「解析并入库」，本次将按新标签校验。`);
+  hooks.onNotice(`已创建标签：${names.join("、")}。请再次点击「确认导入这一卷」，本次将按新标签校验。`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1071,11 +1291,19 @@ function handleCreateMissing() {
  * @param {Function} options.onCreateTags
  * @param {Function} options.onNotice
  */
-export function setupAiAssistant({ tagDictionary, onAppend, onCreateTags, onNotice }) {
+export function setupAiAssistant({
+  tagDictionary,
+  papers,
+  onAppend,
+  onCreateTags,
+  onNotice,
+}) {
   const root = document.getElementById("admin-ai-root");
   if (!root) return;
 
   if (tagDictionary) dictionary = tagDictionary;
+  // 已有试卷列表：用于提示「这个名字库里已经有了，会归到那张卷」
+  if (Array.isArray(papers)) allPapers = papers;
   hooks = {
     onAppend: typeof onAppend === "function" ? onAppend : hooks.onAppend,
     onCreateTags: typeof onCreateTags === "function" ? onCreateTags : hooks.onCreateTags,
@@ -1088,6 +1316,8 @@ export function setupAiAssistant({ tagDictionary, onAppend, onCreateTags, onNoti
     copyBtn: document.getElementById("admin-ai-copy"),
     manualBtn: document.getElementById("admin-ai-manual-copy"),
     source: document.getElementById("ai-source"),
+    paper: document.getElementById("admin-ai-paper"),
+    paperHint: document.getElementById("admin-ai-paper-hint"),
     textarea: document.getElementById("admin-ai-json"),
     missing: document.getElementById("admin-ai-missing"),
     missingList: document.getElementById("admin-ai-missing-list"),
@@ -1105,6 +1335,11 @@ export function setupAiAssistant({ tagDictionary, onAppend, onCreateTags, onNoti
     els.manualBtn?.addEventListener("click", handleManualCopy);
     els.createTagsBtn?.addEventListener("click", handleCreateMissing);
     els.submitBtn?.addEventListener("click", () => void handleParse());
+
+    // 粘贴后立刻把卷名显示出来，用户在点导入前就能看到并改——
+    // 不用等到点按钮才发现卷名不对
+    els.textarea?.addEventListener("input", debounce(previewPaperName, 400));
+    els.source?.addEventListener("input", () => updatePaperHint(false));
     window.addEventListener("beforeunload", () => {
       if (copyTimer !== null) window.clearTimeout(copyTimer);
     });

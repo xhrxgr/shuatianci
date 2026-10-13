@@ -1115,6 +1115,8 @@ function init() {
   // 初始化 AI 助手（模块自带幂等，重复调用只更新字典与回调）
   setupAiAssistant({
     tagDictionary,
+    // 让 AI 助手知道库里已有哪些卷，粘贴后能提示「同名会归到那张卷」
+    papers: boot.papers ?? [],
     onAppend: handleAiAppend,
     onCreateTags: handleCreateTags,
     onNotice: showNotice,
