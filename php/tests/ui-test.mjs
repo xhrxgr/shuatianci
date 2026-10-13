@@ -1045,7 +1045,18 @@ async function main() {
     // 等 DOM 重新就绪：刷新后旧元素会失效，这里等一个必然存在的节点
     await page.waitForLoadState("domcontentloaded", { timeout: 20000 });
     await page.waitForFunction(() => document.readyState === "complete", null, { timeout: 20000 });
-    await page.waitForTimeout(600);
+    // 等脚本模块跑完并把提示渲染出来，而不是固定延时——
+    // 固定 600ms 在机器负载高时不够，会把「提示没赶上」误报成功能坏了
+    await page
+      .waitForFunction(
+        () => {
+          const box = document.getElementById("admin-notice");
+          return box && !box.hidden && box.textContent.trim().length > 0;
+        },
+        null,
+        { timeout: 15000 }
+      )
+      .catch(() => {});
   };
   const adminFlash = async () => {
     const box = page.locator("#admin-notice");
