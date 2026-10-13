@@ -24,8 +24,67 @@
 /** 全部合法的提示词类型 */
 const HINT_TYPES = ["给动词", "给名词", "给形容词", "给副词", "无提示词"];
 
+/**
+ * 功能词清单（虚词）。
+ *
+ * 高考语法填空里，无提示词的空只能考功能词——它们的语法位置本身就限定了答案，
+ * 不依赖上下文，所以任何一套卷子都能推出唯一答案。实词与各类分词只能出现在
+ * 有提示词的空里（那才需要词性转换）。
+ */
+const FUNCTION_WORDS = new Set([
+  // 冠词
+  "a", "an", "the",
+  // 介词
+  "in", "on", "at", "of", "to", "for", "with", "from", "by", "about",
+  "into", "onto", "upon", "over", "under", "through", "across", "against",
+  "among", "amongst", "beside", "besides", "between", "beyond", "during",
+  "except", "inside", "outside", "since", "till", "until", "within", "without",
+  "like", "near", "off", "out", "up", "down", "via", "per",
+  // 连词
+  "and", "but", "or", "nor", "so", "yet", "while", "although", "though",
+  "because", "since", "unless", "if", "as", "than", "when", "where", "whether",
+  // 关系副词
+  "where", "when", "why",
+  // 代词
+  "it", "its", "they", "them", "their", "theirs", "he", "him", "his", "she",
+  "her", "hers", "we", "us", "our", "ours", "this", "that", "these", "those",
+  "one", "ones", "oneself", "what", "which", "who", "whom", "whose",
+  // be 动词
+  "is", "are", "was", "were", "be", "been", "being", "am",
+  // 助动词
+  "do", "does", "did", "has", "have", "had", "will", "would", "shall",
+  "can", "could", "may", "might", "must", "should", "ought",
+  // 情态动词
+  "may", "might", "must", "should", "shall", "can", "could", "will", "would",
+]);
+
+/**
+ * 某组标签是否都属于指定父分类（允许带上该分类自身）。
+ *
+ * 用于核对「无提示词」的标签是否挂对：AI 常同时给出顶级分类 id（如 t_004）
+ * 和子标签 id（如 t_032 定语从句-where），这种组合是合法的，
+ * 顶级分类自身要放行，否则会把正确标签误判为错误。
+ *
+ * @param {string[]} tagIds
+ * @param {Map<string, string|null>} parentMap 标签 id -> 父分类 id
+ * @param {string} parentId
+ * @returns {boolean}
+ */
+function allTagsUnder(tags, parentMap, parentId) {
+  if (tags.length === 0) return false;
+  return tags.every((tagId) => tagId === parentId || parentMap.get(tagId) === parentId);
+}
+
 /** 空格占位符字面量 */
 const BLANK_PLACEHOLDER = "______";
+
+/**
+ * 容错解析时用来标记「原句里的裸引号」的内部占位符。
+ *
+ * 选了一个不会出现在英文句子里的字符（`￿` + 私用区字符），
+ * 保证不会与任何真实文本冲突，也便于在 repairSentences 里一次性配对替换。
+ */
+const QUOTE_PLACEHOLDER_MARK = "\uE000";
 
 /**
  * 规范化原句占位符（与 admin.js 的同名函数一致）：
@@ -66,6 +125,45 @@ function buildPrompt(tagDictionary) {
 
   return `你是一位熟悉高考英语命题规律的特级教师。我会把试卷的封面图和题目页图片一起发给你，需要你把题目拆解成结构化的 JSON，用于我的题库系统。
 
+## 第一步：先做格式转换，再考虑内容
+
+**下面三件事是硬约束，做错任何一件，我这边整批题目都会因为格式问题导入失败。**
+请在读完试卷后，先在脑子里把原文过一遍这三步，再开始拆解。
+
+### 1-1题号必须替换成空格
+
+试卷上的题号（56、57、58……）**不是内容**，必须删除，并在原位写成 6 个下划线。
+
+- 错：The 56 (fashion) sportswear, ... drew many praises, 57 people curious...
+- 对：The ______ (fashion) sportswear, ... drew many praises, ______ people curious...
+
+每一个题号都要替换，**不能漏掉任何一个**。替换完请逐句数一遍：
+这句里应该有几个空格，句中就必须有几个______。
+
+### 1-2 原句里的引号必须换成中文引号
+
+英文原句常有对话引语或引号强调，例如试卷原文是：
+
+    "New Chinese Style" reflects a shift in mindset...
+    "It's not simply a fashion trend," Yang said.
+
+这些英文直引号（"）会**提前结束 JSON 字符串，让整批数据作废**。必须换成中文引号，
+成对使用，前一个 “ 后一个 ”：
+
+- 错："originalSentence": ""New Chinese Style" reflects..."
+- 对："originalSentence": "“New Chinese Style” reflects..."
+
+中文引号在 JSON 里不需要转义，所以这是最安全的写法。其他标点（逗号、句号、
+括号、破折号）照原样保留。
+
+### 1-3 JSON 自身的三条硬规则
+
+- 字符串内部不能出现真实换行，要换行就写\\n 两个字符
+- 最后一个元素后面**不能有多余逗号**（JSON 不允许尾逗号）
+- 不要用 markdown 代码块包裹（不要出现 \`\`\`json 这种标记），不要输出任何解释文字
+
+完成这三步之后，再按下面的规则拆解内容。
+
 ## 数据结构定义
 
 Blank（一个空格）：
@@ -90,42 +188,7 @@ interface Question {
 注意：**不要输出 id 字段**。题目编号由我的系统在你返回之后自行生成，
 你不需要知道、也不要猜测现有题库里已有哪些编号。
 
-## JSON 格式要求（最容易出错的地方，务必逐条遵守）
-
-你的输出会被程序直接用 JSON 解析器读取，**只要有一处引号或逗号不合法，整批题目就全部作废**。
-
-### 1. 原句里的引号必须换成中文引号
-
-英文原句中经常出现对话引语或引号强调，例如试卷原文可能是：
-
-    "New Chinese Style" reflects a shift in mindset...
-    "It's not simply a fashion trend," Yang said.
-
-这些**英文直引号（"）会提前结束 JSON 字符串，导致解析失败**。处理办法只有一个：
-
-> **把原句里所有的英文直引号 " 换成中文引号 “ ”。**
-> 成对的引号，前一个用 “（左），后一个用 ”（右）。
-
-改写后写成这样，中文引号在 JSON 里完全不需要转义：
-
-    "originalSentence": "“New Chinese Style” reflects a shift in mindset..."
-    "originalSentence": "“It's not simply a fashion trend,” Yang said."
-
-其他标点（逗号、句号、括号、破折号）都照原样保留，不要改动。
-
-### 2. 其余格式规则
-
-- **字符串里不能有真实换行**。原句请写成一行；如果确实要换行，写成 \\\\n 两个字符。
-- 整个数组可以分成多行写（便于你阅读），但**每个字符串值内部不能断行**。
-- 数组与对象之间不要漏逗号，**最后一个元素后面不要多逗号**（JSON 不允许尾逗号）。
-- 字段名和层级严格按上面的结构定义，字段名一个字都不要改、不要多写、不要少写。
-- 不要用 markdown 代码块包裹（不要出现 \`\`\`json 这种标记）。
-- 除了 JSON 本身，不要输出任何解释、前言、结语。
-
-### 3. 输出前自查
-
-返回之前，请自己检查一遍：这份内容如果直接存成 .json 文件，能否被正常打开？
-若不能，请找出并修正引号与逗号的问题后重新输出。
+格式要求见开头的「第一步」，务必先按那里做完三步再拆解。
 
 ## 可用标签清单（tagIds 只能从中选择）
 
@@ -175,25 +238,40 @@ ${activeTags.map((tag) => `- ${tag.id} ${tag.name}`).join("\n")}
 
 ## 「无提示词」是高考语法填空的固定题型（极重要）
 
-高考语法填空的空格按提示方式分成两类，答案的可推理性完全不同：
+高考语法填空的空格按提示方式分成两类：
 
 - **有提示词的空**：括号里已给出原词，学生只需做**词性转换或形式变化**。
 - **无提示词的空**：不给任何提示，学生必须**仅凭语法位置和上下文**推出唯一答案。
 
-所以无提示词的空，答案只能是**功能词**——冠词、介词、连词、代词、助动词、情态动词、
-关系副词（where / when / why）、连接副词等。它们是虚词，**在句中的位置本身就限定了答案**，
+所以无提示词的空，答案只能是**功能词**（也叫虚词）。它们在句中的位置本身就限定了答案，
 不依赖上下文，所以任何一套卷子都能推出唯一答案。
 
-这带来三条必须遵守的要求：
+**功能词只有这些**（对照检查，答案不在表内就说明这道空不该设成无提示词）：
 
-1. **answer 必须是功能词**。如果某个无提示词空只能靠语义或搭配才能确定（需要猜测作者意图、
-   有多种说法都成立），那它不是合格的填空，**不要把它当作无提示词的空输出**。
-2. **tagIds 必须从「无提示词」这个分类下的子标签里选**（冠词、介词、连词、关系副词等），
-   不要挂到「动词」「名词」这类需要词性转换的分类下——那些是有提示词的空才用的。
+| 类别 | 可填内容 |
+|---|---|
+| 冠词 | a、an、the |
+| 介词 | in、on、at、of、for、with、to、from、by、about 等 |
+| 连词 | and、but、or、so、yet、for、nor |
+| 关系副词 | where、when、why |
+| 代词 | it、they、them、its、their 等 |
+| 助动词与be 动词 | is、are、was、were、do、does、did、has、have、had、will、would、can、could 等 |
+| 情态动词 | may、might、must、should、shall |
+
+**不属于功能词的一律不能填进无提示词的空**：实词（动词、名词、形容词、副词）、
+各类分词（doing / done / to do）。比如 making、viewing、definition、simply
+都只能出现在**有提示词**的空里。
+
+由此产生三条要求：
+
+1. **answer 必须是功能词**。如果某个空只能靠语义猜测、需要多种说法都成立，
+   那它不是合格的填空，不要把它当作无提示词的空输出。
+2. **tagIds 必须从「无提示词」这个分类下的子标签里选**（冠词、介词、连词、
+   关系副词等），不要挂到「动词」「名词」这类需要词性转换的分类下。
 3. **不要给无提示词的空编造 hintWord**。原卷没提示就是没提示。
 
-判断方法很简单：这个答案换成另一个词，句子还会通顺、还会是原卷的答案吗？
-如果换一个也说得通，那它就不该出现在无提示词的位置上。
+自检方法：把答案换成另一个词，句子还成立、还会是原卷答案吗？
+如果换一个也说得通，它就不该出现在无提示词的位置上。
 
 ## 输出要求
 
@@ -240,12 +318,19 @@ tagIds 的判定规则已经按类别分好标签，**不要凭语感随意归�
 
 ## 示例输出格式
 
-假设试卷上有这样一段：
+假设试卷上有这样一段（题号 56、57 原样照抄试卷）：
 
   “Among the foundational cornerstones of early Chinese civilization, Hongshan Culture holds a place
    of profound significance. Hongshan Culture, flourishing roughly from 4700 to 2900 BCE in 56 is now
    Liaoning Province and neighboring regions, stands 57 one of China's most remarkable Neolithic
    (新石器) cultures.”
+
+对照一下原句和输出，就可以看清题号是怎么处理的：
+
+- 卷面原文：in **56** is now Liaoning Province
+- 输出内容：in **______** is now Liaoning Province
+
+**题号 56 换成空格 ______，题号 57 同样换成 ______。** 题号本身不出现在任何字段里。
 
 应该输出**两条**：
 
@@ -332,6 +417,93 @@ function cleanJson(text) {
 }
 
 /**
+ * 预检并修复 AI 返回的原句，返回修复说明（供界面提示）。
+ *
+ * AI 已经两次栽在同一类格式错误上，所以这里不直接报错，而是先尽力纠正：
+ * 1. 题号被当成了空格（`The 56 (fashion) sportswear`）——最常见，
+ *    会导致整批题目一个空格都识别不出来
+ * 2. 英文直引号未替换成中文引号
+ *
+ * 只在**高置信度**时才动手，宁可漏改交给校验报错，也不能把内容改坏：
+ * - 题号只在 50～99 这个窄区间内替换（高考语法填空题号几乎都是 50 上下），
+ *   所以 2021、2026、4700、2900 这些年份不会被误伤
+ * - 后面紧跟字母的（21st century）不动
+ * - 只替换裸编号，已是空格的位置不动
+ *
+ * @param {object[]} questions 已解析的题目数组（会被就地修改）
+ * @returns {string[]} 修复说明，为空表示未做任何修复
+ */
+function repairSentences(questions) {
+  const notes = [];
+  const allNumbers = [];
+
+  questions.forEach((question) => {
+    if (typeof question?.originalSentence !== "string") return;
+    const before = question.originalSentence;
+
+    // 引号 -> 中文引号。两种来源：
+    // ① 容错解析留下的占位符（已确定是内容里的引号）
+    // ② JSON 本身就合法，但内容里直接写了英文直引号
+    // 两者都按出现顺序第1、3、5…个用左引号 “，第 2、4、6…个用右引号 ”。
+    // 直接引语、引号强调在英语里都是成对出现的，所以按序配对不会错。
+    let seen = 0;
+    let sentence = "";
+    for (const char of before) {
+      if (char === '"' || char === QUOTE_PLACEHOLDER_MARK) {
+        seen += 1;
+        sentence += seen % 2 === 1 ? "“" : "”";
+        continue;
+      }
+      sentence += char;
+    }
+    if (seen > 0) {
+      notes.push("原句中的英文引号已自动换成中文引号 “ ”");
+    }
+
+    // 题号 -> 空格。高考语法填空的题号都是两位数且多在 50 上下，
+    // 限定区间后不会碰到年份、年代（BCE、21st century）等正常数字。
+    const isQuestionNumber = (digits) => {
+      const value = Number(digits);
+      return value >= 50 && value <= 99;
+    };
+    let numbers = [];
+    // 位置一：题号后紧跟提示词括号，如 `56 (fashion)`
+    sentence = sentence.replace(/\s+(\d{2,3})(\s*\()/g, (all, digits, tail) => {
+      if (!isQuestionNumber(digits)) return all;
+      numbers.push(digits);
+      return ` ${BLANK_PLACEHOLDER}${tail}`;
+    });
+    // 位置二：逗号或分号后的题号，如 `praises, 57 people`
+    sentence = sentence.replace(/([,;]\s*)(\d{2,3})(?=\s)/g, (all, lead, digits) => {
+      if (!isQuestionNumber(digits)) return all;
+      numbers.push(digits);
+      return `${lead}${BLANK_PLACEHOLDER}`;
+    });
+    // 位置三：其他空格后的两位数，如 `drew many praises 57 people`
+    sentence = sentence.replace(/(\s)(\d{2,3})(?=\s+[a-zA-Z])/g, (all, space, digits) => {
+      if (!isQuestionNumber(digits)) return all;
+      numbers.push(digits);
+      return `${space}${BLANK_PLACEHOLDER}`;
+    });
+
+    if (numbers.length > 0) {
+      allNumbers.push(...numbers);
+    }
+    if (sentence !== before) {
+      question.originalSentence = sentence;
+    }
+  });
+
+  if (allNumbers.length > 0) {
+    notes.push(
+      `已把 ${allNumbers.length} 处卷面题号（${allNumbers.join("、")}）自动替换为空格——题号不应出现在原句里`
+    );
+  }
+
+  return notes;
+}
+
+/**
  * 生成题目 id。
  *
  * 外部 AI 不知道题库里已有哪些编号，每次都会从 q_0001 重新数，
@@ -405,6 +577,26 @@ function findPlaceholderPositions(sentence) {
   return positions;
 }
 
+/**
+ * 找出原句里残留的卷面题号。
+ *
+ * 与 repairSentences 用同一套判据（50～99 的两位数、后面不接字母），
+ * 所以「能自动修的」绝不会在这里再报一次；只有修不了（漏网的）才会报出来。
+ *
+ * @param {string} sentence
+ * @returns {string[]} 残留的题号
+ */
+function findStrayQuestionNumbers(sentence) {
+  const found = [];
+  const pattern = /(?<![\w-])(\d{2,3})(?![\w-])/g;
+  let match;
+  while ((match = pattern.exec(sentence)) !== null) {
+    const value = Number(match[1]);
+    if (value >= 50 && value <= 99) found.push(match[1]);
+  }
+  return found;
+}
+
 /** 校验一道题目是否合法（迁移自原校验实现 的 validateQuestion） */
 function validateQuestion(question, tagDictionary) {
   const errors = [];
@@ -420,6 +612,15 @@ function validateQuestion(question, tagDictionary) {
   if (positions.length !== question.blanks.length) {
     errors.push(
       `原句中的空格数量（${positions.length}）与 blanks 数量（${question.blanks.length}）不一致`
+    );
+  }
+
+  // 2-1. 残留题号：AI 偶尔会把卷面题号（56、57…）原样留在句中。
+  // 这类数字必须替换成空格，否则学生会看到一个没有下划线的「伪空格」。
+  const strayNumbers = findStrayQuestionNumbers(sentence);
+  if (strayNumbers.length > 0) {
+    errors.push(
+      `原句里残留题号 ${strayNumbers.join("、")}，题号必须删除并改写为 ${BLANK_PLACEHOLDER}`
     );
   }
 
@@ -476,6 +677,34 @@ function validateQuestion(question, tagDictionary) {
       }
     });
 
+    // 无提示词的空只能考功能词：高考语法填空把「答案唯一、可客观评分」
+    // 作为命题前提，实词太开放（换任何一个也说得通），无法评分。
+    if (blank.hintType === "无提示词") {
+      const notFunction = (blank.answer ?? []).filter(
+        (ans) => !FUNCTION_WORDS.has(String(ans).trim().toLowerCase())
+      );
+      if (notFunction.length > 0) {
+        errors.push(
+          `${label}：无提示词的空只能填功能词（冠词、介词、连词、代词、助动词、情态动词、关系副词等），` +
+            `而「${notFunction.join("、")}」是实词或分词。` +
+            `若这处空格确实只能靠语义猜测，它就不是合格的无提示词填空——请核对原卷该处是否本来就有提示词`
+        );
+      }
+
+      // 标签也必须挂在「无提示词」分类下，不能挂到需要词性转换的分类
+      const parentMap = new Map(tagDictionary.tags.map((tag) => [tag.id, tag.parentId]));
+      const noHintRoot = tagDictionary.tags.find((tag) => tag.name === "无提示词")?.id;
+      if (noHintRoot && (blank.tagIds ?? []).length > 0 && !allTagsUnder(blank.tagIds, parentMap, noHintRoot)) {
+        const names = (blank.tagIds ?? [])
+          .map((id) => tagMap.get(id)?.name ?? id)
+          .join("、");
+        errors.push(
+          `${label}：无提示词的空，标签应挂在「无提示词」分类下（冠词、介词、连词、关系副词等），` +
+            `当前挂的是「${names}」——那是需要词性转换的分类，只用于有提示词的空`
+        );
+      }
+    }
+
     // 解析只要求非空：内容质量靠人工复核，不做字数下限，
     // 免得为了凑字数写废话或编造内容
     if ((blank.trapAnalysis ?? "").trim() === "") {
@@ -528,6 +757,8 @@ let bound = false;
 let copyTimer = null;
 /** 待确认创建的标签 */
 let pending = null;
+/** 本次导入所做的自动修复说明，导入成功后一并告知用户 */
+let pendingRepairs = [];
 /** 当前解析出的、字典里没有的标签 */
 let missingTags = [];
 /** 解析中标志，防止连点重复入库 */
@@ -635,18 +866,96 @@ async function handleParse() {
   }
 }
 
+/**
+ * 容错解析：AI 经常忘记转义原句里的引号，这里尽量救回来。
+ *
+ * 做法是逐字符扫描，跟踪「当前是否在字符串内」；当判定某个引号属于
+ * 字符串内容（而不是字符串的结束符）时，就把它改写成中文引号。
+ *
+ * 判定规则借用了 JSON 语法本身：字符串的结束引号后面只允许跟
+ * 结构字符（逗号、冒号、右括号、右花括号）或空白，其他情况一律视为内容。
+ *
+ * @param {string} text 待解析文本
+ * @returns {{value: any, repaired: boolean}|null} 解析失败时返回 null
+ */
+function parseJsonLoose(text) {
+  try {
+    return { value: JSON.parse(text), repaired: false };
+  } catch {
+    // 落到这里继续尝试容错解析
+  }
+
+  let output = "";
+  let inString = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+
+    if (!inString) {
+      if (char === '"') {
+        inString = true;
+      }
+      output += char;
+      continue;
+    }
+
+    if (char === "\\") {
+      // 转义序列原样保留（跳过下一个字符）
+      output += char + (text[i + 1] ?? "");
+      i += 1;
+      continue;
+    }
+
+    if (char === '"') {
+      // 往后看第一个非空白字符：合法的结束符后面只能是结构字符
+      let lookahead = i + 1;
+      while (lookahead < text.length && /\s/.test(text[lookahead])) lookahead += 1;
+      const next = text[lookahead];
+      const isClosingQuote = next === undefined || ",:}]".includes(next);
+      if (isClosingQuote) {
+        inString = false;
+        output += char;
+      } else {
+        // 引号属于句子内容。单个裸引号没有配对信息，这里无法判断它是左引号
+        // 还是右引号，一律先记成占位符，交给 repairSentences 按出现顺序
+        // 成对改写为 “ 与 ”（靠后文内容判断左右比在这里猜要准）
+        output += QUOTE_PLACEHOLDER_MARK;
+      }
+      continue;
+    }
+
+    output += char;
+  }
+
+  try {
+    return { value: JSON.parse(output), repaired: true };
+  } catch {
+    return null;
+  }
+}
+
 /** 实际解析与导入流程 */
 function parseAndImport() {
   const raw = els.textarea.value;
   const cleaned = cleanJson(raw);
+  const repairs = [];
 
-  let parsed;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch (error) {
-    renderError(explainJsonError(cleaned, error, cleaned.split("\n")));
+  const result = parseJsonLoose(cleaned);
+  if (result === null) {
+    let message;
+    try {
+      JSON.parse(cleaned);
+      message = "";
+    } catch (error) {
+      message = explainJsonError(cleaned, error, cleaned.split("\n"));
+    }
+    renderError(message);
     return;
   }
+  if (result.repaired) {
+    repairs.push("JSON 引号转义有误（多半是原句里的引号），已自动修复");
+  }
+
+  let parsed = result.value;
 
   const list = Array.isArray(parsed) ? parsed : [parsed];
 
@@ -661,13 +970,19 @@ function parseAndImport() {
     return;
   }
 
-  // 先规范化每题原句的占位符（全角下划线 / 中文破折号 / 数量不为 6），
+  // 修正 AI 最容易犯的两类错误：题号被当成空格、原句里的英文直引号。
+  // 放在解析之后（引号不修就没法解析）、校验之前（校验需要正确的空格数）。
+  repairs.push(...repairSentences(list));
+
+  // 再规范化占位符（全角下划线 / 中文破折号 / 数量不为 6），
   // 保证后续校验与入库都使用标准格式
   list.forEach((question) => {
     if (question && typeof question.originalSentence === "string") {
       question.originalSentence = normalizeSentence(question.originalSentence);
     }
   });
+
+  pendingRepairs = repairs;
 
   // 找出字典里不存在的标签，交给用户确认是否创建
   const unknown = new Set();
@@ -694,7 +1009,9 @@ function runImport(list) {
   const { allErrors } = validateQuestions(list, dictionary);
 
   if (allErrors.length > 0) {
-    renderError(`校验未通过，共 ${allErrors.length} 处问题，本次未导入：`);
+    // 修复：原先只渲染了标题行，allErrors 从未拼进去，
+    // 用户看到「共 3 处问题」却看不到是哪 3 处，无从修改
+    renderError(`校验未通过，共 ${allErrors.length} 处问题，本次未导入：\n${allErrors.join("\n")}`);
     pending = list;
     return;
   }
@@ -714,9 +1031,13 @@ function runImport(list) {
   hooks.onAppend(stamped, finalSource);
   // 提示里的来源取实际写库的值，便于当即核对 AI 有没有读对封面信息
   const displaySource = stamped.length > 0 ? String(stamped[0].source ?? "").trim() : "";
-  hooks.onNotice(`成功导入 ${stamped.length} 道题目${displaySource ? `，来源：${displaySource}` : ""}`);
+  const repairText = pendingRepairs.length > 0 ? `（已自动修正：${pendingRepairs.join("；")}）` : "";
+  hooks.onNotice(
+    `成功导入 ${stamped.length} 道题目${displaySource ? `，来源：${displaySource}` : ""}${repairText}`
+  );
   els.textarea.value = "";
   pending = null;
+  pendingRepairs = [];
 }
 
 /**

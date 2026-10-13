@@ -576,7 +576,7 @@ async function main() {
             answer: ["is"],
             hintWord: null,
             hintType: "无提示词",
-            tagIds: ["t_001"],
+            tagIds: ["t_004", "t_026"],
             trapAnalysis: "AI 来源字段测试。",
           },
         ],
@@ -622,7 +622,7 @@ async function main() {
             answer: ["is"],
             hintWord: null,
             hintType: "无提示词",
-            tagIds: ["t_001"],
+            tagIds: ["t_004", "t_026"],
             trapAnalysis: "覆盖来源字段测试。",
           },
         ],
@@ -671,24 +671,189 @@ async function main() {
   });
   check("原句含中文引号的题目能入库", quotedOk, quotedOk);
 
-  // 原句里残留英文直引号 -> JSON 解析失败，且报错要能定位到行与原因
+  // AI 忘了转义原句里的英文直引号 -> 页面应自动修复并导入，而不是整批失败
   await page.locator("#admin-ai-json").fill(
-    '[\n  {\n    "originalSentence": ""New Chinese Style" reflects ______ mindset.",\n' +
-      '    "blanks": [{ "blankIndex": 1, "answer": ["a"], "hintWord": null, "hintType": "无提示词", "tagIds": ["t_024"], "trapAnalysis": "x" }],\n' +
-      '    "source": "坏数据"\n  }\n]'
+    '[\n  {\n    "originalSentence": ""Loose quote" reflects ______ mindset.",\n' +
+      '    "blanks": [{ "blankIndex": 1, "answer": ["a"], "hintWord": null, "hintType": "无提示词", "tagIds": ["t_024"], "trapAnalysis": "自动修复引号用例。" }],\n' +
+      '    "source": "引号自动修复卷"\n  }\n]'
+  );
+  await page.locator("#admin-ai-submit").click();
+  await page.waitForTimeout(900);
+  const looseQuoteFixed = await page.evaluate(async () => {
+    const res = await fetch("/api/questions");
+    const data = await res.json();
+    const found = (data.questions ?? []).find((q) => q.originalSentence.includes("Loose quote"));
+    return found ? found.originalSentence : null;
+  });
+  check(
+    "英文直引号未转义 -> 自动修复为中文引号并入库",
+    looseQuoteFixed !== null && looseQuoteFixed.startsWith("“Loose quote”"),
+    looseQuoteFixed
+  );
+
+  // 卷面题号被当成空格（原样未替换）-> 页面应自动把题号换成空格
+  await page.locator("#admin-ai-json").fill(
+    JSON.stringify([
+      {
+        originalSentence: "The 61 (quiet) library opened, 62 visitors came.",
+        blanks: [
+          {
+            blankIndex: 1,
+            answer: ["quieter"],
+            hintWord: "quiet",
+            hintType: "给形容词",
+            tagIds: ["t_003"],
+            trapAnalysis: "题号自动替换用例。",
+          },
+          {
+            blankIndex: 2,
+            answer: ["few"],
+            hintWord: "few",
+            hintType: "给形容词",
+            tagIds: ["t_003"],
+            trapAnalysis: "第二处。",
+          },
+        ],
+        source: "题号自动修复卷",
+      },
+    ])
+  );
+  await page.locator("#admin-ai-submit").click();
+  await page.waitForTimeout(900);
+  const numberFixed = await page.evaluate(async () => {
+    const res = await fetch("/api/questions");
+    const data = await res.json();
+    return (data.questions ?? []).find((q) => q.originalSentence.includes("library opened"))?.originalSentence ?? null;
+  });
+  check(
+    "题号被当成空格 -> 自动替换为 ______",
+    numberFixed === "The ______ (quiet) library opened, ______ visitors came.",
+    numberFixed
+  );
+  check(
+    "自动替换后不残留题号数字",
+    numberFixed !== null && !/(?<![\w-])(5\d|6\d)(?![\w-])/.test(numberFixed),
+    numberFixed
+  );
+
+  // 年份与历史时期不得被当成题号误伤
+  await page.locator("#admin-ai-json").fill(
+    JSON.stringify([
+      {
+        originalSentence: "From 4700 to 2900 BCE in ______ is now Liaoning Province.",
+        blanks: [
+          {
+            blankIndex: 1,
+            answer: ["in"],
+            hintWord: null,
+            hintType: "无提示词",
+            tagIds: ["t_004", "t_026"],
+            trapAnalysis: "介词 in 作宾语，年份与年代不得被误判为题号。",
+          },
+        ],
+        source: "年份保护卷",
+      },
+    ])
+  );
+  await page.locator("#admin-ai-submit").click();
+  await page.waitForTimeout(900);
+  const yearKept = await page.evaluate(async () => {
+    const res = await fetch("/api/questions");
+    const data = await res.json();
+    return (data.questions ?? []).find((q) => q.originalSentence.includes("2900 BCE"))?.originalSentence ?? null;
+  });
+  check(
+    "4700 / 2900 等年份不被误当成题号",
+    yearKept === "From 4700 to 2900 BCE in ______ is now Liaoning Province.",
+    yearKept
+  );
+
+  // 无提示词的空填了实词 -> 拦截并说明原因（这是命题问题，不是格式问题）
+  await page.locator("#admin-ai-json").fill(
+    JSON.stringify([
+      {
+        originalSentence: "It drew praises, ______ people curious about the designer.",
+        blanks: [
+          {
+            blankIndex: 1,
+            answer: ["making"],
+            hintWord: null,
+            hintType: "无提示词",
+            tagIds: ["t_004", "t_009"],
+            trapAnalysis: "无提示词却填实词，应当被拦下。",
+          },
+        ],
+        source: "命题违规卷",
+      },
+    ])
+  );
+  await page.locator("#admin-ai-submit").click();
+  await page.waitForTimeout(700);
+  const funcWordError = await page.locator("#admin-ai-error").innerText();
+  check(
+    "无提示词填实词 -> 拦截并指出是功能词限制",
+    funcWordError.includes("功能词") && funcWordError.includes("making"),
+    funcWordError.slice(0, 120)
+  );
+  check(
+    "无提示词的标签挂错分类 -> 明确指出",
+    funcWordError.includes("标签应挂在"),
+    funcWordError.slice(0, 200)
+  );
+  await page.locator("#admin-ai-json").fill("");
+
+  // 校验不通过时，错误块要列出每一条具体问题（原先只渲染标题行，
+  // 用户看到「共 N 处问题」却不知道是哪 N 处）
+  await page.locator("#admin-ai-json").fill(
+    JSON.stringify([
+      {
+        originalSentence: "A ______ b with only one blank.",
+        blanks: [
+          {
+            blankIndex: 1,
+            answer: ["x"],
+            hintWord: null,
+            hintType: "无提示词",
+            tagIds: ["t_004", "t_026"],
+            trapAnalysis: "空格数量不足，应被拦下。",
+          },
+          {
+            blankIndex: 2,
+            answer: ["y"],
+            hintWord: null,
+            hintType: "无提示词",
+            tagIds: ["t_004", "t_029"],
+            trapAnalysis: "多出来的空，应被拦下。",
+          },
+        ],
+        source: "空格数不符卷",
+      },
+    ])
+  );
+  await page.locator("#admin-ai-submit").click();
+  await page.waitForTimeout(700);
+  const strayError = await page.locator("#admin-ai-error").innerText();
+  const errorLines = strayError.trim().split("\n").filter((line) => line.trim().startsWith("·"));
+  check(
+    "校验错误块列出具体每一条问题（而非只有标题）",
+    errorLines.length >= 3 && strayError.includes("空格数量"),
+    strayError.slice(0, 180)
+  );
+  await page.locator("#admin-ai-json").fill("");
+
+  // 结构彻底损坏（容错也救不回）-> 报错要能定位到行并给出可操作的建议
+  await page.locator("#admin-ai-json").fill(
+    '[\n  {\n    "originalSentence": "A ______ b.",\n' +
+      '    "blanks": [{ "blankIndex": 1, "answer": ["x"] "hintWord": null }]\n  }\n]'
   );
   await page.locator("#admin-ai-submit").click();
   await page.waitForTimeout(500);
   const aiErrorText = await page.locator("#admin-ai-error").innerText();
+  check("结构损坏时提示能定位到行号", /第 \d+ 行/.test(aiErrorText), aiErrorText.slice(0, 120));
   check(
-    "英文直引号导致解析失败时，提示能定位到行号",
-    /第 \d+ 行/.test(aiErrorText),
-    aiErrorText.slice(0, 120)
-  );
-  check(
-    "解析失败提示指出英文直引号这个原因",
-    aiErrorText.includes("英文直引号"),
-    aiErrorText.slice(0, 160)
+    "结构损坏时给出可操作建议",
+    aiErrorText.includes("逗号") || aiErrorText.includes("代码块"),
+    aiErrorText.slice(0, 200)
   );
   await page.locator("#admin-ai-json").fill("");
 
