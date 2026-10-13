@@ -21,6 +21,9 @@
  * 动态文本一律先经 escapeHtml 再写入 DOM。
  */
 
+import { notifyError, clearFeedback } from "./feedback.js";
+
+
 /** 全部合法的提示词类型 */
 const HINT_TYPES = ["给动词", "给名词", "给形容词", "给副词", "无提示词"];
 

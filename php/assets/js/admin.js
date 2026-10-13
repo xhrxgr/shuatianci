@@ -12,6 +12,7 @@
 
 import { api } from "./api.js";
 import { setFlash, takeFlash } from "./flash.js";
+import { notify, notifyError, clearFeedback } from "./feedback.js";
 // AI 助手必须走 import 引入：此前靠 window.setupAdminAi 全局约定，
 // 而 admin-ai.js 没有被任何 script 标签加载，导致整个 AI 面板（含"复制提示词"）
 // 从未绑定事件、点击无反应。import 由模块依赖图保证求值顺序，不依赖标签顺序。
@@ -51,10 +52,20 @@ export function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
-/** 顶部提示条 */
+/**
+ * 顶部成功提示（沿用页面原有的 #admin-notice，位置样式不变）。
+ *
+ * 传空串表示「清掉当前提示」——出错时用它先把上一条成功提示擦掉，
+ * 免得两条提示同时挂在页面上。
+ */
 function showNotice(message) {
   const box = document.getElementById("admin-notice");
   if (!box) return;
+  if (!message) {
+    box.textContent = "";
+    box.hidden = true;
+    return;
+  }
   box.textContent = message;
   box.hidden = false;
 }
@@ -535,17 +546,32 @@ function handleExport(currentQuestions) {
   showNotice(`已导出 ${currentQuestions.length} 道题目`);
 }
 
+/** 最近一次选择的导入文件，供「重试」复用 */
+let lastImportFile = null;
+
 async function handleImportFile(file) {
+  // 记下这次的文件，重试用；File 对象读过一次后不能重复读，
+  // 所以失败后靠这里再取一次（浏览器允许对同一个 File 多次 text()）
+  lastImportFile = file;
   const text = await file.text();
   let parsed;
   try {
     parsed = JSON.parse(text);
   } catch (error) {
-    window.alert(`文件解析失败：${(error).message}`);
+    showNotice("");
+    notifyError(`文件解析失败：${error.message}`, {
+      details: [
+        "请确认选中的是本系统导出的 .json 文件（题库导出 / 标签导出）",
+        "文件若由文本编辑器改过，检查有没有多删或多加逗号、引号",
+      ],
+    });
     return;
   }
   if (!Array.isArray(parsed?.questions)) {
-    window.alert("文件解析失败：questions 字段必须是数组");
+    showNotice("");
+    notifyError("文件解析失败：questions 字段必须是数组", {
+      details: ["文件里应当有 questions 数组；若只是想导入标签，请选标签导出文件"],
+    });
     return;
   }
 
@@ -566,7 +592,9 @@ async function handleImportFile(file) {
     }
     window.location.reload();
   } catch (error) {
-    showNotice(error?.message ?? "导入失败");
+    notifyError(error, {
+      retry: lastImportFile ? () => void handleImportFile(lastImportFile) : undefined,
+    });
   }
 }
 
@@ -588,7 +616,7 @@ async function handleMigrateLocal() {
     clearLocalCache();
     window.location.reload();
   } catch (error) {
-    showNotice(error?.message ?? "上传失败");
+    notifyError(error, { retry: () => void handleCloudUpload() });
   }
 }
 
@@ -610,7 +638,7 @@ async function handleRestoreSeed() {
     setFlash(`已恢复内置示例数据，共 ${seedQuestions.length} 道题、${seedTags?.tags?.length ?? 0} 个标签`);
     window.location.reload();
   } catch (error) {
-    showNotice(error?.message ?? "恢复失败");
+    notifyError(error, { retry: () => void handleRestoreSeed() });
   }
 }
 
@@ -623,7 +651,7 @@ async function handleClearAll() {
     setFlash("已清空服务端数据");
     window.location.reload();
   } catch (error) {
-    showNotice(error?.message ?? "清空失败");
+    notifyError(error, { retry: () => void handleClearAll() });
   }
 }
 
@@ -640,19 +668,94 @@ function nextTagId(tags) {
   return `t_${String(max + 1).padStart(3, "0")}`;
 }
 
-/** 保存标签字典到服务端 */
+/**
+ * 保存标签字典到服务端。
+ *
+ * 失败时把异常继续抛出，交给调用方提示——这里吞掉异常的话，
+ * 调用方会以为保存成功，接着做下一步（比如整页刷新），改动就丢了。
+ */
 async function persistTags(dict) {
+  const previous = tagDictionary;
   tagDictionary = dict;
   try {
     await api.saveTags(dict);
   } catch (error) {
-    showNotice(error?.message ?? "标签保存失败");
+    tagDictionary = previous; // 回滚，页面上的标签名还是原来那份
+    throw error;
   }
 }
 
 function updateTags(updater) {
   const next = updater(tagDictionary.tags.map((tag) => ({ ...tag })));
   return persistTags({ ...tagDictionary, tags: next });
+}
+
+/* ---------------- 标签操作（供事件处理与「重试」共用） ---------------- */
+
+/**
+ * 点击某个标签的按钮。
+ *
+ * 重试时复用同一条路径——注意删除类操作会再弹一次确认框，
+ * 这是有意的：不能「点重试就直接删掉」。
+ */
+function clickTagButton(tagId, action) {
+  const selector = `[data-tag="${CSS.escape(tagId)}"] [data-action="${action}"]`;
+  document.querySelector(selector)?.click();
+}
+
+/** 新增一个子标签。表单里的名字与颜色原样取用，重试时不丢用户输入 */
+async function submitNewTag(parentId) {
+  const form = document.querySelector(`[data-add-form][data-tag-group-parent="${CSS.escape(parentId)}"]`)
+    ?? document.querySelector('[data-add-form]:not([hidden])');
+  const errorBox = form?.querySelector("[data-new-tag-error]");
+  const showFormError = (message) => {
+    if (!errorBox) return;
+    errorBox.textContent = message;
+    errorBox.hidden = false;
+  };
+  if (!form) return;
+  if (errorBox) errorBox.hidden = true;
+
+  const name = (form.querySelector("[data-new-tag-name]")?.value ?? "").trim();
+  if (name === "") {
+    showFormError("标签名不能为空");
+    return;
+  }
+  if (tagDictionary.tags.some((tag) => tag.name === name)) {
+    showFormError("已有同名标签，请换一个");
+    return;
+  }
+
+  const color = form.dataset.selectedColor ?? "#64748B";
+  try {
+    await updateTags((tags) => [
+      ...tags,
+      { id: nextTagId(tags), name, parentId, color, isActive: true },
+    ]);
+    window.location.reload();
+  } catch (error) {
+    notifyError(error, { retry: () => void submitNewTag(parentId) });
+  }
+}
+
+/** 改标签配色 */
+async function applyTagColor(tagId, color) {
+  try {
+    await updateTags((tags) =>
+      tags.map((tag) => (tag.id === tagId ? { ...tag, color } : tag))
+    );
+  } catch (error) {
+    notifyError(error, { retry: () => void applyTagColor(tagId, color) });
+  }
+}
+
+/** 改标签名（重试沿用用户刚输入的名字） */
+async function applyTagName(tagId, name) {
+  try {
+    await updateTags((tags) => tags.map((tag) => (tag.id === tagId ? { ...tag, name } : tag)));
+  } catch (error) {
+    notifyError(error, { retry: () => void applyTagName(tagId, name) });
+  }
 }
 
 /** AI 助手：把解析出的题目增量入库（来源统一打上） */
@@ -796,7 +899,7 @@ if (root) {
               if (button) button.textContent = isMastered ? "标记已掌握" : "标记未掌握";
             }
           })
-          .catch((error) => showNotice(error?.message ?? "操作失败"));
+          .catch((error) => notifyError(error));
         break;
       }
       case "delete-question": {
@@ -809,7 +912,10 @@ if (root) {
         if (!tag) return;
         void updateTags((tags) =>
           tags.map((item) => (item.id === tagId ? { ...item, isActive: !item.isActive } : item))
-        ).then(() => window.location.reload());
+        )
+          .then(() => window.location.reload())
+          // 保存失败时 tagDictionary 已回滚，重试再执行一次同样的切换即可
+          .catch((error) => notifyError(error, { retry: () => clickTagButton(tagId, "toggle-tag") }));
         break;
       }
       case "delete-tag": {
@@ -817,7 +923,12 @@ if (root) {
         if (!tag) return;
         const hasChildren = tagDictionary.tags.some((item) => item.parentId === tag.id);
         if (hasChildren) {
-          window.alert(`「${tag.name}」下还有子标签，请先删除子标签。`);
+          const children = tagDictionary.tags
+            .filter((item) => item.parentId === tag.id)
+            .map((item) => item.name);
+          notifyError(`「${tag.name}」下还有 ${children.length} 个子标签，请先删除它们`, {
+            details: children,
+          });
           return;
         }
         const used = tagUsage[tag.id] ?? 0;
@@ -826,9 +937,9 @@ if (root) {
             ? `有 ${used} 道题正在使用「${tag.name}」。删除后这些题将无法按该标签筛选。\n\n确定删除吗？`
             : `确定删除标签「${tag.name}」吗？此操作不可撤销。`;
         if (!window.confirm(warning)) return;
-        void updateTags((tags) => tags.filter((item) => item.id !== tagId)).then(() =>
-          window.location.reload()
-        );
+        void updateTags((tags) => tags.filter((item) => item.id !== tagId))
+          .then(() => window.location.reload())
+          .catch((error) => notifyError(error, { retry: () => clickTagButton(tagId, "delete-tag") }));
         break;
       }
       case "add-tag-open":
@@ -837,28 +948,7 @@ if (root) {
       case "add-tag-confirm": {
         const form = actionButton.closest("[data-add-form]");
         const parentId = group?.dataset.tagGroup;
-        if (!form || !parentId) return;
-        const name = (form.querySelector("[data-new-tag-name]")?.value ?? "").trim();
-        const errorBox = form.querySelector("[data-new-tag-error]");
-        if (name === "") {
-          if (errorBox) {
-            errorBox.textContent = "标签名不能为空";
-            errorBox.hidden = false;
-          }
-          return;
-        }
-        if (tagDictionary.tags.some((tag) => tag.name === name)) {
-          if (errorBox) {
-            errorBox.textContent = "标签名已存在";
-            errorBox.hidden = false;
-          }
-          return;
-        }
-        const color = form.dataset.selectedColor ?? "#64748B";
-        void updateTags((tags) => [
-          ...tags,
-          { id: nextTagId(tags), name, parentId, color, isActive: true },
-        ]).then(() => window.location.reload());
+        if (form && parentId) submitNewTag(parentId);
         break;
       }
       case "add-tag-cancel":
@@ -939,9 +1029,7 @@ if (root) {
     if (color) {
       const item = color.closest("[data-tag]");
       if (!item) return;
-      void updateTags((tags) =>
-        tags.map((tag) => (tag.id === item.dataset.tag ? { ...tag, color: color.value } : tag))
-      );
+      void applyTagColor(item.dataset.tag, color.value);
       return;
     }
 
@@ -951,13 +1039,17 @@ if (root) {
       if (!item) return;
       const nextName = nameInput.value.trim();
       if (nextName === "") {
-        window.alert("标签名不能为空");
-        window.location.reload();
+        // 原先这里 alert + reload：提示与页面样式不一致，
+        // 而且整页刷新会把用户刚改好的其他标签名一起丢掉。
+        // 现在只提示并把光标留在这一格，改完继续。
+        showNotice("");
+        notifyError("标签名不能为空", {
+          details: ["清空后会与已有的空标签重名，请填一个名字"],
+        });
+        nameInput.focus();
         return;
       }
-      void updateTags((tags) =>
-        tags.map((tag) => (tag.id === item.dataset.tag ? { ...tag, name: nextName } : tag))
-      );
+      void applyTagName(item.dataset.tag, nextName);
     }
   });
 
@@ -979,7 +1071,7 @@ if (root) {
       api
         .getQuestions()
         .then((data) => handleExport(data.questions ?? []))
-        .catch((error) => showNotice(error?.message ?? "导出失败"));
+        .catch((error) => notifyError(error, { retry: () => void handleExport() }));
     });
   }
 

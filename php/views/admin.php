@@ -38,7 +38,9 @@ $adminTabs = [
     <?php endforeach; ?>
   </div>
 
-  <p class="rounded-lg bg-success-soft px-4 py-2 text-xs text-success" id="admin-notice" hidden></p>
+  <!-- admin.js 走 textContent 写纯文本提示，admin-papers.js 走 feedback.js 塞完整提示条；
+       两种都用得到，所以容器是 div（塞 div 才合法） -->
+  <div class="space-y-2" id="admin-notice" hidden></div>
 
   <!-- ============ 手动精录 ============ -->
   <div data-admin-panel="manual">
@@ -523,7 +525,7 @@ $adminTabs = [
       <!-- 逐空配置（由 admin.js 按原句动态生成） -->
       <div id="edit-question-blanks" class="space-y-4"></div>
 
-      <ul class="space-y-1 rounded-lg border border-danger/30 bg-danger-soft p-3 text-xs text-danger" id="edit-question-errors" hidden></ul>
+      <div class="space-y-2" id="edit-question-errors" hidden></div>
     </div>
 
     <div class="flex items-center justify-end gap-2 border-t border-line px-5 py-4">

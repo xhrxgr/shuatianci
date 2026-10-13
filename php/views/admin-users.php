@@ -26,8 +26,8 @@
       </p>
     </div>
 
-    <p class="rounded-lg bg-danger-soft px-4 py-2 text-xs text-danger" id="admin-users-error" hidden></p>
-    <p class="rounded-lg bg-success-soft px-4 py-2 text-xs text-success" id="admin-users-notice" hidden></p>
+    <div class="space-y-2" id="admin-users-error" hidden></div>
+    <div class="space-y-2" id="admin-users-notice" hidden></div>
 
     <!-- 新建用户 -->
     <section class="rounded-xl border border-line bg-surface p-5">

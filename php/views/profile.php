@@ -46,7 +46,7 @@ $isGuest = $user === null;
           <p class="mt-1 text-xl font-semibold text-primary" data-local-stat="accuracy">0%</p>
         </div>
       </div>
-      <p class="mt-3 text-xs text-success" id="profile-notice" hidden></p>
+      <div class="mt-3 space-y-2" id="profile-notice" hidden></div>
       <button
         type="button"
         id="profile-clear-local"
@@ -56,8 +56,8 @@ $isGuest = $user === null;
 
     <script type="module" src="<?= e(asset_url('/js/profile.js')) ?>"></script>
   <?php else: ?>
-    <p class="rounded-lg bg-danger-soft px-4 py-2 text-xs text-danger" id="profile-error" hidden></p>
-    <p class="rounded-lg bg-success-soft px-4 py-2 text-xs text-success" id="profile-notice" hidden></p>
+    <div class="space-y-2" id="profile-error" hidden></div>
+    <div class="space-y-2" id="profile-notice" hidden></div>
 
     <section class="rounded-xl border border-line bg-surface p-5">
       <h3 class="mb-4 text-sm font-semibold text-ink">总体统计</h3>

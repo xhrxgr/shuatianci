@@ -13,6 +13,7 @@
  */
 
 import { api } from "./api.js";
+import { notify, notifyError, clearFeedback } from "./feedback.js";
 
 const root = document.getElementById("admin-system-root");
 const loadingEl = document.getElementById("admin-system-loading");
@@ -29,22 +30,23 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
-/** 顶部提示条 */
-function showMessage(kind, message) {
-  const box = kind === "error" ? errorBox : noticeBox;
-  if (!box) return;
-  box.textContent = message;
-  box.hidden = false;
+/**
+ * 顶部提示条。
+ *
+ * 系统设置这一页的错误大多值得重试（读版本失败、检查更新失败、启动更新失败
+ * 往往都是临时问题——网络抖动、git 忙、更新进程没起来），
+ * 所以错误一律带上对应的重试入口，而不是让用户刷新页面重来。
+ */
+function showMessage(kind, message, options = {}) {
+  return kind === "error"
+    ? notifyError(message, { boxId: "admin-system-error", ...options })
+    : notify(message, "success", { boxId: "admin-system-notice", ...options });
 }
 
 /** 清掉上一条提示（每次操作前先调用） */
 function clearMessages() {
-  [errorBox, noticeBox].forEach((box) => {
-    if (box) {
-      box.hidden = true;
-      box.textContent = "";
-    }
-  });
+  clearFeedback("admin-system-error");
+  clearFeedback("admin-system-notice");
 }
 
 /** ISO 时间转本地可读格式 */
@@ -254,7 +256,7 @@ if (root) {
       version = result.version;
       gitAvailable = result.gitAvailable !== false;
     } catch (error) {
-      showMessage("error", error?.message ?? "读取版本失败");
+      showMessage("error", error, { retry: () => void loadVersion() });
     } finally {
       revealPage();
     }
@@ -272,7 +274,7 @@ if (root) {
       check = result;
       if (!result.hasUpdate) showMessage("notice", "已是最新版本");
     } catch (error) {
-      showMessage("error", error?.message ?? "检查更新失败");
+      showMessage("error", error, { retry: () => void handleCheck() });
     } finally {
       checking = false;
     }
@@ -295,7 +297,11 @@ if (root) {
           pollTimer = null;
           updating = false;
           if (status.error) {
-            showMessage("error", `更新失败：${status.error}`);
+            // 更新失败是最需要看清细节的一处：把后台进程的日志一并列出
+            showMessage("error", `更新失败：${status.error}`, {
+              details: Array.isArray(logs) ? logs.slice(-8) : [],
+              retry: () => void handleUpdate(),
+            });
           } else {
             showMessage("notice", "更新完成，正在自动刷新页面以应用新版本…（若未自动刷新，点下方按钮）");
             restarting = true;
@@ -337,7 +343,7 @@ if (root) {
       startPolling();
     } catch (error) {
       updating = false;
-      showMessage("error", error?.message ?? "启动更新失败");
+      showMessage("error", error, { retry: () => void handleUpdate() });
       renderUpdateActions();
       renderCheckResult();
       renderProgress();

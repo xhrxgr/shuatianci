@@ -38,11 +38,7 @@
         >
       </div>
 
-      <p
-        id="login-error"
-        class="rounded-lg bg-danger-soft px-3 py-2 text-xs text-danger"
-        hidden
-      ></p>
+      <div id="login-error" class="space-y-2" hidden></div>
 
       <button
         type="submit"

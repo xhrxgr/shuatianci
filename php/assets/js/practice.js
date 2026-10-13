@@ -7,6 +7,7 @@
  * 登录用户的记录与进度走服务端接口。
  */
 
+import { notifyError } from "./feedback.js";
 import { api } from "./api.js";
 
 const BLANK_PLACEHOLDER = "______";
@@ -709,6 +710,7 @@ async function toggleFavorite() {
     await loadCollectionState(true);
   } catch (error) {
     collectionMessage = error?.message ?? "操作失败";
+    notifyError(error, { retry: () => void toggleFavorite() });
   }
   renderAll();
 }
@@ -730,6 +732,7 @@ async function toggleMark() {
     await loadCollectionState(true);
   } catch (error) {
     collectionMessage = error?.message ?? "操作失败";
+    notifyError(error, { retry: () => void toggleMark() });
   }
   renderAll();
 }

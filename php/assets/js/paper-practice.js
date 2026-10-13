@@ -11,6 +11,7 @@
  */
 
 import { api } from "./api.js";
+import { notifyWarn } from "./feedback.js";
 
 /** 空格占位符字面量 */
 const BLANK_PLACEHOLDER = "______";
@@ -68,7 +69,12 @@ function isBlankCorrect(blank, userInput) {
   return (blank.answer ?? []).some((answer) => normalize(answer) === value);
 }
 
-/** 记录一次作答：登录走服务端，失败或游客退回本地 */
+/**
+ * 记录一次作答：登录走服务端，失败或游客退回本地。
+ *
+ * 上报失败会退回本地保存，但**必须告诉用户**——不然他会以为进度已经
+ * 上去了，换台设备发现进度没了。警告语里说清差异与补救办法。
+ */
 async function submitRecord(questionId, isCorrect, wrongCount, answers) {
   if (authenticated) {
     try {
@@ -76,6 +82,15 @@ async function submitRecord(questionId, isCorrect, wrongCount, answers) {
       return;
     } catch (error) {
       console.error("[paper-practice] 上报失败，已退回本地保存", error);
+      notifyWarn("作答记录暂存在本设备，没有同步到账号", {
+        details: [
+          "换设备或清除浏览器数据后，这批记录会丢失",
+          "常见原因：网络不稳定，或服务器正在忙，稍后可再试一次本卷",
+          `失败原因：${error?.message ?? "未知"}`,
+        ],
+        // 同一次作答重复上报不会出错，所以重试是安全的
+        retry: () => void submitRecord(questionId, isCorrect, wrongCount, answers),
+      });
     }
   }
   const records = readJson(LOCAL_RECORDS_KEY, []);

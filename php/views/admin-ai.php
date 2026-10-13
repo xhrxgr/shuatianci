@@ -107,7 +107,9 @@ foreach ($aiTags as $aiTag) {
       >创建这些标签</button>
     </div>
 
-    <ul class="mt-4 space-y-1 rounded-lg border border-danger/30 bg-danger-soft p-4 text-xs text-danger" id="admin-ai-error" hidden></ul>
+    <!-- 错误块由 feedback.js 往里塞完整的提示条（含图标、详情列表、重试按钮），
+         所以这里用 div 而不是原先的 ul —— ul 里塞 div 不合法 -->
+    <div class="mt-4" id="admin-ai-error" hidden></div>
 
     <button
       type="button"

@@ -244,13 +244,35 @@ async function main() {
   await page.locator("#login-switch").click();
   check("切回登录模式", (await page.locator("#login-title").innerText()) === "登录");
 
-  /** 读取提示文案（元素可能带 hidden，用 textContent 避免可见性等待） */
-  const errorText = () => page.locator("#login-error").evaluate((el) => el.textContent ?? "");
+  /**
+   * 读取提示正文（元素可能带 hidden，用 textContent 避免可见性等待）。
+   *
+   * 只取提示条里的第一个 <p>：容器里现在还有图标、详情列表和「重试/关闭」
+   * 按钮，取整段 textContent 会把这些一起拼进来，断言就没法按文案比对了。
+   */
+  const errorText = () =>
+    page
+      .locator("#login-error p")
+      .first()
+      .evaluate((el) => el.textContent ?? "")
+      .catch(() => "");
+
+  /** 提示条里「详情」列表的每一行 */
+  const errorDetails = (boxId) =>
+    page.locator(`#${boxId} li`).allInnerTexts().catch(() => []);
+  /** 提示条里是否有某个按钮 */
+  const errorHasButton = (boxId, label) =>
+    page.locator(`#${boxId} button`, { hasText: label }).count().then((n) => n > 0);
 
   // 空提交的校验提示
   await page.locator("#login-submit").click();
   await page.waitForTimeout(100);
-  check("空表单提交提示「请填写用户名和密码」", (await errorText()) === "请填写用户名和密码");
+  check("空表单提交提示「请填写用户名和密码」", (await errorText()).includes("请填写用户名和密码"));
+  check(
+    "校验类错误不给「重试」（重试多少次都是同一个结果）",
+    (await errorHasButton("login-error", "重试")) === false
+  );
+  check("校验类错误给出「关闭」按钮", await errorHasButton("login-error", "关闭"));
 
   // 登录失败提示。用随机用户名，确保它一定不存在——
   // 固定名字会被上一次测试真的注册掉，导致这一断言反而登录成功
@@ -311,10 +333,15 @@ async function main() {
       { timeout: 5000 }
     )
     .catch(() => {});
+  const profileErrorText = await page
+    .locator("#profile-error p")
+    .first()
+    .evaluate((el) => el.textContent ?? "")
+    .catch(() => "");
+  check("原密码错误提示「原密码不正确」", profileErrorText.includes("原密码不正确"), profileErrorText);
   check(
-    "原密码错误提示「原密码不正确」",
-    (await page.locator("#profile-error").evaluate((el) => el.textContent ?? "")) === "原密码不正确",
-    await page.locator("#profile-error").evaluate((el) => el.textContent ?? "")
+    "改密码失败给「重试」入口（接口失败，值得再试）",
+    await page.locator("#profile-error button", { hasText: "重试" }).count().then((n) => n > 0)
   );
 
   /* ---------------- 收藏与标记 ---------------- */
@@ -1026,6 +1053,15 @@ async function main() {
     "清空答案被拦并说明原因",
     (await page.locator("#edit-question-errors").innerText()).includes("答案不能为空")
   );
+  // 校验类错误不该有「重试」：内容没改，重试多少次都是同一个错
+  check(
+    "题目编辑的校验错误不给「重试」",
+    (await errorHasButton("edit-question-errors", "重试")) === false
+  );
+  check(
+    "题目编辑的校验错误给「关闭」",
+    await errorHasButton("edit-question-errors", "关闭")
+  );
   await page.locator('[data-action="close-edit-question"]').first().click();
   await page.waitForTimeout(300);
 
@@ -1158,6 +1194,34 @@ async function main() {
     "新建成功提示在刷新后仍可见（flash）",
     await page.locator("#admin-users-notice").isVisible().catch(() => false)
   );
+  // 反馈组件：接口类错误要给「重试」，且输入内容不能丢
+  await page.locator("#admin-new-username").fill("admin"); // 必然与已有账号撞名
+  await page.locator("#admin-new-password").fill("123456");
+  await page.locator("#admin-create").click();
+  await page.waitForTimeout(1000);
+  const usersErrorText = await page
+    .locator("#admin-users-error p")
+    .first()
+    .evaluate((el) => el.textContent ?? "")
+    .catch(() => "");
+  check("用户名撞名时报错", usersErrorText.includes("已被占用"), usersErrorText);
+  check(
+    "接口类错误给「重试」入口（换个名字再点即可）",
+    (await errorHasButton("admin-users-error", "重试"))
+  );
+  check("失败后输入框内容保留", (await page.locator("#admin-new-username").inputValue()) === "admin");
+  check(
+    "错误提示带 role=alert（读屏软件会播报）",
+    (await page.locator("#admin-users-error [role='alert']").count()) > 0
+  );
+  // 点「重试」应当真的重新提交一次（这里仍会失败，但说明按钮接通了）
+  await page.locator("#admin-users-error button", { hasText: "重试" }).first().click();
+  await page.waitForTimeout(900);
+  check("点「重试」会重新提交并再次报错", (await errorHasButton("admin-users-error", "重试")));
+  await page.locator("#admin-users-error button", { hasText: "关闭" }).first().click();
+  await page.waitForTimeout(400);
+  check("点「关闭」清掉提示条", (await page.locator("#admin-users-error [role]").count()) === 0);
+
   await page.locator(`li[data-username="${managedUser}"] [data-action="reset-password"]`).click();
   await page.waitForTimeout(200);
   await page.locator(`li[data-username="${managedUser}"] [data-reset-input]`).fill("654321");
@@ -1247,7 +1311,11 @@ async function main() {
   await page.locator("#username").fill(registeredUser);
   await page.locator("#password").fill("123456");
   await page.locator("#login-submit").click();
-  await page.waitForTimeout(1500);
+  // 等真的跳走，不靠固定延时：注册要先建账号再登录，两次请求叠加容易超过 1.5s
+  await page
+    .waitForURL((url) => new URL(url).pathname === "/", { timeout: 10000 })
+    .catch(() => {});
+  await page.waitForLoadState("domcontentloaded").catch(() => {});
   check("注册成功后跳转首页", new URL(page.url()).pathname === "/", page.url());
   check("注册后 token 已保存", (await page.evaluate(() => window.localStorage.getItem("eq_token"))) !== null);
 

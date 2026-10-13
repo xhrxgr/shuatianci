@@ -13,6 +13,7 @@
  */
 
 import { setFlash } from "./flash.js";
+import { notify, notifyError } from "./feedback.js";
 
 /**
  * 由 admin.js 调用完成绑定。
@@ -45,21 +46,45 @@ export function setupPaperAndQuestionPanels(context) {
     return allQuestions.find((question) => question.id === id) ?? null;
   }
 
-  function showFlash(message, tone = "success") {
-    const box = document.getElementById("admin-notice");
-    if (!box) return;
-    box.textContent = message;
-    box.className = `rounded-lg px-4 py-2 text-xs ${
-      tone === "success" ? "bg-success-soft text-success" : "bg-danger-soft text-danger"
-    }`;
-    box.hidden = false;
+  /**
+   * 页面顶部的成功 / 失败提示。
+   *
+   * 呈现交给 feedback.js：失败时给「重试」入口（都是点一下就能重做的操作），
+   * 位置仍用页面原有的 #admin-notice。
+   */
+  function showFlash(message, tone = "success", options = {}) {
+    const boxId = "admin-notice";
+    const result =
+      tone === "success"
+        ? notify(message, "success", { boxId, ...options })
+        : notifyError(message, { boxId, ...options });
+    // 旧的 #admin-notice 元素仍留在 DOM 里（别的模块会读它的 textContent），
+    // 提示条插在它内部，两者共存不冲突
+    return result;
   }
 
-  function showEditErrors(errors) {
+  /**
+   * 编辑弹窗里的校验错误：逐条列出「哪里错了、怎么改」。
+   *
+   * 超过 3 条默认折叠，避免弹窗被撑得很长——用户先看第一条改掉即可。
+   */
+  function showEditErrors(errors, options = {}) {
     const box = document.getElementById("edit-question-errors");
     if (!box) return;
-    box.hidden = errors.length === 0;
-    box.innerHTML = errors.map((error) => `<li>· ${escape(error)}</li>`).join("");
+    const list = (errors ?? []).map((item) => String(item));
+    box.hidden = list.length === 0;
+    if (list.length === 0) {
+      box.innerHTML = "";
+      return;
+    }
+    notifyError(list.length === 1 ? list[0] : `有 ${list.length} 处需要修改`, {
+      boxId: "edit-question-errors",
+      details: list,
+      retry: options.retry,
+      // 校验错误重试也没用（内容没变），所以不自动给重试按钮
+      retryable: false,
+      sticky: true,
+    });
   }
 
   /* ---------------- 试卷管理 ---------------- */
@@ -72,7 +97,11 @@ export function setupPaperAndQuestionPanels(context) {
     const name = nameInput.value.trim();
 
     if (name === "") {
-      showFlash("试卷名不能为空。", "danger");
+      showFlash("请填写试卷名", "danger", {
+        details: ["试卷名是必填项，同名会自动归到同一张卷"],
+        retryable: false,
+      });
+      document.getElementById("paper-name")?.focus();
       nameInput.focus();
       return;
     }
@@ -85,7 +114,7 @@ export function setupPaperAndQuestionPanels(context) {
       });
       window.location.reload();
     } catch (error) {
-      showFlash(error?.message ?? "新建试卷失败。", "danger");
+      showFlash(error, "danger", { retry: () => void handleCreatePaper() });
     }
   }
 
@@ -105,7 +134,8 @@ export function setupPaperAndQuestionPanels(context) {
     const note = item.querySelector("[data-edit-paper-note]").value.trim();
 
     if (name === "") {
-      showFlash("试卷名不能为空。", "danger");
+      showFlash("请填写试卷名", "danger", { retryable: false });
+      item.querySelector("[data-edit-paper-name]")?.focus();
       return;
     }
 
@@ -113,7 +143,8 @@ export function setupPaperAndQuestionPanels(context) {
       await api.updatePaper(id, { name, examDate: date || null, note });
       window.location.reload();
     } catch (error) {
-      showFlash(error?.message ?? "保存失败。", "danger");
+      // 重试沿用同一行元素，用户改过的名字与日期都还在输入框里
+      showFlash(error, "danger", { retry: () => void handleSavePaper(item) });
     }
   }
 
@@ -131,7 +162,8 @@ export function setupPaperAndQuestionPanels(context) {
       setFlash(count > 0 ? `已删除试卷，其下 ${count} 道题已移出该卷` : "已删除试卷");
       window.location.reload();
     } catch (error) {
-      showFlash(error?.message ?? "删除失败。", "danger");
+      // 删除会再弹一次确认框，这是有意的
+      showFlash(error, "danger", { retry: () => void handleDeletePaper(id, name) });
     }
   }
 
@@ -181,7 +213,10 @@ export function setupPaperAndQuestionPanels(context) {
     const select = document.getElementById("question-bulk-paper");
     const value = select.value;
     if (value === "") {
-      showFlash("请先选择要移到哪张卷。", "danger");
+      showFlash("请先选择要移到哪张卷", "danger", {
+        details: ["用上方的下拉框挑目标试卷，再点「应用到已选」"],
+        retryable: false,
+      });
       return;
     }
 
@@ -193,7 +228,7 @@ export function setupPaperAndQuestionPanels(context) {
       setFlash(`已将 ${ids.length} 道题移入指定试卷`);
       window.location.reload();
     } catch (error) {
-      showFlash(error?.message ?? "批量修改失败。", "danger");
+      showFlash(error, "danger", { retry: () => void handleBulkPaper() });
     }
   }
 
@@ -210,7 +245,7 @@ export function setupPaperAndQuestionPanels(context) {
       setFlash(`已删除 ${ids.length} 道题`);
       window.location.reload();
     } catch (error) {
-      showFlash(error?.message ?? "批量删除失败。", "danger");
+      showFlash(error, "danger", { retry: () => void handleBulkDelete() });
     }
   }
 
@@ -227,7 +262,7 @@ export function setupPaperAndQuestionPanels(context) {
       setFlash(`已删除 ${id}`);
       window.location.reload();
     } catch (error) {
-      showFlash(error?.message ?? "删除失败。", "danger");
+      showFlash(error, "danger", { retry: () => void handleDeleteSingleQuestion(id) });
     }
   }
 
@@ -424,7 +459,9 @@ export function setupPaperAndQuestionPanels(context) {
       });
       window.location.reload();
     } catch (error) {
-      showEditErrors([error?.message ?? "保存失败"]);
+      showEditErrors([error?.message ?? "保存失败"], {
+        retry: () => void handleSaveEditQuestion(),
+      });
     }
   }
 

@@ -34,8 +34,8 @@ $labelStyles = [
       <p class="mt-1 text-xs text-muted">收藏试卷、标记重点题目。仅你本人可查看这些内容。</p>
     </div>
 
-    <p class="rounded-lg bg-danger-soft px-4 py-2 text-xs text-danger" id="collection-error" hidden></p>
-    <p class="rounded-lg bg-success-soft px-4 py-2 text-xs text-success" id="collection-notice" hidden></p>
+    <div class="space-y-2" id="collection-error" hidden></div>
+    <div class="space-y-2" id="collection-notice" hidden></div>
 
     <div role="tablist" class="flex gap-1 rounded-xl border border-line bg-surface p-1">
       <button

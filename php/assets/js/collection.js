@@ -9,15 +9,24 @@
 
 import { api } from "./api.js";
 import { setFlash, takeFlash } from "./flash.js";
+import { notify, notifyError, clearFeedback } from "./feedback.js";
 
 const root = document.getElementById("collection-root");
 
-/** 提示条 */
-function showMessage(kind, message) {
-  const box = document.getElementById(kind === "error" ? "collection-error" : "collection-notice");
-  if (!box) return;
-  box.textContent = message;
-  box.hidden = false;
+/**
+ * 提示条。呈现交给 feedback.js，位置仍用页面原有的 id，测试照旧按 id 定位。
+ * retry 用于「再点一次就好」的操作（取消收藏 / 取消标记都是点一下生效）。
+ */
+function showMessage(kind, message, options = {}) {
+  return kind === "error"
+    ? notifyError(message, { boxId: "collection-error", ...options })
+    : notify(message, "success", { boxId: "collection-notice", ...options });
+}
+
+/** 清掉上一条提示（每次操作前先调用） */
+function clearMessages() {
+  clearFeedback("collection-error");
+  clearFeedback("collection-notice");
 }
 
 /** 页签切换 */
@@ -54,13 +63,17 @@ if (root) {
     if (favoriteButton) {
       const source = favoriteButton.dataset.source ?? "";
       if (!window.confirm(`确定取消收藏「${source}」吗？`)) return;
+      clearMessages();
       favoriteButton.disabled = true;
       try {
         await api.toggleFavorite(source);
         setFlash("已取消收藏");
         window.location.reload();
       } catch (error) {
-        showMessage("error", error?.message ?? "操作失败");
+        // 重试会再弹一次确认框——取消收藏不该「点一下就真取消」
+        showMessage("error", error, {
+          retry: () => document.querySelector(`[data-action="remove-favorite"][data-source="${CSS.escape(source)}"]`)?.click(),
+        });
         favoriteButton.disabled = false;
       }
       return;
@@ -69,13 +82,16 @@ if (root) {
     const markButton = event.target.closest('[data-action="remove-mark"]');
     if (markButton) {
       const questionId = markButton.dataset.question ?? "";
+      clearMessages();
       markButton.disabled = true;
       try {
         await api.toggleMark(questionId);
         setFlash("已取消标记");
         window.location.reload();
       } catch (error) {
-        showMessage("error", error?.message ?? "操作失败");
+        showMessage("error", error, {
+          retry: () => document.querySelector(`[data-action="remove-mark"][data-question="${CSS.escape(questionId)}"]`)?.click(),
+        });
         markButton.disabled = false;
       }
     }

@@ -26,8 +26,9 @@
       </p>
     </div>
 
-    <p class="rounded-xl border border-danger/40 bg-danger-soft px-4 py-3 text-sm text-danger" id="admin-system-error" hidden></p>
-    <p class="rounded-xl border border-success/40 bg-success-soft px-4 py-3 text-sm text-success" id="admin-system-notice" hidden></p>
+    <!-- 提示条由 feedback.js 渲染（含图标、详情、重试），容器只负责定位 -->
+    <div class="space-y-2" id="admin-system-error" hidden></div>
+    <div class="space-y-2" id="admin-system-notice" hidden></div>
 
     <!-- 当前版本 -->
     <section class="rounded-xl border border-line bg-surface p-5">

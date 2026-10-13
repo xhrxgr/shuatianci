@@ -11,6 +11,7 @@
 
 import { api } from "./api.js";
 import { setFlash, takeFlash } from "./flash.js";
+import { notify, notifyError, clearFeedback } from "./feedback.js";
 
 const root = document.getElementById("admin-users-root");
 
@@ -24,23 +25,21 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
-/** 顶部提示条 */
-function showMessage(kind, message) {
-  const box = document.getElementById(kind === "error" ? "admin-users-error" : "admin-users-notice");
-  if (!box) return;
-  box.textContent = message;
-  box.hidden = false;
+/**
+ * 顶部提示条。
+ *
+ * 呈现交给 feedback.js：按语义选配色、错误常驻、成功自动消失。
+ * boxId 用页面原有的 id，位置与样式不变，测试仍能按 id 定位。
+ */
+function showMessage(kind, message, options = {}) {
+  return kind === "error"
+    ? notifyError(message, { boxId: "admin-users-error", ...options })
+    : notify(message, "success", { boxId: "admin-users-notice", ...options });
 }
 
 /** 清掉上一条提示（每次操作前先调用） */
 function clearMessages() {
-  ["admin-users-error", "admin-users-notice"].forEach((id) => {
-    const box = document.getElementById(id);
-    if (box) {
-      box.hidden = true;
-      box.textContent = "";
-    }
-  });
+  ["admin-users-error", "admin-users-notice"].forEach((id) => clearFeedback(id));
 }
 
 /** 成功：暂存提示并整页刷新（刷新后由启动处取出显示） */
@@ -49,9 +48,14 @@ function succeed(message) {
   window.location.reload();
 }
 
-/** 失败：展示后端返回的错误信息（取 err.message） */
-function fail(error, fallback) {
-  showMessage("error", error?.message ?? fallback);
+/**
+ * 失败：展示后端返回的错误信息（取 err.message）。
+ *
+ * retry 用于「点重试就重新执行这次操作」——重置密码、改角色这类
+ * 点一下就生效的操作，不该让用户刷新页面重新填一遍。
+ */
+function fail(error, fallback, retry) {
+  showMessage("error", error ?? fallback, { retry });
 }
 
 /* ---------------- 新建用户 ---------------- */
@@ -67,7 +71,9 @@ async function handleCreate() {
     await api.createUser(username.value.trim(), password.value, role.value);
     succeed("用户创建成功");
   } catch (error) {
-    fail(error, "操作失败");
+    // 重试用同一份输入（用户名/密码框内容不清空），
+    // 典型场景是「用户名撞了，改个名再点重试」
+    fail(error, "操作失败", () => void handleCreate());
   }
 }
 
@@ -79,24 +85,27 @@ async function handleRoleChange(select) {
   if (!row) return;
   clearMessages();
   try {
-    await api.changeRole(row.dataset.userId, select.value);
+    const userId = row.dataset.userId;
+    const nextRole = select.value;
+    await api.changeRole(userId, nextRole);
     succeed(`已修改 ${row.dataset.username} 的角色`);
   } catch (error) {
     // 失败（例如改自己的角色被后端拒绝）时把下拉恢复成原角色
     select.value = select.dataset.currentRole;
-    fail(error, "操作失败");
+    fail(error, "操作失败", () => void handleRoleChange(select));
   }
 }
 
 /** 启用 / 禁用 */
 async function handleStatus(row) {
   const current = Number(row.dataset.status);
+  const userId = row.dataset.userId;
   clearMessages();
   try {
-    await api.changeStatus(row.dataset.userId, current === 1 ? 0 : 1);
+    await api.changeStatus(userId, current === 1 ? 0 : 1);
     succeed(`已${current === 1 ? "禁用" : "启用"} ${row.dataset.username}`);
   } catch (error) {
-    fail(error, "操作失败");
+    fail(error, "操作失败", () => void handleStatus(row));
   }
 }
 
@@ -108,7 +117,8 @@ async function handleDelete(row) {
     await api.deleteUser(row.dataset.userId);
     succeed(`已删除 ${row.dataset.username}`);
   } catch (error) {
-    fail(error, "操作失败");
+    // 删除要再确认一次，不能「点重试就真删了」
+    fail(error, "操作失败", () => void handleDelete(row));
   }
 }
 
@@ -131,7 +141,12 @@ async function confirmReset(row) {
   const input = row.querySelector("[data-reset-input]");
   if (!input) return;
   if (input.value.length < 6) {
-    window.alert("密码至少 6 位");
+    // 原先用 window.alert，样式与页面不一致、还阻塞整个交互，
+    // 改成页面内的提示条；输入内容不清空，改完就能再提交
+    showMessage("error", "密码至少 6 位，请改后再提交", {
+      details: ["当前填写 " + input.value.length + " 位"],
+    });
+    input.focus();
     return;
   }
   clearMessages();
@@ -139,7 +154,8 @@ async function confirmReset(row) {
     await api.resetPassword(row.dataset.userId, input.value);
     succeed(`已重置 ${row.dataset.username} 的密码`);
   } catch (error) {
-    fail(error, "操作失败");
+    // 输入框内容保留，「重试」即可再次提交
+    fail(error, "操作失败", () => void confirmReset(row));
   }
 }
 
