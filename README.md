@@ -526,7 +526,7 @@ cp php/data/backups/<选一个备份>.db php/data/english_quiz.db
 |---|---|
 | `users` | 用户，`role` 区分角色，`password_hash` 存 bcrypt 哈希 |
 | `papers` | 试卷，`kind` 区分原始录入（`original`）与蓝图生成的虚拟卷（`generated`） |
-| `questions` | 题库，`blanks_json` 存各空配置的 JSON 文本，另存指纹、发布状态、录入人等派生列 |
+| `questions` | 题库，`blanks_json` 存各空配置的 JSON 文本，另存指纹、发布状态、录入人、空格数副本等派生列 |
 | `tags` | 知识点标签，两级结构，`parent_id` 为 NULL 表示顶级分类 |
 | `question_tags` | 题级标签投影（从 `blanks_json` 各空 tagIds 取并集），可索引副本 |
 | `question_hints` | 题级提示词类型投影，抽题按标签筛同理 |

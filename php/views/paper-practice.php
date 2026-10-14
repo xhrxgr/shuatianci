@@ -22,12 +22,30 @@
   <section class="rounded-2xl border border-line bg-surface p-5 sm:p-6">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0 flex-1">
-        <h2 class="text-lg font-semibold text-ink"><?= e($paper['name']) ?></h2>
+        <h2 class="flex flex-wrap items-center gap-2 text-lg font-semibold text-ink">
+          <span><?= e($paper['name']) ?></span>
+          <?php if (($paper['kind'] ?? 'original') === 'generated'): ?>
+            <span class="rounded-full border border-line bg-surface-alt px-2 py-0.5 text-xs font-normal text-muted">虚拟卷</span>
+          <?php endif; ?>
+        </h2>
+        <?php
+        // 分篇信息（蓝图按知识点聚篇时才有意义）：一套卷是 3~4 篇短文填空，
+        // 只说「共 N 道题」学生不知道自己要连续做几篇
+        $sectionNos = [];
+        foreach ($questions as $q) {
+            $sectionNos[(int) ($q['sectionNo'] ?? 1)] = true;
+        }
+        $sectionCount = count($sectionNos);
+        ?>
         <p class="mt-1 text-xs text-muted">
           <?php if (!empty($paper['examDate'])): ?>
             <?= e($paper['examDate']) ?> ·
           <?php endif; ?>
           共 <?= e(count($questions)) ?> 道题
+          <?= $sectionCount > 1 ? ' · ' . e($sectionCount) . ' 篇' : '' ?>
+          <?php if (!empty($paper['blueprintName'])): ?>
+            · 由「<?= e($paper['blueprintName']) ?>」抽出
+          <?php endif; ?>
         </p>
       </div>
       <div class="flex gap-2">

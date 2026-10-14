@@ -191,8 +191,26 @@ function renderSheet() {
     return;
   }
 
-  sheet.innerHTML = questions
-    .map((question, index) => {
+  // 分篇的卷（蓝图按知识点聚篇）在答题卡上按篇断开，篇与篇之间留一点空隙：
+  // 一篇 10 个空连成一片数字，学生看不出自己换到下一篇了
+  const grouped = [];
+  let lastSection = null;
+  questions.forEach((question, index) => {
+    const section = question.sectionNo ?? 1;
+    if (lastSection !== null && section !== lastSection) {
+      grouped.push({ divider: true, index });
+    }
+    grouped.push({ question, index });
+    lastSection = section;
+  });
+
+  sheet.innerHTML = grouped
+    .map((entry) => {
+      if (entry.divider) {
+        return `<span class="mx-1 h-10 w-px shrink-0 bg-line" aria-hidden="true"></span>`;
+      }
+      const question = entry.question;
+      const index = entry.index;
       const state = answers[question.id];
       const isCurrent = index === currentIndex;
       let tone = "border-line bg-surface text-muted";
@@ -352,7 +370,12 @@ function renderPager() {
   const next = document.getElementById("paper-next");
   const finish = document.getElementById("paper-finish");
 
-  if (counter) counter.textContent = `第 ${currentIndex + 1} / ${questions.length} 题`;
+  // 分篇的卷（蓝图按知识点聚篇）要在计数器上说清「第几篇」：
+  // 一题一屏看不到整体结构，学生不知道自己换没换篇
+  const sections = new Set(questions.map((question) => question.sectionNo ?? 1));
+  const sectionText = sections.size > 1 ? ` · 第 ${questions[currentIndex]?.sectionNo ?? 1} 篇` : "";
+
+  if (counter) counter.textContent = `第 ${currentIndex + 1} / ${questions.length} 题${sectionText}`;
   if (prev) prev.disabled = currentIndex === 0;
   // 最后一题的「下一题」改为「完成」
   if (next) {

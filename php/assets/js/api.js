@@ -177,7 +177,6 @@ export const api = {
   /* 组卷蓝图（第 2 期） */
   listBlueprints: () => request("/blueprints"),
   createBlueprint: (payload) => request("/blueprints", { method: "POST", body: payload }),
-  getBlueprint: (id) => request(`/blueprints/${id}`),
   updateBlueprint: (id, patch) => request(`/blueprints/${id}`, { method: "PUT", body: patch }),
   deleteBlueprint: (id) => request(`/blueprints/${id}`, { method: "DELETE" }),
   /** 试抽：传 blueprintId（用已保存的规则）或 rules（未保存的草稿），不落库 */

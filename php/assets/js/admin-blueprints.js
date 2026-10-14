@@ -99,6 +99,7 @@ export function setupBlueprintPanels(context) {
   /* ------------------------------------------------------------------ */
 
   async function loadBlueprints() {
+    const loading = document.getElementById("blueprint-list-loading");
     try {
       const data = await api.listBlueprints();
       blueprints = data.blueprints ?? [];
@@ -106,13 +107,15 @@ export function setupBlueprintPanels(context) {
       renderList();
     } catch (error) {
       showFlash(error, "danger", { retry: () => void loadBlueprints() });
+    } finally {
+      // 失败也要收掉「加载中…」：否则它一直挂在那儿，
+      // 用户以为还在转，而错误提示其实早就出来了
+      if (loading) loading.hidden = true;
     }
   }
 
   function renderList() {
-    const loading = document.getElementById("blueprint-list-loading");
-    if (loading) loading.hidden = true;
-
+    // 「加载中…」由 loadBlueprints 的 finally 统一收掉（失败时也要收）
     const empty = document.getElementById("blueprint-list-empty");
     if (empty) empty.hidden = blueprints.length > 0;
 
@@ -1258,6 +1261,4 @@ export function setupBlueprintPanels(context) {
       }
     });
   });
-
-  return { ensureLoaded };
 }

@@ -1391,7 +1391,10 @@ async function main() {
   check("密码改回成功", (await page.locator("#profile-notice").innerText()).includes("密码已修改"));
 
   await page.locator('[data-action="logout"]').first().click();
-  await page.waitForTimeout(1500);
+  // 等导航真正完成，不用固定延时（1500ms 在慢机器上不够，会误报）
+  await page
+    .waitForURL((url) => new URL(url).pathname === "/", { timeout: 10000 })
+    .catch(() => {});
   check("退出后回到首页", new URL(page.url()).pathname === "/", page.url());
   check("退出后导航为游客态", (await page.locator('a[href="/profile"]').count()) === 0);
   check("退出后 token 已清除", (await page.evaluate(() => window.localStorage.getItem("eq_token"))) === null);

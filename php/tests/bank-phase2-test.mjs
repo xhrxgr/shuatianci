@@ -542,10 +542,7 @@ const noRelaxPreview = await request("POST", "/blueprints/preview", {
 });
 check("不放宽时题量不足就只给 5 题（不偷偷放宽）", noRelaxPreview.data?.result?.drawn === 5, noRelaxPreview.data?.result?.drawn);
 check("不放宽时 relaxed = false", noRelaxPreview.data?.result?.relaxed === false, noRelaxPreview.data?.result);
-check(
-  "重开编辑器不会把空数组还原成默认全顺序（前端 round-trip）",
-  noRelaxBp.data?.blueprint?.rules?.fallback?.relaxSteps !== undefined
-);
+// 前端的 round-trip（取消后重新打开仍是取消）在 blueprint-ui-test.mjs 里用浏览器验证
 
 // ⑤ 蓝图名唯一（并发创建两条同名由唯一索引兜底）
 const dupName = await request("POST", "/blueprints", {

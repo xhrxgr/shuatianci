@@ -119,7 +119,11 @@ try {
 console.log("\n【一】蓝图片签与列表\n");
 // ---------------------------------------------------------------------------
 await page.locator('[data-admin-tab="blueprints"]').click();
-await page.waitForTimeout(900);
+// 列表是切到页签时才懒加载的：等「加载中…」收起，说明这次拉取已经落地
+await page.waitForFunction(
+  () => document.getElementById("blueprint-list-loading")?.hidden === true,
+  { timeout: 15000 }
+);
 
 check("蓝图片签可切换", await page.locator('[data-admin-panel="blueprints"]').isVisible());
 check("空态提示可见", await page.locator("#blueprint-list-empty").isVisible());
@@ -171,9 +175,41 @@ check("没有超出预期的放宽提示（条件足够）", previewText.include
 // ---------------------------------------------------------------------------
 console.log("\n【四】保存与生成虚拟卷\n");
 // ---------------------------------------------------------------------------
+// 保存是异步的，而且保存成功后还会再拉一次列表。
+// 等「列表里出现这张蓝图」才算完——固定延时和只等保存响应都会和后续步骤抢时序
 await page.locator('[data-bp-action="save"]').click();
-await page.waitForTimeout(1200);
-check("保存后列表里出现该蓝图", (await page.locator("#blueprint-list").innerText()).includes(BP_NAME));
+await page.waitForFunction(
+  (name) => (document.getElementById("blueprint-list")?.innerText ?? "").includes(name),
+  BP_NAME,
+  { timeout: 15000 }
+);
+check("保存后列表里出现该蓝图", true);
+
+// 降级步骤的 round-trip：取消一个勾选 → 保存 → 新建后点回来 → 应该还是取消状态。
+// 这里曾把空数组还原成默认全顺序（前端反序列化的 bug），用户取消的设置会悄悄回来
+await page.locator('input[data-bp-relax="dropTag"]').uncheck();
+await page.locator('[data-bp-action="save"]').click();
+await page.waitForFunction(
+  () => (document.getElementById("admin-notice")?.innerText ?? "").includes("已保存"),
+  { timeout: 15000 }
+);
+// 刷新页面从服务端拿最新规则：列表刷新发生在「已保存」提示之后，
+// 赌那个时序不如直接重开页面，同时也验证了「刷新后能接着编辑」
+await page.reload({ waitUntil: "networkidle" });
+await page.locator('[data-admin-tab="blueprints"]').click();
+await page.waitForFunction(
+  () => document.getElementById("blueprint-list-loading")?.hidden === true,
+  { timeout: 15000 }
+);
+await page.locator("[data-blueprint-select]").first().click();
+check(
+  "取消的降级步骤重新打开仍保持取消（不被还原成全顺序）",
+  (await page.locator('input[data-bp-relax="dropTag"]').isChecked()) === false
+);
+check(
+  "其余降级步骤仍是勾选状态",
+  (await page.locator('input[data-bp-relax="dropHintType"]').isChecked()) === true
+);
 
 await page.locator('[data-bp-action="generate"]').click();
 // 生成后整页刷新（带 hash #papers），等提示出现就说明新页面已就绪
