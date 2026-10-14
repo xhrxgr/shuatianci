@@ -11,6 +11,50 @@
 当前版本写在根目录的 `VERSION` 文件里，与 `package.json` 的 `version`、git 标签 `v{VERSION}`
 三处保持一致；发版流程见 README「发版」一节。
 
+## 3.4.1（2026-10-14）—— 一键更新脚本（root 环境也能用）
+
+用户反馈「我这边 ssh 只能用 root」。原先的处置建议是 `sudo -u www git ...`，
+而很多服务器只开root 登录、根本没配 sudo，那条命令执行不了。
+
+### 新增 `update.sh`
+
+```bash
+bash /www/wwwroot/项目目录/update.sh
+```
+
+**root 直接跑即可，不需要 sudo、不需要手工 chown。**
+
+关键在于它不是「用 root 跑完再补救」，而是**让 git 全程以 PHP 的运行用户身份执行**：
+
+- `runuser -u <用户> -- git ...`（util-linux 自带，root 直接可用，
+  **不需要 /etc/sudoers 配置**），没有则退回 `su -s /bin/bash <用户> -c ...`
+- 两者都不可用时，才用 root 跑并**事后 chown 修复**
+
+区别很实在：前者属主从头到尾正确，无需任何补救；
+后者每次都要记得补一条 chown，忘一次就又坏了。
+
+### PHP 运行用户的探测（四级降级）
+
+1. `ps -eo user,args | grep php-fpm` —— 最准，直接看进程实际用户
+2. 读宝塔 `php-fpm.conf` 里 `www.conf` 的 `user=` —— 备选
+3. 用 `id` 验证该用户确实存在
+4. 常见候选：www / nginx / apache / httpd
+
+探测不到也不会卡住：会用 root 跑 + 事后 chown，并在结束时提示手工命令。
+
+### 其它
+
+- 前置检查：找不到 git、当前目录不是 git 仓库，都给一句人话而不是甩 git 原始报错
+- 原本那两处「用 PHP 运行用户执行 git」的提示改为指向 `update.sh`，
+  并明确说明「只能 root 登录也没关系」
+- README 更新方式改为推荐 `update.sh`，手工敲 git 的部分收进 `<details>` 折叠
+
+### 验证
+
+- `bash -n` 语法检查通过；逐条走查四条分支（非root / runuser 成功 /
+  runuser 失败转兜底 / 探测不到用户）
+- 接口 83/83；页面 182/182（无回归）
+
 ## 3.4.0（2026-10-14）—— 后台可配更新源（直连 / 加速）
 
 ### 背景

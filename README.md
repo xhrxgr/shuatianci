@@ -1,7 +1,7 @@
 # 高考英语短文填空穷举题库
 
 服务端题库 + 刷题 + 错题本，支持多设备、多用户。
-当前版本 **3.4.0**（更新记录见 [CHANGELOG.md](CHANGELOG.md)）。
+当前版本 **3.4.1**（更新记录见 [CHANGELOG.md](CHANGELOG.md)）。
 
 ## 快速导航
 
@@ -426,16 +426,38 @@ git remote -v    # 确认地址已更新（令牌会明文显示，属正常）
 
 私有仓库的令牌在 GitHub → Settings → Developer settings → Personal access tokens 生成
 （classic 勾 `repo`；建议用 fine-grained 只给这一个仓库的 Contents 只读权限）。
-配完以 `www` 身份验证一次，能拉到就全通了：
+配完验证一次，能拉到就全通了（**用项目自带的 update.sh，不需要 sudo**）：
 
 ```bash
-sudo -u www git -C /www/wwwroot/项目目录 fetch origin --prune && echo "OK"
+bash /www/wwwroot/项目目录/update.sh
 ```
 
 更新完不需要构建、也不需要重启服务（PHP-FPM 每次请求都重新加载代码）。
 若某一步没配好，「检查更新 / 立即更新」会给出对应的中文提示，按提示补配即可。
 
-### 方式二：命令行更新
+### 方式二：命令行更新（推荐用脚本）
+
+**推荐**（root 直接跑，不需要 sudo、不需要 chown，脚本会让 git 全程以
+PHP 的运行用户身份执行，属主从头到尾正确）：
+
+```bash
+bash /www/wwwroot/项目目录/update.sh
+```
+
+如果一定要手工敲 git，**务必用 PHP 的运行用户执行**（本项目是 www），
+否则新检出的文件属主会变成 root，在线更新会报
+「insufficient permission for adding an object」：
+
+```bash
+sudo -u www git -C /www/wwwroot/项目目录 fetch origin --prune
+```
+
+> 只能以 root 登录、没有 sudo 的服务器：直接用上面的 `update.sh`。
+> 若已经用 root 跑 git 导致属主错位，执行 `bash update.sh` 会一并修复，
+> 也可以手工执行 `chown -R www:www /www/wwwroot/项目目录`（www 换成实际运行用户）。
+
+<details>
+<summary>手工执行 git 命令的方式</summary>
 
 ```bash
 git fetch origin && git reset --hard origin/master
@@ -444,6 +466,8 @@ git fetch origin && git reset --hard origin/master
 PHP-FPM 每次请求都会重新加载代码，**不需要重启服务**。
 若开了 opcache 且改完没生效，重启 PHP-FPM，或访问一次
 `/api/system/update-status`（会自动刷新 opcache）。
+
+</details>
 
 ### 数据备份与恢复
 
@@ -576,20 +600,7 @@ PHP 进程拿不到仓库访问权限。按「网页一键更新」第 ③ 步�
 给这个仓库配置 GitHub 加速通道即可（第三方公共服务，仅影响本仓库的拉取；
 也可自行换成别的加速服务）：
 
-**务必用 PHP 的运行用户执行 git 命令**（本项目是 www），否则新检出的文件属主会变成
-root，在线更新会报「insufficient permission for adding an object」：
-
-```bash
-sudo -u www git -C /www/wwwroot/项目目录 fetch origin --prune
-```
-
-若已经用 root 跑过导致属主错位，执行一次即可修复：
-
-```bash
-chown -R www:www /www/wwwroot/项目目录
-```
-
-如服务器无法直连 github.com，**推荐在网页上配置**：
+如服务器无法直连 github.com，**在网页上配最省事**：
 后台 →「系统设置」→「更新源」→「连接方式」选「gh-proxy.com」→ 测试连接 → 保存。
 该配置存在 `php/data/update_source.json`，只对在线更新生效。
 

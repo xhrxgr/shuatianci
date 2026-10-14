@@ -187,10 +187,11 @@ function git_failure_hint($err, $result = null)
         || stripos($err, 'Permission denied') !== false && stripos($err, '.git') !== false) {
         return '网络与凭据都没问题——仓库目录的写入权限不足，'
             . 'git 已经连上远端但无法把代码写进 .git 目录。'
-            . '通常是用 root 账号执行过 git 命令，导致文件属主变成了 root，'
-            . '而 PHP 运行时用户没有写权限。请在服务器上执行：'
-            . 'chown -R www:www 项目目录（www 换成 PHP 的实际运行用户）。'
-            . '注意：以后更新请用 sudo -u www git ...，不要直接用 root 跑 git。';
+            . '原因是文件属主变成了 root，而 PHP 运行时用户没有写权限。'
+            . '解决办法：在项目目录执行 bash update.sh，'
+            . '它会让 git 全程以 PHP 的运行用户身份执行，属主从头到尾正确，'
+            . '不需要 sudo 也不需要 chown。'
+            . '（服务器只能用 root 登录也没关系，脚本已处理。）';
     }
 
     // git 报「仓库不存在 / 拒绝访问」——公开仓库不该出现，出现就是地址写错
@@ -377,9 +378,11 @@ function git_objects_not_writable()
 
     return '无法把代码写入仓库目录，在线更新会失败（git fetch 会报 '
         . '"insufficient permission for adding an object"）。'
-        . '通常是因为用 root 账号执行过 git 命令，导致文件属主变成了 root，'
-        . '而 PHP 运行时用户没有写权限。'
-        . '在服务器上执行 chown -R www:www 项目目录（www 换成 PHP 的实际运行用户）即可解决。'
+        . '原因是文件属主变成了 root，而 PHP 运行时用户没有写权限'
+        . '（多半是用 root 直接跑过 git 命令）。'
+        . '解决办法：在项目目录执行 bash update.sh ——'
+        . '它会让 git 全程以 PHP 的运行用户身份执行，属主从头到尾正确，'
+        . '不需要 sudo 也不需要 chown（root 直接跑即可）。'
         . '（当前状态：' . $info . '）';
 }
 
