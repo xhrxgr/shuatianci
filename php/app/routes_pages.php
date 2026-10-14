@@ -185,7 +185,9 @@ function page_paper_practice($id)
 {
     $user = current_user();
     $row = query_one(
-        'SELECT p.*, (SELECT COUNT(*) FROM questions q WHERE q.paper_id = p.id) AS question_count
+        'SELECT p.*,
+                (SELECT COUNT(*) FROM paper_items i WHERE i.paper_id = p.id) AS question_count,
+                (SELECT b.name FROM blueprints b WHERE b.id = p.blueprint_id) AS blueprint_name
            FROM papers p WHERE p.id = ?',
         [$id]
     );
@@ -195,13 +197,25 @@ function page_paper_practice($id)
         return;
     }
 
-    // 直接取该卷题目并合并个人进度，省掉前端再请求一次
+    // 直接取该卷题目并合并个人进度，省掉前端再请求一次。
+    // 顺序与分篇以 paper_items 为准（第 2 期起）：生成的虚拟卷只登记在成员表里，
+    // 按 questions.paper_id 查会得到空卷；原始卷两边数据一致，改这里不影响它。
     $questionRows = query(
-        'SELECT id, original_sentence, blanks_json, source, paper_id, schema_version, created_at
-           FROM questions WHERE paper_id = ? ORDER BY created_at, id',
+        'SELECT q.id, q.original_sentence, q.blanks_json, q.source, q.paper_id,
+                q.schema_version, q.created_at, i.section_no, i.order_no
+           FROM paper_items i
+           JOIN questions q ON q.id = i.question_id
+          WHERE i.paper_id = ?
+          ORDER BY i.section_no, i.order_no',
         [$id]
     );
-    $questions = merge_progress(array_map('map_question', $questionRows), $user);
+    $questions = [];
+    foreach ($questionRows as $row) {
+        $question = map_question($row);
+        $question['sectionNo'] = (int) $row['section_no'];
+        $questions[] = $question;
+    }
+    $questions = merge_progress($questions, $user);
 
     render_page('paper-practice', [
         'currentPath' => '/papers',

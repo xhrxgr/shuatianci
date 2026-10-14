@@ -43,7 +43,12 @@
         >
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="min-w-0 flex-1">
-              <h3 class="text-sm font-semibold text-ink"><?= e($paper['name']) ?></h3>
+              <h3 class="flex flex-wrap items-center gap-2 text-sm font-semibold text-ink">
+                <span><?= e($paper['name']) ?></span>
+                <?php if (($paper['kind'] ?? 'original') === 'generated'): ?>
+                  <span class="rounded-full border border-line bg-surface-alt px-2 py-0.5 text-xs font-normal text-muted">虚拟卷</span>
+                <?php endif; ?>
+              </h3>
               <p class="mt-1 text-xs text-muted">
                 <?php if (!empty($paper['examDate'])): ?>
                   <span class="text-ink"><?= e($paper['examDate']) ?></span> ·
@@ -51,6 +56,9 @@
                   未设考试日期 ·
                 <?php endif; ?>
                 共 <?= e($paper['questionCount']) ?> 道题
+                <?php if (!empty($paper['blueprintName'])): ?>
+                  · 由「<?= e($paper['blueprintName']) ?>」抽出
+                <?php endif; ?>
               </p>
               <?php if (!empty($paper['note'])): ?>
                 <p class="mt-2 text-xs leading-5 text-muted"><?= e($paper['note']) ?></p>

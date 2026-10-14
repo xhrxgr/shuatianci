@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS papers (
   name          TEXT NOT NULL,                 -- 试卷名，同名即同卷
   exam_date     TEXT,                          -- 考试日期 YYYY-MM-DD，可空
   note          TEXT NOT NULL DEFAULT '',      -- 备注
+  kind          TEXT NOT NULL DEFAULT 'original', -- original=录入的真实卷 / generated=蓝图生成的虚拟卷
+  blueprint_id  TEXT,                          -- generated 卷的来源蓝图（original 恒为 NULL）
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -64,6 +66,7 @@ CREATE TABLE IF NOT EXISTS questions (
   publish_status   TEXT NOT NULL DEFAULT 'published', -- 发布状态（刻意不叫 status：那张 user_progress.status 是每人自己的掌握状态，同名会在 JOIN 里产生歧义）
   owner_id         INTEGER,                   -- 录入人，可空（系统导入/种子）
   content_hash     TEXT,                      -- 内容摘要，用于判断内容是否真的变了
+  blank_count      INTEGER,                   -- 空格数的索引副本（抽取 SQL 直接用它比较，避免 json_array_length 全表解析）
   created_at       TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at       TEXT
 );
@@ -92,6 +95,60 @@ CREATE TABLE IF NOT EXISTS question_tags (
 );
 
 CREATE INDEX IF NOT EXISTS idx_qtags_tag ON question_tags(tag_id);
+
+-- ------------------------------------------------------------
+-- 题级提示词类型投影（从 blanks_json 里各空的 hintType 取并集）
+--
+-- 与 question_tags 同理由：组卷蓝图要按「给动词 / 给名词 / …」抽题，
+-- 而 hintType 存在 JSON 里没法索引。存成关系表后抽取 SQL 完全走索引，
+-- 不必让 json_each 逐行解析 blanks_json（几万题时那是秒级的开销）。
+-- 权威数据仍是 blanks_json，本表可随时重建。
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS question_hints (
+  question_id TEXT NOT NULL,
+  hint_type   TEXT NOT NULL,                  -- 给动词 / 给名词 / 给形容词 / 给副词 / 无提示词
+  PRIMARY KEY (question_id, hint_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_qhints_type ON question_hints(hint_type);
+
+-- ------------------------------------------------------------
+-- 组卷蓝图（题库重构第 2 期）
+--
+-- 蓝图 = 一份可复用的抽题规则：条件（标签 / 提示词 / 空格数 / 来源）
+-- + 数量 + 分篇布局 + 题量不足时的降级步骤。
+-- 规则是纯数据（rules_json），抽题引擎读它生成虚拟卷。
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS blueprints (
+  id           TEXT PRIMARY KEY,               -- 如 bp_xxxx
+  name         TEXT NOT NULL,
+  description  TEXT,
+  rules_json   TEXT NOT NULL,                  -- 见 docs/BANK_REFACTOR_DESIGN.md §4.3
+  created_by   INTEGER,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at   TEXT
+);
+
+-- 与 papers 同名索引同理：应用层的 409 挡不住并发创建两条同名蓝图，
+-- 列表页会因此出现两行「同名但不同规则」而无法区分
+CREATE UNIQUE INDEX IF NOT EXISTS idx_blueprints_name ON blueprints(name);
+
+-- ------------------------------------------------------------
+-- 蓝图使用记录（谁在什么时候用它组了哪套卷、有没有降级）
+-- 一次生成 = 一行；重新生成 = 再记一行，历史不覆盖。
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS blueprint_runs (
+  id           TEXT PRIMARY KEY,
+  blueprint_id TEXT NOT NULL,
+  paper_id     TEXT,                           -- 生成到哪张卷；删卷时随之删除本条
+  result_json  TEXT,                           -- 抽了多少题、每篇几道、放宽了什么
+  relaxed      INTEGER NOT NULL DEFAULT 0,     -- 是否触发过降级
+  created_by   INTEGER,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_bruns_bp ON blueprint_runs(blueprint_id);
+CREATE INDEX IF NOT EXISTS idx_bruns_paper ON blueprint_runs(paper_id);
 
 -- ------------------------------------------------------------
 -- 试卷成员表（把 questions.paper_id 的单值关系升级为多对多）

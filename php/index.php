@@ -24,6 +24,8 @@ require_once __DIR__ . '/app/routes_records.php';
 require_once __DIR__ . '/app/routes_bank.php';
 // 试卷路由在题库之后加载：routes_bank 写入题目时会调用 ensure_paper_by_name
 require_once __DIR__ . '/app/routes_papers.php';
+// 组卷蓝图依赖试卷路由（生成卷的读写都用 map_paper / paper_items 相关函数）
+require_once __DIR__ . '/app/routes_blueprints.php';
 require_once __DIR__ . '/app/routes_admin.php';
 require_once __DIR__ . '/app/routes_system.php';
 require_once __DIR__ . '/app/routes_pages.php';
@@ -91,6 +93,22 @@ function route_table()
         ['GET', '/papers/{id}', 'route_papers_show'],
         ['PUT', '/papers/{id}', 'route_papers_update'],
         ['DELETE', '/papers/{id}', 'route_papers_delete'],
+
+        // 组卷蓝图（题库重构第 2 期）。
+        // /blueprints/preview 必须排在 /blueprints/{id} 之前：
+        // 路由按顺序匹配，{id} 会把 preview 当成一个蓝图 id 吃掉
+        ['GET', '/blueprints', 'route_blueprints_list'],
+        ['POST', '/blueprints', 'route_blueprints_create'],
+        ['POST', '/blueprints/preview', 'route_blueprints_preview'],
+        ['GET', '/blueprints/{id}', 'route_blueprints_show'],
+        ['PUT', '/blueprints/{id}', 'route_blueprints_update'],
+        ['DELETE', '/blueprints/{id}', 'route_blueprints_delete'],
+        ['POST', '/blueprints/{id}/generate', 'route_blueprints_generate'],
+
+        // 生成卷的成员（按篇读写、换题）
+        ['GET', '/papers/{id}/items', 'route_paper_items_get'],
+        ['PUT', '/papers/{id}/items', 'route_paper_items_put'],
+        ['POST', '/papers/{id}/items/replace', 'route_paper_item_replace'],
 
         // 系统维护
         ['GET', '/system/version', 'route_system_version'],

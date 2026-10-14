@@ -59,8 +59,19 @@ function migrate_schema()
         db()->exec("ALTER TABLE papers ADD COLUMN note TEXT NOT NULL DEFAULT ''");
     }
 
+    // papers.kind / blueprint_id：第 2 期起区分「原始卷」与「蓝图生成的虚拟卷」。
+    // kind 的默认值 original 让**存量卷**自动落在正确的一侧（它们都是真实录入的卷），
+    // 不需要额外的回填语句。
+    if (!in_array('kind', $paperColumns, true)) {
+        db()->exec("ALTER TABLE papers ADD COLUMN kind TEXT NOT NULL DEFAULT 'original'");
+    }
+    if (!in_array('blueprint_id', $paperColumns, true)) {
+        db()->exec('ALTER TABLE papers ADD COLUMN blueprint_id TEXT');
+    }
+
     migrate_question_columns();
     migrate_backfill_projection();
+    migrate_backfill_phase2();
 }
 
 /**
@@ -88,6 +99,10 @@ function migrate_question_columns()
         'owner_id' => 'ALTER TABLE questions ADD COLUMN owner_id INTEGER',
         'content_hash' => 'ALTER TABLE questions ADD COLUMN content_hash TEXT',
         'updated_at' => 'ALTER TABLE questions ADD COLUMN updated_at TEXT',
+        // 第 2 期：空格数的索引副本。抽取 SQL 用 blank_count BETWEEN ? AND ?
+        // 直接走列（有类型亲和性），不再写 json_array_length(blanks_json) ——
+        // 那是个计算表达式，既不能走索引，还得让 SQLite 逐行解析 JSON。
+        'blank_count' => 'ALTER TABLE questions ADD COLUMN blank_count INTEGER',
     ];
 
     $changed = false;
@@ -102,6 +117,7 @@ function migrate_question_columns()
     // 一起做，是因为老库上那条语句会先执行并失败（列还不存在）而被跳过。
     db()->exec('CREATE INDEX IF NOT EXISTS idx_questions_fingerprint ON questions(fingerprint)');
     db()->exec('CREATE INDEX IF NOT EXISTS idx_questions_publish ON questions(publish_status)');
+    db()->exec('CREATE INDEX IF NOT EXISTS idx_questions_blank_count ON questions(blank_count)');
 
     return $changed;
 }
@@ -218,6 +234,63 @@ function migrate_backfill_projection()
 }
 
 /**
+ * 一次性回填（第 2 期）：把 blanks_json 投影到 blank_count 与 question_hints。
+ *
+ * 结构与 migrate_backfill_projection 完全一致（分批 + 游标 + 收尾自愈），
+ * 原因是同一个：这个函数在每个请求的 bootstrap 里跑，几万题一次做完
+ * 会让更新后的第一次请求超时。
+ *
+ * 与第 1 期分开两套游标：第 1 期的 done 标记在升级前就已写好，
+ * 复用它的标记会导致本期回填直接被跳过。
+ */
+function migrate_backfill_phase2()
+{
+    if (query_one('SELECT config_value FROM app_config WHERE config_key = ?', ['backfill_v360_done']) !== null) {
+        return false;
+    }
+
+    $batch = 200;
+
+    $cursor = (string) (query_one(
+        'SELECT config_value FROM app_config WHERE config_key = ?',
+        ['backfill_v360_cursor']
+    )['config_value'] ?? '');
+
+    $rows = query(
+        'SELECT id, blanks_json FROM questions WHERE id > ? ORDER BY id LIMIT ' . $batch,
+        [$cursor]
+    );
+
+    if (count($rows) > 0) {
+        db_transaction(function () use ($rows) {
+            foreach ($rows as $row) {
+                $blanks = json_decode((string) $row['blanks_json'], true);
+                $blanks = is_array($blanks) ? $blanks : [];
+                sync_question_hints((string) $row['id'], $blanks);
+            }
+        });
+
+        write_config('backfill_v360_cursor', (string) $rows[count($rows) - 1]['id']);
+
+        if (count($rows) === $batch) {
+            return true;
+        }
+    }
+
+    // 收尾前自愈扫描：抓「在标记写入之后才进来的行」。
+    // 只查 NULL：回填过的行 blank_count 必然非 NULL（哪怕是 0），
+    // 所以这一趟之后不会再有 NULL，不会反复循环。
+    $missing = query('SELECT id FROM questions WHERE blank_count IS NULL LIMIT 1');
+    if (count($missing) > 0) {
+        write_config('backfill_v360_cursor', '');
+        return true;
+    }
+
+    write_config('backfill_v360_done', '1');
+    return true;
+}
+
+/**
  * 写一条 app_config（存在则更新）。
  */
 function write_config($key, $value)
@@ -264,7 +337,56 @@ function sync_question_tags($questionId, array $blanks)
 }
 
 /**
+ * 重建一道题的提示词投影与空格数副本（第 2 期）。
+ *
+ * 两件事一起做，因为它们同源（都来自 blanks_json），拆开调用只会让
+ * 写入侧更容易漏掉一处：
+ * - blank_count：空格数，抽取 SQL 直接比较这一列
+ * - question_hints：该题出现过哪些 hintType（并集，去重）
+ *
+ * 与 sync_question_tags 一样是「整体重建」：权威数据永远是 blanks_json，
+ * 本函数只是把它投影成可索引的形态，不做增量比对。
+ *
+ * blank_count 用条件更新（值不同才写）：回填与重复调用都不产生无谓的磁盘写，
+ * 而「值相同就不写」不影响自愈扫描 —— 那边查的是 IS NULL。
+ *
+ * @param string $questionId
+ * @param array  $blanks
+ */
+function sync_question_hints($questionId, array $blanks)
+{
+    $count = count($blanks);
+    execute(
+        'UPDATE questions SET blank_count = ? WHERE id = ? AND (blank_count IS NULL OR blank_count <> ?)',
+        [$count, $questionId, $count]
+    );
+
+    execute('DELETE FROM question_hints WHERE question_id = ?', [$questionId]);
+
+    $types = [];
+    foreach ($blanks as $blank) {
+        if (!is_array($blank)) {
+            continue;
+        }
+        $type = isset($blank['hintType']) ? trim((string) $blank['hintType']) : '';
+        if ($type !== '') {
+            $types[$type] = true;
+        }
+    }
+    foreach (array_keys($types) as $type) {
+        execute(
+            'INSERT OR IGNORE INTO question_hints (question_id, hint_type) VALUES (?, ?)',
+            [$questionId, $type]
+        );
+    }
+}
+
+/**
  * 维护一道题的试卷归属（paper_items 投影）。
+ *
+ * ⚠️ 只动**原始卷**的归属行。虚拟卷（kind='generated'）的成员是
+ * 抽题时写下的快照，不该被「题目改卷」「改卷名」这类操作波及 ——
+ * 否则老师刚调整好的一套虚拟卷，会因为他整理原始卷归属而被悄悄掏空。
  *
  * @param string      $questionId
  * @param string|null $paperId    null 或空串表示移出所有卷
@@ -272,7 +394,12 @@ function sync_question_tags($questionId, array $blanks)
  */
 function sync_question_paper_item($questionId, $paperId, $orderNo = null)
 {
-    execute('DELETE FROM paper_items WHERE question_id = ?', [$questionId]);
+    execute(
+        "DELETE FROM paper_items
+          WHERE question_id = ?
+            AND paper_id IN (SELECT id FROM papers WHERE kind = 'original')",
+        [$questionId]
+    );
 
     $paperId = $paperId === null ? '' : trim((string) $paperId);
     if ($paperId === '') {
@@ -525,6 +652,9 @@ function seed_if_needed()
 
                 // 题级标签投影（种子题的标签同样要能筛）
                 sync_question_tags((string) $question['id'], $blanks);
+                // 提示词投影与空格数副本（第 2 期）同理：种子题漏了它们，
+                // 按「给动词」「空格数」抽题的蓝图就会抽不到内置示例题
+                sync_question_hints((string) $question['id'], $blanks);
             }
             seed_mark_done();
         });

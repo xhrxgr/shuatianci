@@ -170,9 +170,27 @@ export const api = {
   createPaper: (paper) => request("/papers", { method: "POST", body: paper }),
   updatePaper: (id, patch) => request(`/papers/${id}`, { method: "PUT", body: patch }),
   deletePaper: (id) => request(`/papers/${id}`, { method: "DELETE" }),
-  /** 批量把题目移到某张卷；paperId 传 null 表示移出 */
+  /** 批量把题目移到某张卷；paperId 传 null 表示移出。仅原始卷可用 */
   setQuestionsPaper: (questionIds, paperId) =>
     request("/questions/paper", { method: "PUT", body: { questionIds, paperId } }),
+
+  /* 组卷蓝图（第 2 期） */
+  listBlueprints: () => request("/blueprints"),
+  createBlueprint: (payload) => request("/blueprints", { method: "POST", body: payload }),
+  getBlueprint: (id) => request(`/blueprints/${id}`),
+  updateBlueprint: (id, patch) => request(`/blueprints/${id}`, { method: "PUT", body: patch }),
+  deleteBlueprint: (id) => request(`/blueprints/${id}`, { method: "DELETE" }),
+  /** 试抽：传 blueprintId（用已保存的规则）或 rules（未保存的草稿），不落库 */
+  previewBlueprint: (payload) => request("/blueprints/preview", { method: "POST", body: payload }),
+  /** 生成 / 重新生成虚拟卷。paperId 给了表示重新生成到那张卷 */
+  generateBlueprint: (id, payload = {}) =>
+    request(`/blueprints/${id}/generate`, { method: "POST", body: payload }),
+
+  /* 虚拟卷成员 */
+  getPaperItems: (id) => request(`/papers/${id}/items`),
+  savePaperItems: (id, sections) => request(`/papers/${id}/items`, { method: "PUT", body: { sections } }),
+  replacePaperItem: (id, questionId) =>
+    request(`/papers/${id}/items/replace`, { method: "POST", body: { questionId } }),
 
   /* 系统维护 */
   systemVersion: () => request("/system/version"),

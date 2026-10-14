@@ -467,6 +467,7 @@ function route_questions_create()
             // 投影表跟着清空：题目都没了，投影留着就是孤儿行，
             // 会让「按标签筛题」命中不存在的题目
             execute('DELETE FROM question_tags');
+            execute('DELETE FROM question_hints');
             execute('DELETE FROM paper_items');
         }
 
@@ -521,9 +522,10 @@ function route_questions_create()
                 ]
             );
 
-            // 同步投影（题级标签 + 试卷成员），与题目同事务：
+            // 同步投影（题级标签 + 提示词 + 空格数 + 试卷成员），与题目同事务：
             // 否则会出现「筛得到但点不开」的幽灵题
             sync_question_tags($id, $blanks);
+            sync_question_hints($id, $blanks);
             sync_question_paper_item($id, $paperId);
             $added++;
         }
@@ -574,8 +576,14 @@ function route_questions_update($id)
             $values[] = null;
         } else {
             $paperId = (string) $paperId;
-            if (query_one('SELECT id FROM papers WHERE id = ?', [$paperId]) === null) {
+            $target = query_one('SELECT id, kind, name FROM papers WHERE id = ?', [$paperId]);
+            if ($target === null) {
                 throw http_error(404, '试卷不存在或已删除');
+            }
+            // 与 route_questions_set_paper 同一道闸：虚拟卷的成员由蓝图抽题产出、
+            // 会被「重新生成」整体覆盖。走这条路径把题塞进去，等于让它悄悄消失
+            if ((string) ($target['kind'] ?? 'original') === 'generated') {
+                throw http_error(400, '「' . (string) $target['name'] . '」是蓝图生成的虚拟卷，请在组卷蓝图的成员编辑里调整，或直接重新生成。');
             }
             $fields[] = 'paper_id = ?';
             $values[] = $paperId;
@@ -635,14 +643,23 @@ function route_questions_update($id)
         $values[] = $id;
         $r = execute('UPDATE questions SET ' . implode(', ', $fields) . ' WHERE id = ?', $values);
 
-        // 投影重建：标签整体重算（增删空位会改变并集）
+        // 投影重建：标签整体重算（增删空位会改变并集），
+        // 提示词与空格数副本同理
         sync_question_tags($id, $finalBlanks);
+        sync_question_hints($id, $finalBlanks);
 
         $paperRow = query_one('SELECT paper_id FROM questions WHERE id = ?', [$id]);
         $finalPaper = $paperRow === null ? null : $paperRow['paper_id'];
         // 卷没变就保持原题序；换卷则追加到新卷末尾
         //（沿用旧序号会和目标卷里已有的题撞号）
-        $prev = query_one('SELECT paper_id, order_no FROM paper_items WHERE question_id = ?', [$id]);
+        // 只看原始卷的归属行：虚拟卷的成员是快照，不参与这里的顺序判断
+        $prev = query_one(
+            "SELECT i.paper_id, i.order_no
+               FROM paper_items i
+               JOIN papers p ON p.id = i.paper_id
+              WHERE i.question_id = ? AND p.kind = 'original'",
+            [$id]
+        );
         $keepOrder = ($prev !== null && (string) $prev['paper_id'] === (string) $finalPaper)
             ? (int) $prev['order_no']
             : null;
@@ -669,6 +686,7 @@ function route_questions_delete($id)
             return $r;
         }
         execute('DELETE FROM question_tags WHERE question_id = ?', [$id]);
+        execute('DELETE FROM question_hints WHERE question_id = ?', [$id]);
         execute('DELETE FROM paper_items WHERE question_id = ?', [$id]);
         return $r;
     });
@@ -828,16 +846,25 @@ function route_tags_save()
 function route_bank_reset()
 {
     require_permission('question:write');
-    db_transaction(function () {
+    $cleared = db_transaction(function () {
         // 先解绑再删卷：papers 留着会变成永久空卷——
         // 题目都删了，卷子列表里还挂着一堆 0 题的记录
         execute('UPDATE questions SET paper_id = NULL WHERE paper_id IS NOT NULL');
+
+        // 蓝图也要一并清掉：蓝图条件里引用标签 id，标签清空后
+        // 规则全部失效，留着只会让用户以为「还能按它抽题」
+        $blueprints = execute('DELETE FROM blueprints');
+
         execute('DELETE FROM papers');
         execute('DELETE FROM questions');
         execute('DELETE FROM tags');
         // 投影表一并清空，否则清库后「按标签筛题」「按卷看题」还会命中已删数据
         execute('DELETE FROM question_tags');
+        execute('DELETE FROM question_hints');
         execute('DELETE FROM paper_items');
+        execute('DELETE FROM blueprint_runs');
+
+        return (int) $blueprints['changes'];
     });
-    json_response(['ok' => true]);
+    json_response(['ok' => true, 'clearedBlueprints' => $cleared]);
 }

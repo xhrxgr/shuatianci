@@ -1,7 +1,7 @@
 # 高考英语短文填空穷举题库
 
 服务端题库 + 刷题 + 错题本，支持多设备、多用户。
-当前版本 **3.5.0**（更新记录见 [CHANGELOG.md](CHANGELOG.md)）。
+当前版本 **3.6.0**（更新记录见 [CHANGELOG.md](CHANGELOG.md)）。
 
 ## 快速导航
 
@@ -10,6 +10,9 @@
 | 本地跑起来 | [快速开始](#快速开始本地开发) |
 | 部署到服务器 | [部署到服务器](#部署到服务器) |
 | 从旧版本升级 | [从 2.x / 1.x 升级](#从旧版本升级) |
+| 按蓝图组卷 | [功能 · 组卷蓝图](#功能) |
+| 题库重构的设计与分期 | [docs/BANK_REFACTOR_DESIGN.md](docs/BANK_REFACTOR_DESIGN.md) |
+| 查重指纹规则 | [docs/FINGERPRINT_SPEC.md](docs/FINGERPRINT_SPEC.md) |
 | Node 换成 PHP 的细节 | [docs/PHP_MIGRATION.md](docs/PHP_MIGRATION.md) |
 | 发版流程 | [发版](#发版) |
 
@@ -39,6 +42,16 @@
 - AI 助手：一键复制提示词（已内置当前全部标签 id）。把**卷子封面图与题目页图一起**发给 AI，它按句切分成独立题目、并从封面读出试卷来源，一并写进返回的 JSON；粘回后校验并**增量入库**
 - 题库导入导出：打包导出全部数据，导入时自动做版本升级，支持恢复内置示例数据
 - 标签管理：重命名、改色、启用停用、新增子标签
+
+**组卷蓝图**（仅管理员）
+
+- 蓝图 = 可复用的抽题规则：条件（标签 / 提示词类型 / 空格数 / 来源）+ 数量 + 分篇布局（篇数、每篇题数、是否按知识点聚篇）
+- **试抽预览**：不落库就能看到能抽到几道、各篇什么题
+- **题量不足时自动降级**：按顺序逐步放宽条件，并明确说明放宽了什么；一道题都抽不到时不给空卷，直接说原因
+- **生成虚拟卷**：按蓝图抽题写成一张卷（带「虚拟卷」标识），学生可直接整卷做
+- **成员编辑**：删题、调顺序、换到别的篇、换一题（服务端按蓝图条件挑替身）
+- **一键重新生成**：按蓝图当前规则重抽，整体替换成员
+- 生成卷与原始数据完全隔离：不改动题目归属、不受改卷名与移动题目的影响
 
 **账号与统计**
 
@@ -507,19 +520,30 @@ cp php/data/backups/<选一个备份>.db php/data/english_quiz.db
 
 ## 数据结构
 
-九张表，建表见 `php/sql/schema.sql`。**后端首次运行自动建表**，无需手动导入：
+十五张表，建表见 `php/sql/schema.sql`。**后端首次运行自动建表**，无需手动导入：
 
 | 表 | 用途 |
 |---|---|
 | `users` | 用户，`role` 区分角色，`password_hash` 存 bcrypt 哈希 |
-| `questions` | 题库，`blanks_json` 存各空配置的 JSON 文本 |
+| `papers` | 试卷，`kind` 区分原始录入（`original`）与蓝图生成的虚拟卷（`generated`） |
+| `questions` | 题库，`blanks_json` 存各空配置的 JSON 文本，另存指纹、发布状态、录入人等派生列 |
 | `tags` | 知识点标签，两级结构，`parent_id` 为 NULL 表示顶级分类 |
+| `question_tags` | 题级标签投影（从 `blanks_json` 各空 tagIds 取并集），可索引副本 |
+| `question_hints` | 题级提示词类型投影，抽题按标签筛同理 |
+| `paper_items` | 卷成员（一题可属于多张卷），带 `order_no` 与 `section_no`（短文填空的分篇） |
+| `blueprints` | 组卷蓝图，规则是纯数据（`rules_json`） |
+| `blueprint_runs` | 蓝图使用记录，一次生成一行，记录抽题结果与是否降级 |
 | `user_progress` | 学习进度，`user_id + question_id` 唯一，记录个人错次与掌握状态 |
 | `practice_records` | 做题记录，删用户级联删除 |
 | `user_favorites` | 试卷收藏，`user_id + source` 唯一 |
 | `user_marks` | 小题标记，含类型与备注 |
 | `sessions` | 服务端会话，退出登录即删除，改密 / 禁用 / 重置密码会强制其他设备下线 |
-| `app_config` | 系统配置（记录种子数据是否已导入） |
+| `app_config` | 系统配置（记录种子数据是否已导入、回填游标等） |
+
+`question_tags` / `question_hints` / `paper_items` 是**投影表**：权威数据分别是
+`blanks_json`、`blanks_json`、`questions.paper_id`，它们只是可索引的副本，
+可随时由权威数据重建。分篇信息只在 `paper_items.section_no` 上 ——
+蓝图生成的卷按篇抽题，只记顺序会拼出跨篇混排的卷子。
 
 题目的错次与掌握状态**不在** `questions` 表上，改由 `user_progress` 承载，因此每个人的错题本相互独立。
 

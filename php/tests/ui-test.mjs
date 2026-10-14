@@ -463,8 +463,9 @@ async function main() {
 
   /* ---------------- 题库管理 ---------------- */
   await page.goto(`${BASE}/admin`, { waitUntil: "networkidle" });
-  // v3.0.22 起为 6 个页签（新增「试卷」「题目列表」）
-  check("题库管理有 6 个页签", (await page.locator("[data-admin-tab]").count()) === 6);
+  // v3.0.22 起为 6 个页签（「试卷」「题目列表」）；v3.6.0 加了「组卷蓝图」共 7 个
+  check("题库管理有 7 个页签", (await page.locator("[data-admin-tab]").count()) === 7);
+  check("含「组卷蓝图」页签", (await page.locator('[data-admin-tab="blueprints"]').count()) === 1);
   check("默认停在手动精录", await page.locator('[data-admin-panel="manual"]').isVisible());
   check("其它页签默认收起", !(await page.locator('[data-admin-panel="import"]').isVisible()));
 

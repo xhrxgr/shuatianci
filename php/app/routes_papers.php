@@ -29,6 +29,9 @@ function next_paper_id()
  * questionCount 为题目数；doneCount 只在登录时有意义（游客进度存浏览器），
  * 由调用方按需补。
  *
+ * kind 区分「原始卷」（真实录入）与「生成的卷」（蓝图抽题产出）；
+ * 生成卷带 blueprintId / blueprintName 以便「一键重新生成」。
+ *
  * @param array $row
  * @return array
  */
@@ -40,6 +43,9 @@ function map_paper(array $row)
         'name' => (string) ($row['name'] ?? ''),
         'examDate' => !empty($row['exam_date']) ? (string) $row['exam_date'] : null,
         'note' => (string) ($row['note'] ?? ''),
+        'kind' => !empty($row['kind']) ? (string) $row['kind'] : 'original',
+        'blueprintId' => !empty($row['blueprint_id']) ? (string) $row['blueprint_id'] : null,
+        'blueprintName' => !empty($row['blueprint_name']) ? (string) $row['blueprint_name'] : null,
         'questionCount' => isset($row['question_count']) ? (int) $row['question_count'] : 0,
         'doneCount' => isset($row['done_count']) ? (int) $row['done_count'] : 0,
         'createdAt' => to_iso($row['created_at'] ?? null),
@@ -67,6 +73,9 @@ function current_user_id_or_null()
  * 排序：有考试日期的按日期倒序在前，没有日期的按创建时间倒序在后。
  * 这样「刚考完的卷」总在最上面，首页不必再单独排一次。
  *
+ * 题数与完成数都**以 paper_items 为准**（第 2 期起）：
+ * 生成的虚拟卷不进 questions.paper_id，只查那里会把它算成 0 题。
+ *
  * @return array
  */
 function query_papers_with_counts()
@@ -77,8 +86,8 @@ function query_papers_with_counts()
     if ($userId !== null) {
         $doneSelect = '(SELECT COUNT(DISTINCT r.question_id)
                           FROM practice_records r
-                          JOIN questions q2 ON q2.id = r.question_id
-                         WHERE q2.paper_id = p.id AND r.user_id = ?) AS done_count';
+                         WHERE r.user_id = ?
+                           AND r.question_id IN (SELECT question_id FROM paper_items WHERE paper_id = p.id)) AS done_count';
     }
 
     $params = [];
@@ -88,7 +97,8 @@ function query_papers_with_counts()
 
     return query(
         "SELECT p.*,
-                (SELECT COUNT(*) FROM questions q WHERE q.paper_id = p.id) AS question_count,
+                (SELECT COUNT(*) FROM paper_items i WHERE i.paper_id = p.id) AS question_count,
+                (SELECT b.name FROM blueprints b WHERE b.id = p.blueprint_id) AS blueprint_name,
                 $doneSelect
            FROM papers p
           ORDER BY (p.exam_date IS NULL) ASC, p.exam_date DESC, p.created_at DESC",
@@ -121,6 +131,10 @@ function find_paper_by_name($name)
  * 题目写入时统一走这里：source 为空时不会建卷，
  * 避免产生大量「手动录入」这种无意义的卷子。
  *
+ * 名字撞上一张**虚拟卷**（蓝图生成的）时拒绝而不是塞进去：
+ * 虚拟卷的成员由抽题产生、会被「重新生成」整体覆盖，
+ * 把真实录入的题塞进去，下一次重新生成就找不回来了。
+ *
  * @param string $name
  * @return string 试卷 id
  */
@@ -130,14 +144,17 @@ function ensure_paper_by_name($name)
     if ($name === '') {
         return '';
     }
-    $existing = find_paper_by_name($name);
+    $existing = query_one('SELECT id, kind FROM papers WHERE name = ?', [$name]);
     if ($existing !== null) {
-        return $existing;
+        if ((string) ($existing['kind'] ?? 'original') === 'generated') {
+            throw http_error(400, '试卷名「' . $name . '」已被一张虚拟卷占用。请换一个来源名，或先删除那张虚拟卷。');
+        }
+        return (string) $existing['id'];
     }
     $id = next_paper_id();
     execute(
-        "INSERT INTO papers (id, name, exam_date, note, created_at, updated_at)
-         VALUES (?, ?, NULL, '', datetime('now'), datetime('now'))",
+        "INSERT INTO papers (id, name, exam_date, note, kind, created_at, updated_at)
+         VALUES (?, ?, NULL, '', 'original', datetime('now'), datetime('now'))",
         [$id, $name]
     );
     return $id;
@@ -154,11 +171,18 @@ function route_papers_list()
     json_response(['papers' => $papers]);
 }
 
-/** GET /api/papers/{id} —— 单张试卷与它的题目 */
+/**
+ * GET /api/papers/{id} —— 单张试卷与它的题目。
+ *
+ * 题目以 paper_items 为准（含排序与分篇）：
+ * 生成的虚拟卷只有成员表里有归属，查 questions.paper_id 会得到空卷。
+ */
 function route_papers_show($id)
 {
     $row = query_one(
-        'SELECT p.*, (SELECT COUNT(*) FROM questions q WHERE q.paper_id = p.id) AS question_count
+        'SELECT p.*,
+                (SELECT COUNT(*) FROM paper_items i WHERE i.paper_id = p.id) AS question_count,
+                (SELECT b.name FROM blueprints b WHERE b.id = p.blueprint_id) AS blueprint_name
            FROM papers p WHERE p.id = ?',
         [$id]
     );
@@ -166,17 +190,22 @@ function route_papers_show($id)
         throw http_error(404, '试卷不存在或已删除');
     }
 
-    // 列必须与 map_question 期望的一致：少一列就会触发 PHP 警告，
-    // 而警告会被输出到 JSON 响应前面，前端 JSON.parse 直接失败
-    $questions = query(
-        'SELECT id, original_sentence, blanks_json, source, paper_id, schema_version, created_at
-           FROM questions WHERE paper_id = ? ORDER BY created_at, id',
-        [$id]
-    );
+    $sections = paper_items_grouped($id);
+
+    // questions 保持一层扁平列表（老调用方按数组用），顺序与分篇一致
+    $questions = [];
+    foreach ($sections as $section) {
+        foreach ($section['items'] as $item) {
+            if ($item['question'] !== null) {
+                $questions[] = $item['question'];
+            }
+        }
+    }
 
     json_response([
         'paper' => map_paper($row),
-        'questions' => array_map('map_question', $questions),
+        'questions' => $questions,
+        'sections' => $sections,
     ]);
 }
 
@@ -257,8 +286,9 @@ function route_papers_update($id)
 
     $newName = array_key_exists('name', $body) ? trim((string) $body['name']) : null;
     $oldName = (string) $row['name'];
+    $isGenerated = (string) ($row['kind'] ?? 'original') === 'generated';
 
-    db_transaction(function () use ($fields, $params, $newName, $oldName, $id) {
+    db_transaction(function () use ($fields, $params, $newName, $oldName, $id, $isGenerated) {
         execute('UPDATE papers SET ' . implode(', ', $fields) . ' WHERE id = ?', $params);
 
         // 改了卷名要把 questions.source 一起改。
@@ -270,7 +300,10 @@ function route_papers_update($id)
         //
         // 之所以能这么修：source 是 papers.name 的冗余副本，两者本应一致。
         // 长期方案是让 source 单一真源化（见 docs/BANK_REFACTOR_DESIGN.md）。
-        if ($newName !== null && $newName !== $oldName) {
+        //
+        // 虚拟卷除外：它的成员来自抽题，题目各自保留真实的 source（来自哪张原卷），
+        // 改名不该、也不会影响它们（生成卷成员从不写 questions.paper_id）
+        if (!$isGenerated && $newName !== null && $newName !== $oldName) {
             execute('UPDATE questions SET source = ? WHERE paper_id = ?', [$newName, $id]);
 
             // 收藏也要跟着走。这里用「先补后删」而不是直接 UPDATE：
@@ -288,8 +321,12 @@ function route_papers_update($id)
     json_response([
         'ok' => true,
         'paper' => map_paper(query_one(
-            'SELECT p.*, (SELECT COUNT(*) FROM questions q WHERE q.paper_id = p.id) AS question_count
-               FROM papers p WHERE p.id = ?',
+            // 题数以成员表为准（与列表、详情页同一口径）：
+            // 虚拟卷只登记在 paper_items，按 paper_id 数会恒为 0
+            "SELECT p.*,
+                    (SELECT COUNT(*) FROM paper_items i WHERE i.paper_id = p.id) AS question_count,
+                    (SELECT b.name FROM blueprints b WHERE b.id = p.blueprint_id) AS blueprint_name
+               FROM papers p WHERE p.id = ?",
             [$id]
         )),
     ]);
@@ -300,27 +337,37 @@ function route_papers_update($id)
  *
  * 题目本身不删：只把 paper_id 置空，题目回到「未归卷」状态。
  * 删卷不删题——一套卷子重复录入或归错了组，不该连带丢掉题目本身。
+ *
+ * 生成的虚拟卷另有一条：它的 member 关系只存在于 paper_items，
+ * 从不写 questions.paper_id，所以删它不会（也不该）动题目的原始归属。
  */
 function route_papers_delete($id)
 {
     require_permission('question:write');
 
-    $row = query_one('SELECT id FROM papers WHERE id = ?', [$id]);
+    $row = query_one('SELECT id, kind FROM papers WHERE id = ?', [$id]);
     if ($row === null) {
         throw http_error(404, '试卷不存在或已删除');
     }
+    $isGenerated = (string) ($row['kind'] ?? 'original') === 'generated';
 
     // 把 UPDATE 的实际影响行数带出事务：
     // 原来直接写死 0，前端会据此提示「已解绑 0 道题」，与事实不符
-    $unlinked = db_transaction(function () use ($id) {
-        $result = execute('UPDATE questions SET paper_id = NULL WHERE paper_id = ?', [$id]);
+    $unlinked = db_transaction(function () use ($id, $isGenerated) {
+        $unlinked = 0;
+        if (!$isGenerated) {
+            $result = execute('UPDATE questions SET paper_id = NULL WHERE paper_id = ?', [$id]);
+            $unlinked = (int) $result['changes'];
+        }
+        // 生成记录随卷删除：它记的是「这张卷是哪次生成的」，卷没了记录就没意义
+        execute('DELETE FROM blueprint_runs WHERE paper_id = ?', [$id]);
         execute('DELETE FROM papers WHERE id = ?', [$id]);
         // 成员投影一并清掉：卷都没了，留着这些行会让「按卷看题」查出已删的卷
         execute('DELETE FROM paper_items WHERE paper_id = ?', [$id]);
-        return (int) $result['changes'];
+        return $unlinked;
     });
 
-    json_response(['ok' => true, 'unlinkedQuestions' => $unlinked]);
+    json_response(['ok' => true, 'unlinkedQuestions' => $unlinked, 'wasGenerated' => $isGenerated]);
 }
 
 /**
@@ -341,8 +388,14 @@ function route_questions_set_paper()
     $paperId = null;
     if (!empty($body['paperId'])) {
         $paperId = (string) $body['paperId'];
-        if (query_one('SELECT id FROM papers WHERE id = ?', [$paperId]) === null) {
+        $target = query_one('SELECT id, kind, name FROM papers WHERE id = ?', [$paperId]);
+        if ($target === null) {
             throw http_error(404, '试卷不存在或已删除');
+        }
+        // 虚拟卷的成员由蓝图抽题产出、会被「重新生成」整体覆盖，
+        // 手工把题塞进去等于下次重新生成就丢——直接拒绝并说清去哪改
+        if ((string) ($target['kind'] ?? 'original') === 'generated') {
+            throw http_error(400, '「' . (string) $target['name'] . '」是蓝图生成的虚拟卷，请在组卷蓝图的成员编辑里调整，或直接重新生成。');
         }
     }
 

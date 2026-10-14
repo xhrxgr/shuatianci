@@ -20,6 +20,8 @@ import { setupAiAssistant } from "./admin-ai.js";
 // 试卷管理与题目编辑：拆成独立模块，因为那部分只服务两个页签，
 // 与精录、导入、标签管理没有共用状态，混在一个文件里会互相干扰
 import { setupPaperAndQuestionPanels } from "./admin-papers.js";
+// 组卷蓝图与虚拟卷成员编辑（第 2 期）
+import { setupBlueprintPanels } from "./admin-blueprints.js";
 
 const BLANK_PLACEHOLDER = "______";
 const HINT_TYPES = ["给动词", "给名词", "给形容词", "给副词", "无提示词"];
@@ -1114,6 +1116,15 @@ function init() {
   const flash = takeFlash();
   if (flash) showNotice(flash);
 
+  // 生成虚拟卷 / 保存成员这些操作会带 hash 刷新（见 admin-blueprints.js 的
+  // reloadKeepingTab）：刷新后按 hash 落在原页签，不让用户自己切回来。
+  // 放在 setup* 之前，页签内容此时都已渲染，切换即可见
+  const hashTab = (window.location.hash || "").replace("#", "");
+  if (hashTab !== "") {
+    const tabButton = document.querySelector(`[data-admin-tab="${hashTab}"]`);
+    if (tabButton) tabButton.click();
+  }
+
   // 初始化 AI 助手（模块自带幂等，重复调用只更新字典与回调）
   setupAiAssistant({
     tagDictionary,
@@ -1126,6 +1137,9 @@ function init() {
 
   // 试卷与题目列表（独立模块，只服务这两个页签）
   setupPaperAndQuestionPanels(adminContext);
+
+  // 组卷蓝图与虚拟卷成员（列表在首次切换到该页签时才拉取）
+  setupBlueprintPanels(adminContext);
 }
 
 init();

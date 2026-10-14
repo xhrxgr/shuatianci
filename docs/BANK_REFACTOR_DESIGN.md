@@ -773,7 +773,7 @@ A 与 B 的表结构差异很小，但 B 需要一个「修订只写不读」的
 - 「预览显示已存在」与「入库时判为新增」永远一致（指纹口径校验用例通过）
 - 改卷名后收藏仍可用；删标签后无悬空 id；存量题目全部可正常刷
 
-### 第 2 期：组卷蓝图与抽题
+### 第 2 期：组卷蓝图与抽题 —— ✅ **已实施（v3.6.0）**
 
 **范围**
 - 建 `blueprints` / `blueprint_runs`
@@ -1043,6 +1043,50 @@ db_transaction(function () {
 
 **下一期**：第 2 期（组卷蓝图与抽题）。届时需要先定「蓝图规则 UI 的复杂度」
 —— 条件构造器做到什么程度，以及分篇布局是自动推导还是手工指定。
+
+---
+
+### 第 2 期（v3.6.0，2026-10-15）—— 已交付
+
+**数据层**
+
+| 改动 | 说明 |
+|---|---|
+| `papers.kind` | `original` / `generated`，存量卷靠列默认值自动落在 original 一侧，不需要回填 |
+| `papers.blueprint_id` | 生成卷记来源蓝图，删蓝图时置空（卷保留） |
+| `questions.blank_count` | 空格数索引副本，抽取 SQL 直接比较列（不解析 `blanks_json`） |
+| `question_hints(question_id, hint_type)` | 提示词类型投影，与 `question_tags` 同理由 |
+| `blueprints` | 蓝图（规则纯数据 `rules_json`） |
+| `blueprint_runs` | 一次生成一行，记录抽了多少、缺哪些、是否降级；历史不覆盖 |
+
+**接口**
+
+| 接口 | 说明 |
+|---|---|
+| `GET/POST /api/blueprints` | 列表（含生成次数与最近一张卷）/ 新建 |
+| `GET/PUT/DELETE /api/blueprints/{id}` | 详情（含 runs）/ 更新 / 删除（保留已生成的卷） |
+| `POST /api/blueprints/preview` | 试抽：可传 `blueprintId` 或未保存的 `rules` 草稿 |
+| `POST /api/blueprints/{id}/generate` | 生成；带 `paperId` 表示重新生成到那张卷 |
+| `GET/PUT /api/papers/{id}/items` | 生成卷成员（按篇读 / 整体替换），只对 `generated` 开放 |
+| `POST /api/papers/{id}/items/replace` | 换一题：蓝图条件 → 被换题标签 → 全库随机，三级兜底 |
+
+**与设计文档的差异（落地时的取舍）**
+
+1. **§4.3 的抽取 SQL 改为全索引版**：文档里给出的 SQL 含
+   `EXISTS (json_each(...))`，并备注「先把 blank_count 与 question_hints 投影出来」。
+   实际落地时把投影补齐了（`blank_count` 列 + `question_hints` 表），
+   最终 SQL 不碰 JSON。
+2. **`publishStatus` 由引擎自动补齐**：规则里没写时引擎追加
+   `publishStatus = ['published']`，抽题永远不把草稿混进学生的卷子
+   （与决策 D2 同一立场；显式传别的状态仍然被尊重）。
+3. **分篇的 groupBy='tag' 用「主标签 = 题级标签里 id 最小的那个」**：
+   没有按「最热标签」算，那样分篇结果不可复现。大知识点切块 + 贪心
+   放进当前题数最少的篇，保证篇内均衡。
+4. **成员编辑只开放给生成卷**：原始卷的成员由 `questions.paper_id` 派生，
+   绕过它改 `paper_items` 会让两份数据打架，所以接口直接拒绝并说明去哪改。
+
+**下一期**：第 3 期（修订历史与审核发布），需要先定角色升级的影响面
+（`teacher` / `reviewer` 会让所有写接口都过一遍权限）。
 
 ---
 

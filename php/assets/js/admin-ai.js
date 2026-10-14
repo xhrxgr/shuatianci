@@ -837,6 +837,18 @@ let previewSeq = 0;
  * 同一个 textarea 内容复用同一个 Promise，这个竞态就不存在了。
  */
 let previewInFlight = null;
+
+/**
+ * 最近一次**已完成**的构建：{ text, ok, list }。
+ *
+ * 光有 previewInFlight 还不够，实测能复现这条漏网路径（本地服务快时必现）：
+ *   粘贴 → 立刻点导入 → 构建 A 启动（几毫秒就跑完，previewInFlight 清空）
+ *   → 防抖 400ms 后触发构建 B，此时 A 早已结束，合并不生效
+ *   → B 把 previewSeq 加一 → A 的 await 回来被判为过期 → 静默返回
+ * 结果同样是「点了没反应」。这里记住「这段文本已经构建过、结果是什么」，
+ * 同一段文本再问直接复用，不重复发请求、也不产生新的一代。
+ */
+let lastBuild = null;
 /** 是否刚复制过提示词 */
 let copied = false;
 
@@ -936,8 +948,23 @@ async function handleParse() {
     // 不做二次解析（二次解析在引号修复等路径上可能得到不同结果）。
     if (previewSourceText !== els.textarea.value || previewList.length === 0) {
       const built = await buildPreview();
-      if (!built.ok) return;
+      if (!built.ok) {
+        // 构建没成功。JSON 坏 / 校验没过这两种，预览区已经写了原因；
+        // 剩下一种没有提示（期间内容又变了一次，这次构建被更新的一次取代），
+        // 补一句话，避免用户面对「点了没反应」干瞪眼
+        if (els.error && els.error.hidden) {
+          renderError("内容刚刚发生了变化，请确认预览后重新点一次「确认导入」。");
+        }
+        return;
+      }
     }
+
+    // 卷名预读同样挂在 400ms 防抖上（见 onPaste）。粘贴后立刻点导入时
+    // 它还没跑，runImport 就会因为卷名框为空而报「请先填写试卷名」——
+    // 用户视角是「JSON 里明明写了 source，却说我没填」。这里补读一次。
+    // previewPaperName 只在「输入框空着或还是上次自动填的值」时才写入，
+    // 用户自己改过的名字不会被冲掉
+    previewPaperName();
 
     // 有字典里没有的标签时先停下来让用户确认创建，
     // 否则会带着未知 tagId 入库（服务端不校验 tagIds，会留下悬空引用）
@@ -1226,13 +1253,47 @@ function buildPreview() {
     return previewInFlight.promise;
   }
 
+  // 这段文本已经构建完成过：直接复用那一次的结果。
+  // 防抖定时器在快速点击后才触发时走的就是这里（见 lastBuild 的注释）。
+  // 命中时必须把**模块状态一并恢复**（previewList/previewChecks/… 都在
+  // buildPreviewInner 里赋值）：导入成功后这些状态被清空过，
+  // 只返回 list 会让预览区空白、点导入时提示「一道题都没勾选」——
+  // 用户刚粘了有效 JSON，看到的却是这句
+  if (lastBuild !== null && lastBuild.text === raw && lastBuild.ok) {
+    previewList = [...lastBuild.list];
+    previewVerdicts = [...lastBuild.verdicts];
+    previewChecks = [...lastBuild.checks];
+    pendingRepairs = [...lastBuild.repairs];
+    missingTags = [...lastBuild.missingTags];
+    previewSourceText = raw;
+    renderMissing();
+    renderPreview();
+    return Promise.resolve({ ok: true, list: previewList });
+  }
+
   const entry = { text: raw, promise: null };
-  entry.promise = buildPreviewInner(raw).finally(() => {
-    // 只清理自己这一条，避免把后来者的记录误删
-    if (previewInFlight === entry) {
-      previewInFlight = null;
-    }
-  });
+  entry.promise = buildPreviewInner(raw)
+    .then((result) => {
+      // 无论 ok 与否都记住：ok=false 的那次重跑也只会得到同样的结论，
+      // 不如直接复用（错误信息已经渲染在预览区了）。
+      // 这里读的是 buildPreviewInner 刚刚赋好的模块级状态，所以一并快照下来
+      lastBuild = {
+        text: raw,
+        ok: result.ok,
+        list: result.list,
+        verdicts: [...previewVerdicts],
+        checks: [...previewChecks],
+        repairs: [...pendingRepairs],
+        missingTags: [...missingTags],
+      };
+      return result;
+    })
+    .finally(() => {
+      // 只清理自己这一条，避免把后来者的记录误删
+      if (previewInFlight === entry) {
+        previewInFlight = null;
+      }
+    });
   previewInFlight = entry;
   return entry.promise;
 }

@@ -15,6 +15,7 @@ $adminTabs = [
     ['id' => 'manual', 'label' => '手动精录'],
     ['id' => 'ai', 'label' => 'AI 助手'],
     ['id' => 'papers', 'label' => '试卷'],
+    ['id' => 'blueprints', 'label' => '组卷蓝图'],
     ['id' => 'questions', 'label' => '题目列表'],
     ['id' => 'import', 'label' => '导入导出'],
     ['id' => 'tags', 'label' => '标签管理'],
@@ -158,7 +159,12 @@ $adminTabs = [
               <li class="rounded-lg border border-line bg-surface-alt p-4" data-paper-manage="<?= e($paper['id']) ?>">
                 <div class="flex flex-wrap items-start justify-between gap-3">
                   <div class="min-w-0 flex-1">
-                    <p class="text-sm font-medium text-ink"><?= e($paper['name']) ?></p>
+                    <p class="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
+                      <span><?= e($paper['name']) ?></span>
+                      <?php if (($paper['kind'] ?? 'original') === 'generated'): ?>
+                        <span class="rounded-full border border-line bg-surface px-2 py-0.5 text-xs text-muted">虚拟卷</span>
+                      <?php endif; ?>
+                    </p>
                     <p class="mt-1 text-xs text-faint">
                       <?php if (!empty($paper['examDate'])): ?>
                         <?= e($paper['examDate']) ?> ·
@@ -166,12 +172,30 @@ $adminTabs = [
                         未设日期 ·
                       <?php endif; ?>
                       共 <?= e($paper['questionCount']) ?> 道题
+                      <?php if (!empty($paper['blueprintName'])): ?>
+                        · 来自蓝图「<?= e($paper['blueprintName']) ?>」
+                      <?php endif; ?>
                     </p>
                     <?php if (!empty($paper['note'])): ?>
                       <p class="mt-1 text-xs text-muted"><?= e($paper['note']) ?></p>
                     <?php endif; ?>
                   </div>
-                  <div class="flex gap-2">
+                  <div class="flex flex-wrap gap-2">
+                    <?php if (($paper['kind'] ?? 'original') === 'generated'): ?>
+                      <button
+                        type="button"
+                        data-action="edit-paper-items"
+                        data-id="<?= e($paper['id']) ?>"
+                        class="min-h-11 rounded-lg border border-line bg-surface px-3 py-2 text-xs text-muted transition hover:bg-surface"
+                      >成员</button>
+                      <button
+                        type="button"
+                        data-action="regenerate-paper"
+                        data-id="<?= e($paper['id']) ?>"
+                        data-name="<?= e($paper['name']) ?>"
+                        class="min-h-11 rounded-lg border border-line bg-surface px-3 py-2 text-xs text-muted transition hover:bg-surface"
+                      >重新生成</button>
+                    <?php endif; ?>
                     <button
                       type="button"
                       data-action="edit-paper"
@@ -248,6 +272,47 @@ $adminTabs = [
     </div>
   </div>
 
+  <!-- ============ 组卷蓝图 ============ -->
+  <div data-admin-panel="blueprints" hidden>
+    <div class="space-y-5">
+      <section class="rounded-xl border border-line bg-surface p-5">
+        <h3 class="mb-1 text-sm font-semibold text-ink">组卷蓝图</h3>
+        <p class="text-xs text-muted">
+          蓝图是一份可复用的抽题规则：条件（标签 / 提示词 / 空格数 / 来源）+ 数量 + 分篇布局。
+          按它生成「虚拟卷」，学生可以直接做；题量不足时会按你设定的顺序逐步放宽条件，并明确告诉你放宽了什么。
+        </p>
+      </section>
+
+      <div class="grid gap-5 xl:grid-cols-[300px_1fr]">
+        <!-- 左：蓝图列表 -->
+        <section class="rounded-xl border border-line bg-surface p-4">
+          <div class="flex items-center justify-between gap-2">
+            <h3 class="text-sm font-semibold text-ink">全部蓝图</h3>
+            <button
+              type="button"
+              id="blueprint-new"
+              class="min-h-9 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-on-primary transition hover:bg-primary-hover"
+            >新建蓝图</button>
+          </div>
+          <ul id="blueprint-list" class="mt-3 space-y-2"></ul>
+          <!-- 注意用 hidden 属性而不是 Tailwind 的 hidden 类：
+               类里的 display:none 不会被 JS 的 el.hidden = false 覆盖 -->
+          <p id="blueprint-list-empty" hidden class="py-8 text-center text-xs text-faint">
+            还没有蓝图。点「新建蓝图」开始配置第一份抽题规则。
+          </p>
+          <p id="blueprint-list-loading" class="py-8 text-center text-xs text-faint">加载中…</p>
+        </section>
+
+        <!-- 右：蓝图编辑器（由 admin-blueprints.js 渲染） -->
+        <section class="rounded-xl border border-line bg-surface p-5" id="blueprint-editor">
+          <div class="py-12 text-center text-sm text-faint" id="blueprint-editor-empty">
+            从左侧选择一份蓝图进行编辑，或点「新建蓝图」。
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
   <!-- ============ 题目列表 ============ -->
   <div data-admin-panel="questions" hidden>
     <div class="space-y-5">
@@ -266,7 +331,9 @@ $adminTabs = [
             >
               <option value="">全部试卷</option>
               <?php foreach ($papers as $paper): ?>
-                <option value="<?= e($paper['id']) ?>"><?= e($paper['name']) ?></option>
+                <!-- 筛选可以包含虚拟卷（按卷筛题走成员表，虚拟卷同样能筛），
+                     但要说清楚，免得用户以为那是真实录入的卷 -->
+                <option value="<?= e($paper['id']) ?>"><?= e($paper['name']) ?><?= ($paper['kind'] ?? 'original') === 'generated' ? '（虚拟卷）' : '' ?></option>
               <?php endforeach; ?>
               <option value="__none__">未归卷</option>
             </select>
@@ -281,8 +348,11 @@ $adminTabs = [
             class="min-h-11 rounded-lg border border-line bg-surface px-3 py-2 text-xs text-muted outline-none transition focus:border-primary"
           >
             <option value="">移到试卷…</option>
-            <?php foreach ($papers as $paper): ?>
-              <option value="<?= e($paper['id']) ?>"><?= e($paper['name']) ?></option>
+            <?php // 虚拟卷不进这个列表：批量移动走 questions.paper_id，把题移进虚拟卷会污染原始归属
+            foreach ($papers as $paper): ?>
+              <?php if (($paper['kind'] ?? 'original') !== 'generated'): ?>
+                <option value="<?= e($paper['id']) ?>"><?= e($paper['name']) ?></option>
+              <?php endif; ?>
             <?php endforeach; ?>
             <option value="__none__">移出试卷（不归卷）</option>
           </select>
@@ -472,6 +542,47 @@ $adminTabs = [
   </div>
 </div>
 
+<!-- ============ 虚拟卷成员编辑弹窗 ============ -->
+<dialog
+  id="paper-items-dialog"
+  class="w-[min(52rem,calc(100vw-2rem))] rounded-2xl border border-line bg-surface p-0 text-ink backdrop:bg-black/40"
+>
+  <div class="flex max-h-[85vh] flex-col">
+    <div class="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
+      <div class="min-w-0">
+        <h3 class="text-sm font-semibold text-ink">编辑卷成员</h3>
+        <p class="mt-0.5 truncate text-xs text-faint" id="paper-items-subtitle"></p>
+      </div>
+      <button
+        type="button"
+        data-action="close-paper-items"
+        aria-label="关闭"
+        class="min-h-11 rounded-lg border border-line px-3 py-2 text-xs text-muted transition hover:bg-surface-alt"
+      >关闭</button>
+    </div>
+
+    <div class="flex-1 space-y-4 overflow-y-auto px-5 py-4" id="paper-items-body">
+      <p class="py-8 text-center text-sm text-faint">加载中…</p>
+    </div>
+
+    <div class="flex flex-wrap items-center justify-between gap-2 border-t border-line px-5 py-4">
+      <p class="text-xs text-faint" id="paper-items-summary"></p>
+      <div class="flex gap-2">
+        <button
+          type="button"
+          data-action="close-paper-items"
+          class="min-h-11 rounded-lg border border-line px-5 py-2 text-sm text-muted transition hover:bg-surface-alt"
+        >取消</button>
+        <button
+          type="button"
+          data-action="save-paper-items"
+          class="min-h-11 rounded-lg bg-primary px-6 py-2 text-sm font-medium text-on-primary transition hover:bg-primary-hover"
+        >保存成员</button>
+      </div>
+    </div>
+  </div>
+</dialog>
+
 <!-- ============ 题目编辑弹窗 ============ -->
 <dialog
   id="question-edit-dialog"
@@ -516,8 +627,11 @@ $adminTabs = [
           class="min-h-11 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-muted outline-none transition focus:border-primary"
         >
           <option value="__none__">未归卷</option>
-          <?php foreach ($papers as $paper): ?>
-            <option value="<?= e($paper['id']) ?>"><?= e($paper['name']) ?></option>
+          <?php // 编辑题目时不给选虚拟卷：那会写 questions.paper_id，把题的主卷指到一张快照卷上
+          foreach ($papers as $paper): ?>
+            <?php if (($paper['kind'] ?? 'original') !== 'generated'): ?>
+              <option value="<?= e($paper['id']) ?>"><?= e($paper['name']) ?></option>
+            <?php endif; ?>
           <?php endforeach; ?>
         </select>
       </div>
