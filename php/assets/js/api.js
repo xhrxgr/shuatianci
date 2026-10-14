@@ -153,6 +153,12 @@ export const api = {
   pushQuestion: (question) => request("/questions", { method: "POST", body: { question } }),
   pushQuestions: (questions, replaceAll = false) =>
     request("/questions", { method: "POST", body: { questions, replaceAll } }),
+  /**
+   * 录入前查重。返回每题的判定（new / duplicate / diff）与匹配到的库内题目。
+   * 刻意放在服务端：指纹规则必须与入库时用的完全一致。
+   */
+  checkDuplicates: (questions) =>
+    request("/questions/check-duplicates", { method: "POST", body: { questions } }),
   updateQuestion: (id, patch) => request(`/questions/${id}`, { method: "PUT", body: patch }),
   deleteQuestion: (id) => request(`/questions/${id}`, { method: "DELETE" }),
   saveTags: (tagDictionary) => request("/tags", { method: "PUT", body: { tagDictionary } }),

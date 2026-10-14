@@ -102,6 +102,26 @@ foreach ($aiTags as $aiTag) {
       <p class="mt-2 text-xs leading-5 text-muted" id="admin-ai-paper-hint"></p>
     </div>
 
+    <!-- 预览区：粘贴即渲染，用户点导入前就能完整看到这批题长什么样、哪几道库里已有 -->
+    <div class="mt-4" id="admin-ai-preview" hidden>
+      <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <p class="text-xs leading-5 text-muted" id="admin-ai-preview-summary"></p>
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            id="admin-ai-select-all"
+            class="min-h-9 rounded-lg border border-line px-3 py-1.5 text-xs text-muted transition hover:bg-surface-alt"
+          >全选</button>
+          <button
+            type="button"
+            id="admin-ai-select-none"
+            class="min-h-9 rounded-lg border border-line px-3 py-1.5 text-xs text-muted transition hover:bg-surface-alt"
+          >全不选</button>
+        </div>
+      </div>
+      <div class="max-h-[32rem] space-y-2 overflow-y-auto rounded-lg border border-line bg-surface-alt p-3" id="admin-ai-preview-list"></div>
+    </div>
+
     <div class="mt-4 rounded-lg border border-warning/40 bg-warning-soft p-4" id="admin-ai-missing" hidden>
       <p class="mb-2 text-xs text-warning">
         检测到当前标签字典里没有的标签：<span id="admin-ai-missing-list"></span>

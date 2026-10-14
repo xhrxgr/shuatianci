@@ -159,10 +159,14 @@ async function main() {
   const first = questions.data.questions[0];
   check(
     // paperId 是 v3.0.22 起新增：题目归属的试卷，未归卷时为 null
-    "题目字段结构完整（id/originalSentence/blanks/source/paperId/schemaVersion/status/wrongCount/createdAt）",
+    // 字段集刻意用「精确相等」断言，任何字段被误删都会立刻暴露。
+    // v3.5.0 新增的 4 个字段（fingerprint / publishStatus / ownerId / updatedAt）
+    // 是有意的向后兼容扩展 —— publishStatus 刻意不叫 status，
+    // 因为 status 已被「每个用户自己的掌握状态」占用
+    "题目字段结构完整（含 v3.5.0 新增的指纹与发布状态）",
     first &&
       Object.keys(first).sort().join(",") ===
-        "blanks,createdAt,id,originalSentence,paperId,schemaVersion,source,status,wrongCount",
+        "blanks,createdAt,fingerprint,id,originalSentence,ownerId,paperId,publishStatus,schemaVersion,source,status,updatedAt,wrongCount",
     Object.keys(first || {})
   );
   record("questions", questions.status, { count: questions.data.questions?.length, first });

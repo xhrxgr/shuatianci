@@ -60,14 +60,58 @@ CREATE TABLE IF NOT EXISTS questions (
   source           TEXT NOT NULL DEFAULT '手动录入',
   paper_id         TEXT,                      -- 所属试卷，可空（未归卷的题）
   schema_version   INTEGER NOT NULL DEFAULT 1,-- 数据结构版本，用于迁移
-  created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+  fingerprint      TEXT,                      -- 原句归一化指纹，去重与查重用的辅助索引
+  publish_status   TEXT NOT NULL DEFAULT 'published', -- 发布状态（刻意不叫 status：那张 user_progress.status 是每人自己的掌握状态，同名会在 JOIN 里产生歧义）
+  owner_id         INTEGER,                   -- 录入人，可空（系统导入/种子）
+  content_hash     TEXT,                      -- 内容摘要，用于判断内容是否真的变了
+  created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at       TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_questions_source ON questions(source);
 CREATE INDEX IF NOT EXISTS idx_questions_created ON questions(created_at);
+CREATE INDEX IF NOT EXISTS idx_questions_fingerprint ON questions(fingerprint);
+CREATE INDEX IF NOT EXISTS idx_questions_publish ON questions(publish_status);
 -- idx_questions_paper 不在这里建：老库的 questions 表还没有 paper_id 列，
 -- 对不存在的列建索引会直接报错。它由 app/schema.php 的 migrate_schema()
 -- 在 ALTER TABLE 加完列之后再建。
+
+-- ------------------------------------------------------------
+-- 题级标签投影（从 blanks_json 里各空的 tagIds 取并集自动生成）
+--
+-- 为什么要单独一张表：tagIds 存在 JSON 里，SQL 无法索引与 JOIN，
+-- 于是所有按标签筛题、按标签统计都得把整库拉到浏览器遍历。
+-- 这张表是「同一份数据的可索引投影」——权威数据仍是 blanks_json，
+-- 本表可随时由它重建。
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS question_tags (
+  question_id TEXT NOT NULL,
+  tag_id      TEXT NOT NULL,
+  origin      TEXT NOT NULL DEFAULT 'auto',   -- auto=由空标签并集投影（当前只有这一种）
+  PRIMARY KEY (question_id, tag_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_qtags_tag ON question_tags(tag_id);
+
+-- ------------------------------------------------------------
+-- 试卷成员表（把 questions.paper_id 的单值关系升级为多对多）
+--
+-- 目的：同一道题可以同时属于原始卷与蓝图生成的虚拟卷。
+-- section_no 是短文填空特有的维度——一套卷是 3~4 篇文章、每篇 5 个空，
+-- 只记 order_no 会让组卷拼出「跨篇混排」的卷子，学生没法练。
+--
+-- 过渡期与 questions.paper_id 双写：paper_id 保留为「主卷」快捷字段，
+-- 本表是完整的归属关系。将来确认无引用后再停用 paper_id。
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS paper_items (
+  paper_id    TEXT NOT NULL,
+  question_id TEXT NOT NULL,
+  order_no    INTEGER NOT NULL DEFAULT 0,     -- 第几题
+  section_no  INTEGER NOT NULL DEFAULT 1,     -- 第几篇（短文填空的分篇）
+  PRIMARY KEY (paper_id, question_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pitems_order ON paper_items(paper_id, order_no);
 
 -- ------------------------------------------------------------
 -- 标签表（两级结构：parent_id 为 NULL 表示顶级分类）

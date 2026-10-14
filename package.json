@@ -1,7 +1,7 @@
 {
   "name": "english-quiz",
   "private": true,
-  "version": "3.4.1",
+  "version": "3.5.0",
   "type": "module",
   "description": "高考英语短文填空穷举题库（纯 PHP 后端 + 原生 JS 前端，运行时不需要 Node）",
   "scripts": {
@@ -9,7 +9,11 @@
     "build:css": "tailwindcss -i styles/app.css -o php/assets/app.css --minify",
     "test:api": "node php/tests/api-test.mjs http://127.0.0.1:9001",
     "test:upgrade": "php php/tests/upgrade-test.php",
-    "test:ui": "node php/tests/ui-test.mjs http://127.0.0.1:9002"
+    "test:ui": "node php/tests/ui-test.mjs http://127.0.0.1:9002",
+    "test:fingerprint": "node php/tests/fingerprint-js-test.mjs",
+    "test:migration": "php php/tests/migration-test.php",
+    "test:phase1": "node php/tests/bank-phase1-test.mjs http://127.0.0.1:9001",
+    "test:ai-preview": "node php/tests/ai-preview-test.mjs http://127.0.0.1:9002"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3"

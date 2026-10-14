@@ -254,7 +254,36 @@ function route_papers_update($id)
 
     $fields[] = "updated_at = datetime('now')";
     $params[] = $id;
-    execute('UPDATE papers SET ' . implode(', ', $fields) . ' WHERE id = ?', $params);
+
+    $newName = array_key_exists('name', $body) ? trim((string) $body['name']) : null;
+    $oldName = (string) $row['name'];
+
+    db_transaction(function () use ($fields, $params, $newName, $oldName, $id) {
+        execute('UPDATE papers SET ' . implode(', ', $fields) . ' WHERE id = ?', $params);
+
+        // 改了卷名要把 questions.source 一起改。
+        //
+        // 不改的后果（线上真实发生过）：
+        //   ① 收藏是按 source 文本关联的，改名后收藏全部「失效」——题数显示 0，数据还在；
+        //   ② 之后再用旧卷名录入，ensure_paper_by_name 找不到这张卷（名字已变），
+        //      于是新建一张语义重复的卷，同一场考试裂成两张。
+        //
+        // 之所以能这么修：source 是 papers.name 的冗余副本，两者本应一致。
+        // 长期方案是让 source 单一真源化（见 docs/BANK_REFACTOR_DESIGN.md）。
+        if ($newName !== null && $newName !== $oldName) {
+            execute('UPDATE questions SET source = ? WHERE paper_id = ?', [$newName, $id]);
+
+            // 收藏也要跟着走。这里用「先补后删」而不是直接 UPDATE：
+            // user_favorites 有 UNIQUE(user_id, source)，若某个用户同时收藏了
+            // 旧名与新名，直接 UPDATE 会撞唯一约束导致整个改名失败。
+            execute(
+                'INSERT OR IGNORE INTO user_favorites (user_id, source, note, created_at)
+                 SELECT user_id, ?, note, created_at FROM user_favorites WHERE source = ?',
+                [$newName, $oldName]
+            );
+            execute('DELETE FROM user_favorites WHERE source = ?', [$oldName]);
+        }
+    });
 
     json_response([
         'ok' => true,
@@ -286,6 +315,8 @@ function route_papers_delete($id)
     $unlinked = db_transaction(function () use ($id) {
         $result = execute('UPDATE questions SET paper_id = NULL WHERE paper_id = ?', [$id]);
         execute('DELETE FROM papers WHERE id = ?', [$id]);
+        // 成员投影一并清掉：卷都没了，留着这些行会让「按卷看题」查出已删的卷
+        execute('DELETE FROM paper_items WHERE paper_id = ?', [$id]);
         return (int) $result['changes'];
     });
 
@@ -323,6 +354,10 @@ function route_questions_set_paper()
             }
             $result = execute('UPDATE questions SET paper_id = ? WHERE id = ?', [$paperId, $id]);
             $moved += $result['changes'];
+
+            // 投影跟随。目标卷里的顺序保持调用顺序：先到的排前面，
+            // 这样「按选择顺序归卷」得到的就是用户看到的选择顺序
+            sync_question_paper_item($id, $paperId);
         }
     });
 

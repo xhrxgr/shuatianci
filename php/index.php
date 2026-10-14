@@ -73,6 +73,9 @@ function route_table()
         // 题库与标签
         ['GET', '/questions', 'route_questions_list'],
         ['POST', '/questions', 'route_questions_create'],
+        // 查重必须在任何 /questions/{id} 形式的路由之前注册：
+        // 路由是按顺序匹配的，{id} 会把 check-duplicates 当成一个 id 吃掉
+        ['POST', '/questions/check-duplicates', 'route_questions_check_duplicates'],
         // 具体路径必须排在 /questions/{id} 之前：
         // 路由是顺序匹配的，占位符在前会把 paper 当成题目 id 吞掉
         ['PUT', '/questions/paper', 'route_questions_set_paper'],

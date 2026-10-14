@@ -23,6 +23,9 @@
  */
 
 import { notifyError, clearFeedback } from "./feedback.js";
+// 查重要走服务端：指纹规则必须与入库时用的那份完全一致，
+// 前端自己算一旦与后端漂移，就会出现「预览说已存在、入库却变成新增」
+import { api } from "./api.js";
 
 
 /** 全部合法的提示词类型 */
@@ -806,6 +809,34 @@ let pendingRepairs = [];
 let missingTags = [];
 /** 解析中标志，防止连点重复入库 */
 let submitting = false;
+
+/**
+ * 预览状态（决策 D5）。
+ *
+ * 粘贴后立刻解析并渲染，用户在点「确认导入」之前就能完整看到这批题：
+ * 原句、每空的答案/提示词/标签/解析，以及哪几道库里已经有了。
+ *
+ * previewItems 是**当前要导入的题目**（只含被勾选的），
+ * 由 renderPreview 依据 checks 重新算出来，不是解析结果的直接副本。
+ */
+let previewList = [];      // 解析 + 修复后的题目（全量，含未勾选的）
+let previewVerdicts = [];  // 每题查重结果
+let previewChecks = [];    // 每题是否勾选
+/** 预览对应的 textarea 内容，用于判断「粘贴后立刻点导入」时预览是否还是新的 */
+let previewSourceText = null;
+/** 并发保护：慢的查重响应不能覆盖新一次粘贴的结果 */
+let previewSeq = 0;
+
+/**
+ * 在途的预览构建（同一段文本只跑一次）。
+ *
+ * 不合并会踩这个坑：粘贴后防抖 400ms 触发的构建，与「粘贴后立刻点导入」
+ * 触发的构建会**并发**跑。后启动的把 previewSeq 加一，先启动的那次回来
+ * 发现序号变了就静默返回 {ok:false} —— 于是提交路径什么也没做：
+ * 既不导入也不报错，用户看到的是「点了没反应」。
+ * 同一个 textarea 内容复用同一个 Promise，这个竞态就不存在了。
+ */
+let previewInFlight = null;
 /** 是否刚复制过提示词 */
 let copied = false;
 
@@ -891,8 +922,6 @@ async function handleParse() {
   if (submitting) return;
 
   clearError();
-  missingTags = [];
-  renderMissing();
 
   if (els.textarea.value.trim() === "") {
     renderError("请先粘贴 AI 返回的 JSON。");
@@ -902,7 +931,28 @@ async function handleParse() {
   submitting = true;
   renderSubmitting();
   try {
-    parseAndImport();
+    // 粘贴后立刻点「确认导入」时，防抖的预览可能还没跑。
+    // 这里补一次，保证「所见即所导」——导入的永远是与预览同一份数据，
+    // 不做二次解析（二次解析在引号修复等路径上可能得到不同结果）。
+    if (previewSourceText !== els.textarea.value || previewList.length === 0) {
+      const built = await buildPreview();
+      if (!built.ok) return;
+    }
+
+    // 有字典里没有的标签时先停下来让用户确认创建，
+    // 否则会带着未知 tagId 入库（服务端不校验 tagIds，会留下悬空引用）
+    //
+    // 必须同时给出文字提示：只显示上面的标签块，用户会以为「点了没反应」
+    if (missingTags.length > 0) {
+      renderMissing();
+      renderError(
+        `有 ${missingTags.length} 个标签不在字典里：${missingTags.join("、")}。` +
+          "点上面的「创建这些标签」建好后再导一次。"
+      );
+      return;
+    }
+
+    await runImport(previewList, previewChecks);
   } finally {
     submitting = false;
     renderSubmitting();
@@ -1022,6 +1072,288 @@ function splitBatch(parsed) {
 }
 
 /** 简易防抖：粘贴大段 JSON 时不必每敲一下就解析 */
+/* ------------------------------------------------------------------ */
+/* 预览与查重（决策 D5）                                                */
+/* ------------------------------------------------------------------ */
+
+/** 状态 → 展示文案与配色类 */
+const VERDICT_STYLE = {
+  new: { label: "新增", cls: "text-success border-success/40 bg-success-soft" },
+  duplicate: { label: "已存在", cls: "text-muted border-line bg-surface" },
+  diff: { label: "答案不同", cls: "text-warning border-warning/40 bg-warning-soft" },
+};
+
+/** 建一个元素（文本一律走 textContent，不拼 HTML —— 题目内容来自外部 AI） */
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+/**
+ * 渲染一道题的预览卡片。
+ *
+ * 按「真实刷题页」的样子呈现：原句（空位高亮）+ 每个空的答案/提示词/标签/解析，
+ * 让用户在导入前就能判断 AI 有没有读错。
+ */
+function renderPreviewItem(item, verdict, index) {
+  const wrapper = el("label", "flex cursor-pointer gap-3 rounded-lg border border-line bg-surface p-3 transition hover:border-primary/40");
+  const checked = previewChecks[index] !== false;
+
+  const box = el("input", "mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-[var(--color-primary,#2563eb)]");
+  box.type = "checkbox";
+  box.checked = checked;
+  box.dataset.previewIndex = String(index);
+  wrapper.appendChild(box);
+
+  const body = el("div", "min-w-0 flex-1 space-y-2");
+
+  // 首行：序号 + 状态徽标
+  const head = el("div", "flex flex-wrap items-center gap-2");
+  head.appendChild(el("span", "text-xs font-medium text-faint", `第 ${index + 1} 题`));
+  const style = VERDICT_STYLE[verdict?.state] ?? VERDICT_STYLE.new;
+  head.appendChild(el("span", `rounded border px-1.5 py-0.5 text-[11px] ${style.cls}`, style.label));
+  body.appendChild(head);
+
+  // 原句：把 ______ 拆出来单独高亮
+  const sentence = el("p", "break-words text-sm leading-6 text-ink");
+  const parts = String(item.originalSentence ?? "").split("______");
+  parts.forEach((part, i) => {
+    if (i > 0) {
+      sentence.appendChild(el("span", "mx-0.5 inline-block min-w-8 rounded border-b-2 border-primary/60 bg-primary/10 px-1 text-center text-primary", "____"));
+    }
+    sentence.appendChild(document.createTextNode(part));
+  });
+  body.appendChild(sentence);
+
+  // 逐空明细
+  const blankBox = el("div", "space-y-1.5");
+  for (const blank of item.blanks ?? []) {
+    const row = el("div", "rounded border border-line bg-surface-alt px-2.5 py-1.5 text-xs leading-5");
+    const line1 = el("div", "flex flex-wrap items-baseline gap-x-2 gap-y-0.5");
+    line1.appendChild(el("span", "font-medium text-faint", `空 ${blank.blankIndex}`));
+    line1.appendChild(el("span", "font-medium text-ink", (blank.answer ?? []).join(" / ")));
+    if (blank.hintType) {
+      line1.appendChild(el("span", "text-muted", blank.hintType));
+    }
+    if (blank.hintWord) {
+      line1.appendChild(el("span", "text-muted", `提示词 ${blank.hintWord}`));
+    }
+    row.appendChild(line1);
+
+    const tagNames = (blank.tagIds ?? [])
+      .map((id) => resolveTag(dictionary, id)?.name ?? id)
+      .filter(Boolean);
+    if (tagNames.length > 0) {
+      row.appendChild(el("div", "mt-0.5 flex flex-wrap gap-1", ""));
+      const tagLine = row.lastElementChild;
+      for (const name of tagNames) {
+        tagLine.appendChild(el("span", "rounded border border-line bg-surface px-1.5 py-0.5 text-[11px] text-muted", name));
+      }
+    }
+    if (blank.trapAnalysis) {
+      row.appendChild(el("div", "mt-0.5 break-words text-muted", blank.trapAnalysis));
+    }
+    blankBox.appendChild(row);
+  }
+  body.appendChild(blankBox);
+
+  // 查重的具体差异说明
+  if (verdict?.hint) {
+    body.appendChild(el("p", "text-xs leading-5 text-warning", verdict.hint));
+  }
+  if ((verdict?.matched ?? []).length > 0) {
+    const matched = verdict.matched
+      .slice(0, 3)
+      .map((m) => `${m.id}${m.source ? `（${m.source}）` : ""}`)
+      .join("、");
+    body.appendChild(el("p", "text-xs leading-5 text-faint", `库中已有：${matched}`));
+  }
+
+  wrapper.appendChild(body);
+  return wrapper;
+}
+
+/** 只刷新汇总行（勾选变化时用，避免重建整个列表导致滚动位置丢失） */
+function renderPreviewSummary() {
+  if (!els?.previewSummary || previewList.length === 0) return;
+
+  const counts = { new: 0, duplicate: 0, diff: 0 };
+  for (const v of previewVerdicts) {
+    counts[v?.state ?? "new"] = (counts[v?.state ?? "new"] ?? 0) + 1;
+  }
+  const willImport = previewChecks.filter(Boolean).length;
+
+  const bits = [`共 ${previewList.length} 题`, `新增 ${counts.new}`];
+  if (counts.duplicate > 0) bits.push(`已存在 ${counts.duplicate}`);
+  if (counts.diff > 0) bits.push(`答案不同 ${counts.diff}`);
+  const head = bits.join("，");
+  els.previewSummary.textContent = `${head}；将导入 ${willImport} 题`;
+}
+
+/** 渲染整个预览区（含汇总与全选/全不选状态） */
+function renderPreview() {
+  if (!els?.preview || !els?.previewList) return;
+
+  const total = previewList.length;
+  if (total === 0) {
+    els.preview.hidden = true;
+    if (els.previewList) els.previewList.textContent = "";
+    return;
+  }
+  els.preview.hidden = false;
+
+  renderPreviewSummary();
+
+  els.previewList.textContent = "";
+  previewList.forEach((item, index) => {
+    els.previewList.appendChild(renderPreviewItem(item, previewVerdicts[index], index));
+  });
+}
+
+/**
+ * 解析、校验、查重、渲染预览。不写库。
+ *
+ * 返回 { ok, list } —— ok 为 false 表示这批题有阻塞性问题（JSON 坏了 / 校验没过），
+ * 此时预览会展示问题，但不会导入。
+ */
+function buildPreview() {
+  const raw = els.textarea.value;
+
+  // 同一段文本已经有构建在跑就复用它，不重复发请求、也不让两次构建互相判为过期
+  if (previewInFlight !== null && previewInFlight.text === raw) {
+    return previewInFlight.promise;
+  }
+
+  const entry = { text: raw, promise: null };
+  entry.promise = buildPreviewInner(raw).finally(() => {
+    // 只清理自己这一条，避免把后来者的记录误删
+    if (previewInFlight === entry) {
+      previewInFlight = null;
+    }
+  });
+  previewInFlight = entry;
+  return entry.promise;
+}
+
+/** 预览构建的实际实现（参数化文本，便于在途合并按内容比对） */
+async function buildPreviewInner(raw) {
+  // 清空输入框是常态（比如刚导入完一批），这时不该弹「JSON 解析失败」
+  if (raw.trim() === "") {
+    clearPreview();
+    clearError();
+    return { ok: false, list: [] };
+  }
+
+  const cleaned = cleanJson(raw);
+  const repairs = [];
+
+  const result = parseJsonLoose(cleaned);
+  if (result === null) {
+    let message;
+    try {
+      JSON.parse(cleaned);
+      message = "";
+    } catch (error) {
+      message = explainJsonError(cleaned, error, cleaned.split("\n"));
+    }
+    clearPreview();
+    renderError(message);
+    return { ok: false, list: [] };
+  }
+  if (result.repaired) {
+    repairs.push("JSON 引号转义有误（多半是原句里的引号），已自动修复");
+  }
+
+  const batch = splitBatch(result.value);
+  const list = batch.list;
+  if (batch.perItem && batch.source) {
+    repairs.push("source 写在每道题里，已取第一条作为本卷的试卷名");
+  }
+
+  const badIndex = list.findIndex(
+    (item) => item === null || typeof item !== "object" || Array.isArray(item)
+  );
+  if (badIndex !== -1) {
+    clearPreview();
+    renderError(
+      `第 ${badIndex + 1} 条不是题目对象。请确认粘贴的是一个 JSON 数组，且数组里每一项都是 { } 形式的对象。`
+    );
+    return { ok: false, list: [] };
+  }
+
+  repairs.push(...repairSentences(list));
+  list.forEach((question) => {
+    if (question && typeof question.originalSentence === "string") {
+      question.originalSentence = normalizeSentence(question.originalSentence);
+    }
+  });
+
+  // 校验：有错就展示出来（保持原有的「整批不导」语义，避免半批入库）
+  const { allErrors } = validateQuestions(list, dictionary);
+
+  // 查重走服务端：指纹规则必须与入库时用的那份完全一致，
+  // 前端自己算一旦与后端漂移，就会出现「预览说已存在、入库却变成新增」
+  const seq = ++previewSeq;
+  let verdicts = [];
+  try {
+    const res = await api.checkDuplicates(
+      list.map((q) => ({ originalSentence: q.originalSentence, blanks: q.blanks ?? [] }))
+    );
+    if (seq !== previewSeq) return { ok: false, list: [] };   // 已被更新的粘贴取代
+    verdicts = res?.results ?? [];
+  } catch (error) {
+    if (seq !== previewSeq) return { ok: false, list: [] };
+    // 查重失败不阻断录入：降级为「全部按新增处理」并明确告知，
+    // 而不是让用户卡在这里无法导入
+    console.error("[ai] 查重失败，本批按新增处理", error);
+    verdicts = list.map((_, index) => ({ index, state: "new", hint: "", matched: [] }));
+  }
+
+  // 找出字典里不存在的标签，交给用户确认是否创建。
+  // 放在预览之后、导入之前：用户能先看到题目，再决定要不要建标签
+  const unknown = new Set();
+  list.forEach((question) => {
+    question.blanks?.forEach((blank) => {
+      (blank.tagIds ?? []).forEach((tagId) => {
+        if (!resolveTag(dictionary, tagId)) unknown.add(tagId);
+      });
+    });
+  });
+  missingTags = [...unknown];
+  renderMissing();
+
+  previewList = list;
+  previewVerdicts = list.map((_, index) => verdicts[index] ?? { state: "new", hint: "", matched: [] });
+  // 默认勾选规则：新增勾上；已存在 / 答案不同默认不勾（宁可少录，不要默默产生两条互相矛盾的题）
+  previewChecks = previewVerdicts.map((v) => v.state === "new");
+  // 修复说明用 pendingRepairs：runImport 读的是它，写成别的名字会让
+  // 「已自动修正：…」这条提示永远不显示
+  pendingRepairs = repairs;
+  previewSourceText = raw;
+
+  renderPreview();
+
+  if (allErrors.length > 0) {
+    renderError(`校验未通过，共 ${allErrors.length} 处问题，本次未导入：\n${allErrors.join("\n")}`);
+    return { ok: false, list };
+  }
+  clearError();
+  return { ok: true, list };
+}
+
+/** 清空预览状态（textarea 被清空或 JSON 解析失败时） */
+function clearPreview() {
+  previewList = [];
+  previewVerdicts = [];
+  previewChecks = [];
+  previewSourceText = null;
+  missingTags = [];
+  renderMissing();
+  renderPreview();
+}
+
 function debounce(fn, wait) {
   let timer = null;
   return (...args) => {
@@ -1105,7 +1437,11 @@ function previewPaperName() {
     // 用户手动改过的名字不能被后续粘贴冲掉。
     // current === "" 的情况交给导入时提示「请先填写试卷名」，
     // 不在这里替他填——主动清空就是想自己写。
-    if (current === lastAutoFilledName) {
+    // IMPORTED_MARK 表示「上一次是脚本导入完主动清空的」，不是用户自己清空——
+    // 这两种情况必须区别对待，否则导入一卷之后，下一张卷子粘贴进来时
+    // 卷名框不会自动填，用户得手敲一遍，与「粘完就能看到卷名」的设计相悖。
+    const scriptCleared = lastAutoFilledName === IMPORTED_MARK;
+    if (current === lastAutoFilledName || (scriptCleared && current === "")) {
       els.source.value = batch.source;
       lastAutoFilledName = batch.source;
     } else if (current === "") {
@@ -1127,89 +1463,36 @@ function previewPaperName() {
   els.paper.hidden = false;
 }
 
-/** 实际解析与导入流程 */
-function parseAndImport() {
-  const raw = els.textarea.value;
-  const cleaned = cleanJson(raw);
-  const repairs = [];
-
-  const result = parseJsonLoose(cleaned);
-  if (result === null) {
-    let message;
-    try {
-      JSON.parse(cleaned);
-      message = "";
-    } catch (error) {
-      message = explainJsonError(cleaned, error, cleaned.split("\n"));
-    }
-    renderError(message);
-    return;
-  }
-  if (result.repaired) {
-    repairs.push("JSON 引号转义有误（多半是原句里的引号），已自动修复");
-  }
-
-  const batch = splitBatch(result.value);
-  const list = batch.list;
-
-  if (batch.perItem && batch.source) {
-    repairs.push("source 写在每道题里，已取第一条作为本卷的试卷名");
-  }
-
-  // 数组里混入非对象（null、数字、字符串）时后续会崩，先拦下来给出可读的提示
-  const badIndex = list.findIndex(
-    (item) => item === null || typeof item !== "object" || Array.isArray(item)
-  );
-  if (badIndex !== -1) {
-    renderError(
-      `第 ${badIndex + 1} 条不是题目对象。请确认粘贴的是一个 JSON 数组，且数组里每一项都是 { } 形式的对象。`
-    );
-    return;
-  }
-
-  // 修正 AI 最容易犯的两类错误：题号被当成空格、原句里的英文直引号。
-  // 放在解析之后（引号不修就没法解析）、校验之前（校验需要正确的空格数）。
-  repairs.push(...repairSentences(list));
-
-  // 再规范化占位符（全角下划线 / 中文破折号 / 数量不为 6），
-  // 保证后续校验与入库都使用标准格式
-  list.forEach((question) => {
-    if (question && typeof question.originalSentence === "string") {
-      question.originalSentence = normalizeSentence(question.originalSentence);
-    }
-  });
-
-  pendingRepairs = repairs;
-
-  // 找出字典里不存在的标签，交给用户确认是否创建
-  const unknown = new Set();
-  list.forEach((question) => {
-    question.blanks?.forEach((blank) => {
-      (blank.tagIds ?? []).forEach((tagId) => {
-        if (!resolveTag(dictionary, tagId)) unknown.add(tagId);
-      });
-    });
-  });
-
-  if (unknown.size > 0) {
-    missingTags = [...unknown];
-    renderMissing();
-    pending = list;
-    return;
-  }
-
-  runImport(list);
-}
-
-/** 正式校验并增量入库 */
-function runImport(list) {
+/**
+ * 正式校验并增量入库。
+ *
+ * @param {Array}  list    候选题目（全量）
+ * @param {Array}  checks  与 list 等长的勾选标记；缺省视为全选
+ */
+async function runImport(list, checks = null) {
   const { allErrors } = validateQuestions(list, dictionary);
 
   if (allErrors.length > 0) {
-    // 修复：原先只渲染了标题行，allErrors 从未拼进去，
-    // 用户看到「共 3 处问题」却看不到是哪 3 处，无从修改
+    // 校验错误要逐条列出来，只说「共 3 处问题」用户无从修改
     renderError(`校验未通过，共 ${allErrors.length} 处问题，本次未导入：\n${allErrors.join("\n")}`);
     pending = list;
+    return;
+  }
+
+  // 只导入勾选的题。重复题默认不勾（见 buildPreview），
+  // 用户想覆盖某一道就单独勾上——而不是一律覆盖或一律跳过
+  const selected = [];
+  const skipped = [];
+  list.forEach((question, index) => {
+    if (checks === null || checks[index]) {
+      selected.push(question);
+    } else {
+      skipped.push(question);
+    }
+  });
+
+  if (selected.length === 0) {
+    renderError("一道题都没勾选。已存在的题默认不勾选，如需重新录入请勾上后再试。");
     return;
   }
 
@@ -1223,7 +1506,7 @@ function runImport(list) {
     return;
   }
 
-  const stamped = list.map((question) => ({
+  const stamped = selected.map((question) => ({
     ...question,
     // 编号一律由本系统生成，丢弃 AI 返回的 id（它无从得知题库现状）
     id: generateQuestionId(),
@@ -1234,12 +1517,22 @@ function runImport(list) {
     createdAt: new Date().toISOString(),
   }));
 
-  hooks.onAppend(stamped, finalSource);
+  // 必须 await：onAppend 内部是异步的，它自己也会弹一条提示。
+  // 不等它就会变成两条提示互相覆盖——后到的那条（不带「跳过 N 道」信息）
+  // 反而把更完整的那条盖掉，用户永远看不到跳过了几题。
+  try {
+    await hooks.onAppend(stamped, finalSource);
+  } catch (error) {
+    notifyError(error, { retry: () => void handleParse() });
+    return;
+  }
+
   // 提示里的来源取实际写库的值，便于当即核对 AI 有没有读对封面信息
   const displaySource = stamped.length > 0 ? String(stamped[0].source ?? "").trim() : "";
   const repairText = pendingRepairs.length > 0 ? `（已自动修正：${pendingRepairs.join("；")}）` : "";
+  const skipText = skipped.length > 0 ? `，跳过 ${skipped.length} 道（未勾选）` : "";
   hooks.onNotice(
-    `成功导入 ${stamped.length} 道题目${displaySource ? `，来源：${displaySource}` : ""}${repairText}`
+    `成功导入 ${stamped.length} 道题目${displaySource ? `，来源：${displaySource}` : ""}${skipText}${repairText}`
   );
   // 把这批题目所属的卷登记进本地列表。
   // allPapers 是页面加载时的快照，不更新的话「库里已有同名卷」的提示
@@ -1261,6 +1554,12 @@ function runImport(list) {
   }
   pending = null;
   pendingRepairs = [];
+  // 预览清空：导入完成后应回到干净的起点，避免旧的勾选状态被误当成新粘贴的结果
+  previewSourceText = null;
+  previewList = [];
+  previewVerdicts = [];
+  previewChecks = [];
+  renderPreview();
 }
 
 /**
@@ -1268,13 +1567,18 @@ function runImport(list) {
  * 新标签由主脚本写入字典，用户再点一次「确认导入这一卷」即可按新标签校验。
  */
 function handleCreateMissing() {
-  if (!pending) return;
+  // 前置条件是「确实有未知标签」，而不是「有解析结果」——
+  // 预览流程下 pending 不再承载这个信息，用它判断会让按钮静默失效
+  if (missingTags.length === 0) return;
+
   // 先取出名字：原版 setMissingTags([]) 是异步的，这里要保留同一份用于提示文案
   const names = missingTags.slice();
   hooks.onCreateTags(names);
   missingTags = [];
   renderMissing();
   pending = null;
+  // 主脚本创建标签后会整页重载（浏览器会自动恢复 textarea 的内容），
+  // 重载后字典是新的，再点一次导入即可按新标签校验
   hooks.onNotice(`已创建标签：${names.join("、")}。请再次点击「确认导入这一卷」，本次将按新标签校验。`);
 }
 
@@ -1324,6 +1628,11 @@ export function setupAiAssistant({
     createTagsBtn: document.getElementById("admin-ai-create-tags"),
     error: document.getElementById("admin-ai-error"),
     submitBtn: document.getElementById("admin-ai-submit"),
+    preview: document.getElementById("admin-ai-preview"),
+    previewSummary: document.getElementById("admin-ai-preview-summary"),
+    previewList: document.getElementById("admin-ai-preview-list"),
+    selectAllBtn: document.getElementById("admin-ai-select-all"),
+    selectNoneBtn: document.getElementById("admin-ai-select-none"),
   };
 
   // 提示词里会带上「当前 N 个标签」，字典变化时同步刷新
@@ -1338,7 +1647,34 @@ export function setupAiAssistant({
 
     // 粘贴后立刻把卷名显示出来，用户在点导入前就能看到并改——
     // 不用等到点按钮才发现卷名不对
-    els.textarea?.addEventListener("input", debounce(previewPaperName, 400));
+    //
+    // 同时（防抖后）解析并渲染完整预览：这一步会调一次服务端查重，
+    // 让用户在点导入之前就看到「哪几道库里已经有了」。
+    // 合并到同一个防抖里，避免一次粘贴触发两轮解析。
+    const onPaste = debounce(() => {
+      previewPaperName();
+      void buildPreview();
+    }, 400);
+    els.textarea?.addEventListener("input", onPaste);
+
+    // 勾选 / 取消勾选：只改标记并刷新汇总，不重新解析
+    els.previewList?.addEventListener("change", (event) => {
+      const box = event.target;
+      if (!(box instanceof HTMLInputElement) || box.type !== "checkbox") return;
+      const index = Number(box.dataset.previewIndex);
+      if (!Number.isInteger(index) || index < 0 || index >= previewChecks.length) return;
+      previewChecks[index] = box.checked;
+      renderPreviewSummary();
+    });
+
+    els.selectAllBtn?.addEventListener("click", () => {
+      previewChecks = previewChecks.map(() => true);
+      renderPreview();
+    });
+    els.selectNoneBtn?.addEventListener("click", () => {
+      previewChecks = previewChecks.map(() => false);
+      renderPreview();
+    });
     els.source?.addEventListener("input", () => updatePaperHint(false));
     window.addEventListener("beforeunload", () => {
       if (copyTimer !== null) window.clearTimeout(copyTimer);

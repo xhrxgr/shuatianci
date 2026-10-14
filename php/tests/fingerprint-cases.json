@@ -1,0 +1,579 @@
+{
+  "_说明": "题目指纹的用例集。PHP 与 JS 两端必须跑出完全相同的结果——这是防口径漂移的唯一手段。规格见 docs/FINGERPRINT_SPEC.md 第 4 节。",
+  "_状态": "duplicate=完全重复（默认不勾） / diff=答案不同疑似重复（默认不勾） / new=新增（默认勾选）",
+  "cases": [
+    {
+      "id": "T1",
+      "desc": "完全一致",
+      "existing": [
+        {
+          "id": "e1",
+          "sentence": "The boy ______ there.",
+          "answers": [
+            "is"
+          ]
+        }
+      ],
+      "incoming": {
+        "sentence": "The boy ______ there.",
+        "answers": [
+          "is"
+        ]
+      },
+      "expect": "duplicate"
+    },
+    {
+      "id": "T2",
+      "desc": "原句有多余空格、全角句号 —— 应判同一题",
+      "existing": [
+        {
+          "id": "e1",
+          "sentence": "The boy ______ there.",
+          "answers": [
+            "is"
+          ]
+        }
+      ],
+      "incoming": {
+        "sentence": "The  boy______there．",
+        "answers": [
+          "is"
+        ]
+      },
+      "expect": "duplicate"
+    },
+    {
+      "id": "T3",
+      "desc": "同原句，答案完全不同 —— 不相交，视为新题",
+      "existing": [
+        {
+          "id": "e1",
+          "sentence": "The boy ______ there.",
+          "answers": [
+            "is"
+          ]
+        }
+      ],
+      "incoming": {
+        "sentence": "The boy ______ there.",
+        "answers": [
+          "was"
+        ]
+      },
+      "expect": "new"
+    },
+    {
+      "id": "T4",
+      "desc": "多答案顺序不同 —— 必须判重复",
+      "existing": [
+        {
+          "id": "e1",
+          "sentence": "The boy ______ there.",
+          "answers": [
+            "wrote",
+            "written"
+          ]
+        }
+      ],
+      "incoming": {
+        "sentence": "The boy ______ there.",
+        "answers": [
+          "written",
+          "wrote"
+        ]
+      },
+      "expect": "duplicate"
+    },
+    {
+      "id": "T5",
+      "desc": "库里有 1 个答案，本次给了 2 个 —— 子集关系，疑似重复",
+      "existing": [
+        {
+          "id": "e1",
+          "sentence": "The boy ______ there.",
+          "answers": [
+            "wrote"
+          ]
+        }
+      ],
+      "incoming": {
+        "sentence": "The boy ______ there.",
+        "answers": [
+          "wrote",
+          "written"
+        ]
+      },
+      "expect": "diff"
+    },
+    {
+      "id": "T6",
+      "desc": "库里把多答案写成一个字符串（带逗号），本次拆开 —— 必须判重复",
+      "existing": [
+        {
+          "id": "e1",
+          "sentence": "The boy ______ there.",
+          "answers": [
+            "Liaoning, Jilin"
+          ]
+        }
+      ],
+      "incoming": {
+        "sentence": "The boy ______ there.",
+        "answers": [
+          "Liaoning",
+          "Jilin"
+        ]
+      },
+      "expect": "duplicate"
+    },
+    {
+      "id": "T7",
+      "desc": "一个答案被拆成更细的两个 —— 子集关系，疑似重复",
+      "existing": [
+        {
+          "id": "e1",
+          "sentence": "The boy ______ there.",
+          "answers": [
+            "Liaoning"
+          ]
+        }
+      ],
+      "incoming": {
+        "sentence": "The boy ______ there.",
+        "answers": [
+          "Liaoning",
+          "Liaoning Province"
+        ]
+      },
+      "expect": "diff"
+    },
+    {
+      "id": "T8",
+      "desc": "原句不同但答案相同 —— 不同题，不判重",
+      "existing": [
+        {
+          "id": "e1",
+          "sentence": "The boy ______ there.",
+          "answers": [
+            "is"
+          ]
+        }
+      ],
+      "incoming": {
+        "sentence": "He also ______ there.",
+        "answers": [
+          "is"
+        ]
+      },
+      "expect": "new"
+    },
+    {
+      "id": "T9",
+      "desc": "库为空 —— 新增",
+      "existing": [],
+      "incoming": {
+        "sentence": "The boy ______ there.",
+        "answers": [
+          "is"
+        ]
+      },
+      "expect": "new"
+    },
+    {
+      "id": "T10",
+      "desc": "答案只有大小写不同 —— 去重口径转小写，判重复",
+      "existing": [
+        {
+          "id": "e1",
+          "sentence": "The boy ______ there.",
+          "answers": [
+            "is"
+          ]
+        }
+      ],
+      "incoming": {
+        "sentence": "The boy ______ there.",
+        "answers": [
+          "IS"
+        ]
+      },
+      "expect": "duplicate"
+    },
+    {
+      "id": "T11",
+      "desc": "多空题：各空答案整体顺序不同 —— 判重复",
+      "existing": [
+        {
+          "id": "e1",
+          "sentence": "A ______ B ______ C.",
+          "answers": [
+            "x",
+            "y"
+          ]
+        }
+      ],
+      "incoming": {
+        "sentence": "A ______ B ______ C.",
+        "answers": [
+          "y",
+          "x"
+        ]
+      },
+      "expect": "duplicate"
+    },
+    {
+      "id": "T12",
+      "desc": "多空题：其中一个空答案变了 —— 疑似重复",
+      "existing": [
+        {
+          "id": "e1",
+          "sentence": "A ______ B ______ C.",
+          "answers": [
+            "x",
+            "y"
+          ]
+        }
+      ],
+      "incoming": {
+        "sentence": "A ______ B ______ C.",
+        "answers": [
+          "x",
+          "z"
+        ]
+      },
+      "expect": "diff"
+    },
+    {
+      "id": "T13",
+      "desc": "多个候选：一个完全相同、一个答案不同 —— 完全相同优先",
+      "existing": [
+        {
+          "id": "e1",
+          "sentence": "The boy ______ there.",
+          "answers": [
+            "wrote"
+          ]
+        },
+        {
+          "id": "e2",
+          "sentence": "The boy ______ there.",
+          "answers": [
+            "wrote",
+            "written"
+          ]
+        }
+      ],
+      "incoming": {
+        "sentence": "The boy ______ there.",
+        "answers": [
+          "wrote",
+          "written"
+        ]
+      },
+      "expect": "duplicate"
+    },
+    {
+      "id": "T14",
+      "desc": "答案项带首尾空格 —— 归一化后判重复",
+      "existing": [
+        {
+          "id": "e1",
+          "sentence": "The boy ______ there.",
+          "answers": [
+            " written "
+          ]
+        }
+      ],
+      "incoming": {
+        "sentence": "The boy ______ there.",
+        "answers": [
+          "written"
+        ]
+      },
+      "expect": "duplicate"
+    },
+    {
+      "id": "T15",
+      "desc": "全角逗号分隔的多答案 —— 切分后判重复",
+      "existing": [
+        {
+          "id": "e1",
+          "sentence": "The boy ______ there.",
+          "answers": [
+            "Liaoning，Jilin"
+          ]
+        }
+      ],
+      "incoming": {
+        "sentence": "The boy ______ there.",
+        "answers": [
+          "Liaoning",
+          "Jilin"
+        ]
+      },
+      "expect": "duplicate"
+    }
+  ],
+  "sentence_cases": [
+    {
+      "in": "The boy ______ there.",
+      "expect": "theboythere"
+    },
+    {
+      "in": "The  boy______there．",
+      "expect": "theboythere"
+    },
+    {
+      "in": "He has ______ finished it!",
+      "expect": "hehasfinishedit"
+    },
+    {
+      "in": "  A ______ B.  ",
+      "expect": "ab"
+    },
+    {
+      "in": "Ａ ______ Ｂ",
+      "expect": "ab"
+    },
+    {
+      "in": "A（______）B",
+      "expect": "a()b",
+      "note": "全角括号映射成半角（不删除）—— 括号参与语义，a(b) 与 ab 是不同句子"
+    },
+    {
+      "in": "the boy ______ there",
+      "expect": "theboythere",
+      "note": "大小写归一"
+    }
+  ],
+  "edge_cases": [
+    {
+      "id": "E1",
+      "desc": "空原句",
+      "existing": [],
+      "incoming": {
+        "sentence": "",
+        "answers": [
+          "x"
+        ]
+      },
+      "expect": "new"
+    },
+    {
+      "id": "E2",
+      "desc": "空答案数组",
+      "existing": [],
+      "incoming": {
+        "sentence": "A ______ B.",
+        "answers": []
+      },
+      "expect": "new"
+    },
+    {
+      "id": "E3",
+      "desc": "候选缺 answers 字段",
+      "existing": [
+        {
+          "id": "e1",
+          "sentence": "A ______ B."
+        }
+      ],
+      "incoming": {
+        "sentence": "A ______ B.",
+        "answers": [
+          "x"
+        ]
+      },
+      "expect": "new"
+    },
+    {
+      "id": "E4",
+      "desc": "候选缺 originalSentence",
+      "existing": [
+        {
+          "id": "e1",
+          "answers": [
+            "x"
+          ]
+        }
+      ],
+      "incoming": {
+        "sentence": "A ______ B.",
+        "answers": [
+          "x"
+        ]
+      },
+      "expect": "new"
+    },
+    {
+      "id": "E5",
+      "desc": "答案含嵌套数组（畸形 AI 输出）",
+      "existing": [
+        {
+          "id": "e1",
+          "sentence": "A ______ B.",
+          "answers": [
+            "x"
+          ]
+        }
+      ],
+      "incoming": {
+        "sentence": "A ______ B.",
+        "answers": [
+          [
+            "x"
+          ]
+        ]
+      },
+      "expect": "duplicate"
+    },
+    {
+      "id": "E6",
+      "desc": "答案含 null",
+      "existing": [
+        {
+          "id": "e1",
+          "sentence": "A ______ B.",
+          "answers": [
+            "x"
+          ]
+        }
+      ],
+      "incoming": {
+        "sentence": "A ______ B.",
+        "answers": [
+          null,
+          "x"
+        ]
+      },
+      "expect": "duplicate"
+    },
+    {
+      "id": "E7",
+      "desc": "答案本身用斜杠分隔",
+      "existing": [
+        {
+          "id": "e1",
+          "sentence": "A ______ B.",
+          "answers": [
+            "x",
+            "y"
+          ]
+        }
+      ],
+      "incoming": {
+        "sentence": "A ______ B.",
+        "answers": [
+          "x/y"
+        ]
+      },
+      "expect": "duplicate"
+    },
+    {
+      "id": "E8",
+      "desc": "答案含完全重复项",
+      "existing": [
+        {
+          "id": "e1",
+          "sentence": "A ______ B.",
+          "answers": [
+            "x"
+          ]
+        }
+      ],
+      "incoming": {
+        "sentence": "A ______ B.",
+        "answers": [
+          "x",
+          "x"
+        ]
+      },
+      "expect": "duplicate"
+    },
+    {
+      "id": "E9",
+      "desc": "纯空白原句",
+      "existing": [],
+      "incoming": {
+        "sentence": "     ",
+        "answers": [
+          "x"
+        ]
+      },
+      "expect": "new"
+    },
+    {
+      "id": "E10",
+      "desc": "新原句没有下划线",
+      "existing": [
+        {
+          "id": "e1",
+          "sentence": "The boy ______ there.",
+          "answers": [
+            "is"
+          ]
+        }
+      ],
+      "incoming": {
+        "sentence": "The boy there.",
+        "answers": [
+          "is"
+        ]
+      },
+      "expect": "duplicate"
+    },
+    {
+      "id": "E11",
+      "desc": "中英混排 + 中文句号",
+      "existing": [
+        {
+          "id": "e1",
+          "sentence": "他______去学校",
+          "answers": [
+            "去"
+          ]
+        }
+      ],
+      "incoming": {
+        "sentence": "他 ______ 去学校。",
+        "answers": [
+          "去"
+        ]
+      },
+      "expect": "duplicate"
+    },
+    {
+      "id": "E12",
+      "desc": "含 emoji",
+      "existing": [
+        {
+          "id": "e1",
+          "sentence": "Wow______great x",
+          "answers": [
+            "so"
+          ]
+        }
+      ],
+      "incoming": {
+        "sentence": "Wow ______ great! x",
+        "answers": [
+          "so"
+        ]
+      },
+      "expect": "duplicate"
+    },
+    {
+      "id": "E13",
+      "desc": "超长原句（5000 词）不崩溃",
+      "existing": [],
+      "incoming": {
+        "sentence": "PLACEHOLDER",
+        "answers": [
+          "x"
+        ]
+      },
+      "expect": "new"
+    }
+  ],
+  "_note_edge": "E13 的 incoming.sentence 是占位符，测试时用 5000 个 word + ______ end. 替换"
+}
