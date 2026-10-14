@@ -143,8 +143,9 @@ function route_records_summary()
         'SELECT COUNT(*)                       AS total,
                 COALESCE(SUM(is_correct), 0)   AS correct,
                 COALESCE(SUM(wrong_count), 0) AS wrong
-           FROM practice_records
-          WHERE user_id = ?',
+           FROM practice_records r
+           JOIN questions q ON q.id = r.question_id
+          WHERE r.user_id = ?',
         [(int) $user['id']]
     );
 
@@ -153,19 +154,21 @@ function route_records_summary()
     $wrong = (int) $rows[0]['wrong'];
 
     $recent = query(
-        'SELECT id, question_id, is_correct, wrong_count, created_at
-           FROM practice_records
-          WHERE user_id = ?
-          ORDER BY created_at DESC
+        'SELECT r.id, r.question_id, r.is_correct, r.wrong_count, r.created_at
+           FROM practice_records r
+           JOIN questions q ON q.id = r.question_id
+          WHERE r.user_id = ?
+          ORDER BY r.created_at DESC
           LIMIT 20',
         [(int) $user['id']]
     );
 
     $weakList = query(
-        'SELECT question_id, COUNT(*) AS times
-           FROM practice_records
-          WHERE user_id = ? AND is_correct = 0
-          GROUP BY question_id
+        'SELECT r.question_id, COUNT(*) AS times
+           FROM practice_records r
+           JOIN questions q ON q.id = r.question_id
+          WHERE r.user_id = ? AND r.is_correct = 0
+          GROUP BY r.question_id
           ORDER BY times DESC
           LIMIT 10',
         [(int) $user['id']]
@@ -252,7 +255,9 @@ function route_favorites_toggle()
         json_response(['ok' => true, 'favorited' => false, 'message' => '已取消收藏']);
     }
 
-    $note = body_param('note') ? substr((string) body_param('note'), 0, 255) : null;
+    // 用 mb_substr 而不是 substr：substr 按字节截断，会把多字节字符劈开
+    // 产生非法 UTF-8，存库后 json_encode 返回 false，列表接口会输出空响应体
+    $note = body_param('note') ? mb_substr((string) body_param('note'), 0, 255, 'UTF-8') : null;
     execute('INSERT INTO user_favorites (user_id, source, note) VALUES (?, ?, ?)', [
         (int) $user['id'],
         $source,
@@ -317,7 +322,9 @@ function route_marks_toggle()
     }
 
     $label = substr((string) (body_param('label') ?: '重点'), 0, 32);
-    $note = body_param('note') ? substr((string) body_param('note'), 0, 255) : null;
+    // 用 mb_substr 而不是 substr：substr 按字节截断，会把多字节字符劈开
+    // 产生非法 UTF-8，存库后 json_encode 返回 false，列表接口会输出空响应体
+    $note = body_param('note') ? mb_substr((string) body_param('note'), 0, 255, 'UTF-8') : null;
 
     // 确认题目存在，避免标记到已删除的题
     $question = query('SELECT id FROM questions WHERE id = ?', [$questionId]);

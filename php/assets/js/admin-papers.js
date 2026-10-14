@@ -93,6 +93,7 @@ export function setupPaperAndQuestionPanels(context) {
   async function handleCreatePaper() {
     const nameInput = document.getElementById("paper-name");
     const dateInput = document.getElementById("paper-date");
+    if (!nameInput || !dateInput) return;
     const noteInput = document.getElementById("paper-note");
     const name = nameInput.value.trim();
 
@@ -293,8 +294,12 @@ export function setupPaperAndQuestionPanels(context) {
 
     editing = {
       id,
+      // hintWord 必须原样带进来：编辑弹窗没有这个输入框，
+      // 若不保留就会在保存时被写成 null，而后端对非「无提示词」的空
+      // hintWord 一律返回 400 —— 结果是带提示词的题根本改不了。
       blanks: (question.blanks ?? []).map((blank) => ({
         answer: (blank.answer ?? []).join(" / "),
+        hintWord: blank.hintWord ?? null,
         hintType: blank.hintType ?? "无提示词",
         tagIds: [...(blank.tagIds ?? [])],
         trapAnalysis: blank.trapAnalysis ?? "",
@@ -410,7 +415,8 @@ export function setupPaperAndQuestionPanels(context) {
     return editing.blanks.slice(0, count).map((blank, index) => ({
       blankIndex: index + 1,
       answer: splitAnswers(blank.answer),
-      hintWord: null,
+      // 原样保留原题的提示词（见 openEditQuestion 里的说明）
+      hintWord: blank.hintWord ?? null,
       hintType: blank.hintType,
       tagIds: blank.tagIds,
       trapAnalysis: blank.trapAnalysis.trim(),
@@ -479,7 +485,8 @@ export function setupPaperAndQuestionPanels(context) {
         togglePaperEdit(item);
         break;
       case "cancel-edit-paper":
-        item.querySelector("[data-paper-edit]").hidden = true;
+        const editPanel = item?.querySelector("[data-paper-edit]");
+      if (editPanel) editPanel.hidden = true;
         break;
       case "save-paper":
         void handleSavePaper(item);

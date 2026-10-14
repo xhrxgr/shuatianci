@@ -138,10 +138,16 @@ export function notify(message, tone = "info", options = {}) {
   const container = resolveContainer(options.boxId);
   ensureContainerStyle(container);
 
-  // 刷屏保护：超过上限就把最旧的一条收掉
-  while (container.children.length >= MAX_PER_BOX) {
-    const oldest = container.firstElementChild;
-    dismiss(oldest);
+  // 刷屏保护：超过上限就把最旧的收掉。
+  //
+  // 注意这里**不能**写成 `while (container.children.length >= MAX_PER_BOX)`：
+  // dismiss() 是淡出后经 setTimeout 移除元素的，**同步阶段 children.length 不会变**，
+  // 第二轮又取到同一个已被标记 dismissing 的元素并直接 return ——
+  // 于是循环永远退不出去，整个主线程卡死（用户连点三次「重试」就会触发）。
+  // 正确做法：先算出需要收掉几条，再用固定次数的循环。
+  let overflow = container.children.length - MAX_PER_BOX + 1;
+  while (overflow-- > 0) {
+    dismiss(container.firstElementChild);
   }
 
   const box = document.createElement("div");

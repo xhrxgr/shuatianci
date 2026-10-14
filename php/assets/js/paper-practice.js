@@ -23,7 +23,9 @@ const MAX_INPUT_CH = 20;
 /** 游客的本地存储键，与刷题页一致，才能读到同一份记录 */
 const LOCAL_RECORDS_KEY = "eq_local_records";
 
-const boot = JSON.parse(document.getElementById("paper-practice-boot").textContent);
+const bootNode = document.getElementById("paper-practice-boot");
+if (!bootNode) throw new Error("缺少页面数据节点");
+const boot = JSON.parse(bootNode.textContent);
 const paper = boot.paper;
 const authenticated = Boolean(boot.authenticated);
 
@@ -404,12 +406,14 @@ async function handleSubmit() {
 
   renderAll();
 
-  // 上报放到渲染之后：先让用户看到结果，不被网络等待卡住
+  // 上报放到渲染之后：先让用户看到结果，不被网络等待卡住。
+  // answers 必须与 practice.js 一样先 trim：判卷时 isBlankCorrect 内部会 trim，
+  // 但落库的原始值若带空格，错题本/回顾里显示的作答就和判卷结论对不上。
   void submitRecord(
     question.id,
     state.correct,
     wrongCount,
-    blanks.map((blank, index) => state.inputs[blank.blankIndex] ?? "")
+    blanks.map((blank) => normalize(state.inputs[blank.blankIndex] ?? ""))
   );
 
   // 全对时自动进入下一题——连续做题时少点一次

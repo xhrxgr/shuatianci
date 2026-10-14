@@ -54,7 +54,11 @@ function map_paper(array $row)
  */
 function current_user_id_or_null()
 {
-    return isset($GLOBALS['__current_user']['id']) ? (int) $GLOBALS['__current_user']['id'] : null;
+    // 必须走 current_user()：attach_user() 写入的键是 'current_user'，
+    // 直接读 $GLOBALS['__current_user'] 永远拿到 null，
+    // 那样 done_count 的子查询整段都不会执行，整卷进度恒为 0（静默出错）。
+    $user = current_user();
+    return is_array($user) && isset($user['id']) ? (int) $user['id'] : null;
 }
 
 /**
@@ -277,12 +281,15 @@ function route_papers_delete($id)
         throw http_error(404, '试卷不存在或已删除');
     }
 
-    db_transaction(function () use ($id) {
-        execute('UPDATE questions SET paper_id = NULL WHERE paper_id = ?', [$id]);
+    // 把 UPDATE 的实际影响行数带出事务：
+    // 原来直接写死 0，前端会据此提示「已解绑 0 道题」，与事实不符
+    $unlinked = db_transaction(function () use ($id) {
+        $result = execute('UPDATE questions SET paper_id = NULL WHERE paper_id = ?', [$id]);
         execute('DELETE FROM papers WHERE id = ?', [$id]);
+        return (int) $result['changes'];
     });
 
-    json_response(['ok' => true, 'unlinkedQuestions' => 0]);
+    json_response(['ok' => true, 'unlinkedQuestions' => $unlinked]);
 }
 
 /**

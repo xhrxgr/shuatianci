@@ -1035,7 +1035,15 @@ async function main() {
   check("试卷有「整卷做」入口", (await page.locator(`[data-paper-manage="${paperCreated.id}"] a[href^="/papers/"]`).count()) >= 1);
 
   // 试卷页（学生视角）
+  //
+  // ⚠️ 回归：GET /papers 同时是「接口路由」和「页面路由」。
+  // 曾把入口的分流判据从「URI 是否以 /api 开头」改成「能否匹配路由表」，
+  // 结果页面请求 /papers 命中接口路由 route_papers_list 直接返回 JSON，
+  // 试卷页整个白掉（页面上一个 data-paper-id 都没有）。
+  // 所以下面这条断言必须在：页面路径不能被当成接口。
   await page.goto(`${BASE}/papers`, { waitUntil: "networkidle" });
+  const papersIsHtml = await page.evaluate(() => document.getElementById("root") !== null);
+  check("试卷页是 HTML 页面而不是接口返回的 JSON", papersIsHtml);
   check("试卷页列出该卷", (await page.locator(`[data-paper-id="${paperCreated.id}"]`).count()) === 1);
   check("试卷页有「整卷做」与「自由刷这卷」两个入口", (await page.locator(`[data-paper-id="${paperCreated.id}"] a`).count()) >= 2);
 

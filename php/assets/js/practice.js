@@ -122,7 +122,10 @@ async function submitRecord(questionId, isCorrect, wrongCount, answers) {
 
 /* ---------------- 状态 ---------------- */
 
-let questions = authenticated ? boot.questions : applyLocalProgress(boot.questions);
+// boot.questions 理论上由服务端保证存在，但这里做一次兜底：
+// 数组一旦缺失，下面所有 .map / .filter 都会在加载时抛错，整页白屏
+const bootQuestions = Array.isArray(boot.questions) ? boot.questions : [];
+let questions = authenticated ? bootQuestions : applyLocalProgress(bootQuestions);
 let tab = "all";
 let selectedHintType = null;
 let selectedTagIds = [];
@@ -700,9 +703,18 @@ function handleMarkMastered() {
   renderAll();
 }
 
+/**
+ * 收藏 / 取消收藏。
+ *
+ * busy 守卫是必需的：服务端是 toggle 语义，网络慢时双击会「加了又取消」，
+ * 最终状态与用户预期相反，而且第二次点击的 collectionMessage 会覆盖第一次的结果。
+ */
+let favoriteBusy = false;
+
 async function toggleFavorite() {
   const question = currentQuestion();
-  if (!question || !authenticated) return;
+  if (!question || !authenticated || favoriteBusy) return;
+  favoriteBusy = true;
   collectionMessage = "";
   try {
     const result = await api.toggleFavorite(question.source);
@@ -711,13 +723,18 @@ async function toggleFavorite() {
   } catch (error) {
     collectionMessage = error?.message ?? "操作失败";
     notifyError(error, { retry: () => void toggleFavorite() });
+  } finally {
+    favoriteBusy = false;
   }
   renderAll();
 }
 
+let markBusy = false;
+
 async function toggleMark() {
   const question = currentQuestion();
-  if (!question || !authenticated) return;
+  if (!question || !authenticated || markBusy) return;
+  markBusy = true;
   collectionMessage = "";
   const isMarked = markedIds.has(question.id);
   try {
@@ -733,6 +750,8 @@ async function toggleMark() {
   } catch (error) {
     collectionMessage = error?.message ?? "操作失败";
     notifyError(error, { retry: () => void toggleMark() });
+  } finally {
+    markBusy = false;
   }
   renderAll();
 }

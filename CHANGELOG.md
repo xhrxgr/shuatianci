@@ -11,6 +11,98 @@
 当前版本写在根目录的 `VERSION` 文件里，与 `package.json` 的 `version`、git 标签 `v{VERSION}`
 三处保持一致；发版流程见 README「发版」一节。
 
+## 3.3.3（2026-10-14）—— 全量复核审查
+
+对后端（约 4800 行 PHP）与前端（约 6000 行 JS）做完整复核，逐条核实后修复。
+共 12 项，其中 **2 个 P0 是静默出错**（不报错、结果错），**1 个 P0 会卡死页面**。
+
+### P0-1：登录用户的整卷完成进度恒为 0
+
+`routes_papers.php` 的 `current_user_id_or_null()` 读 `$GLOBALS['__current_user']`，
+而 `attach_user()` 写入的键是 `current_user`（无下划线）——**那个键全仓库从未被赋值**，
+于是 `done_count` 的整个子查询是死代码。库里明明有作答记录，界面一直显示「已完成 0」。
+实测：修复前 0，修复后 1。
+
+### P0-2：提示条超过 3 条时主线程死循环
+
+`feedback.js` 的防刷屏写成 `while (container.children.length >= MAX)`，
+但 `dismiss()` 是淡出后经 `setTimeout` 移除元素的，**同步阶段长度不变**，
+第二轮又取到同一个已标记 `dismissing` 的元素并直接 return —— 循环永远退不出去。
+已在真实浏览器复现（2000 次迭代未退出）。用户连点三次「重试」就会整页卡死。
+改为先算需要收掉几条、再用固定次数循环。
+
+### P0-3：「浏览器题库上云」的重试引用了不存在的函数
+
+`retry: () => void handleCloudUpload()`，而实际函数名是 `handleMigrateLocal`。
+点「重试」必然抛 ReferenceError。
+
+### P1：编辑题目会把提示词抹掉，带提示词的题几乎全部无法编辑
+
+编辑弹窗没有 `hintWord` 输入框，而 `collectEditBlanks()` 固定写 `hintWord: null`，
+后端对非「无提示词」的空 `hintWord` 一律返回 400 —— 改一个错别字都保存不了。
+现在草稿保留原 `hintWord` 并原样回传。
+
+### P1：登录限速器在并发下失效
+
+`record_login_failure()` 是 `throttle_read`(LOCK_SH) → 修改 → `throttle_write`(LOCK_EX)
+两次独立开锁，中间没有临界区。并发 8 次错误登录各自读到同一份旧快照、
+各自 +1 再互相覆盖，**只记成 1 次**，`LOGIN_MAX_FAILURES` 永远触发不了，
+攻击者可无限在线爆破。改为 `throttle_update()`：读也在 `LOCK_EX` 内完成
+read-modify-write。实测并发 8 次已正确触发 429 封禁。
+
+### P1：SQLite 约束冲突的映射表数值全错，且文本兜底永不可达
+
+- `sqlite_constraint_message()` 里 5 个扩展码有 4 个与 SQLite 定义不符
+  （正确值 UNIQUE=2067、PRIMARYKEY=1555、FOREIGNKEY=787、CHECK=275），
+  且会错位命中（外键的 787 被当成主键）
+- `error_to_response()` 在主码 19 时**提前 return 400**，
+  导致后面的消息文本兜底在本项目的驱动下永远不可达
+  （实测 PHP 的 pdo_sqlite **只填主码 19，不填扩展码**），
+  于是 UNIQUE 冲突被误报成「数据不符合约束」而不是「数据已存在」
+
+实测修复：UNIQUE 冲突现在正确返回 409「数据已存在」。
+
+### P1：非法 UTF-8 会让列表接口输出空响应体
+
+`substr()` 按字节截断会把多字节字符劈开（实测 11 个汉字 33 字节截成 32 字节即非法 UTF-8），
+存库后 `json_encode` 返回 `false`，`echo false` 输出空字符串，
+而状态码已经是 200 —— 前端 `JSON.parse` 报一个与真实原因无关的语法错误。
+`label` / `note` 三处改用 `mb_substr`，并给 `json_response()` 加编码失败兜底。
+
+### P1：删题留下的孤儿记录污染历史统计
+
+`questions` 被删除时 `practice_records` / `user_progress` / `user_marks`
+没有级联清理（这些表只有 `user_id` 外键），于是记录统计的 `COUNT(*)`
+仍把已删题算进分母，用户看到的正确率被永久污染，薄弱题列表还会返回无法渲染的 id。
+统计三处查询改为 `JOIN questions`；`bank_reset` 补上 `DELETE FROM papers`。
+
+### P1：删卷接口谎报解绑数量
+
+`unlinkedQuestions` 硬编码为 `0`（UPDATE 的返回值被丢弃）。现在返回真实影响行数。
+
+### P2：其余健壮性
+
+- 入口加 `set_error_handler`，把 notice/warning 从「打进响应体」改为只记日志
+  （PHP 的 warning 会让响应变成 `Warning: ... {"ok":true}`，前端 JSON.parse 立刻失败）
+- `index.php` 的 API/页面分流原先用未经处理的 URI，
+  补上脚本前缀剥离；`send_security_headers()` 与 `maybe_apply_reload_flag()` 移入 `try`
+- 整卷练习上报的 `answers` 未 trim，与 practice.js 判卷口径不一致
+- 收藏 / 标记加并发守卫（服务端是 toggle 语义，双击会「加了又取消」）
+- 若干元素访问补判空（`boot.questions`、试卷输入框、`paper-practice-boot` 等）
+
+### ⚠️ 审查过程中的一次自我修正
+
+修 `index.php` 分流时，我把判据从「URI 是否以 /api 开头」改成「能否匹配路由表」，
+结果**页面 `/papers` 命中了同名接口路由 `route_papers_list` 直接返回 JSON，试卷页全白**。
+两个审查 agent 都建议了「用 `$path` 统一」，但没发现路由表与页面路由重名这一层。
+已回退为基于 URI 前缀判断，并补了一条回归断言钉住它。
+
+### 验证
+
+- 页面交互自测 182 项通过（新增 1 项：试卷页必须是 HTML 而非接口 JSON）
+- 接口自测 83 项通过（新增 1 项：`doneCount` 反映真实作答数）
+- 升级自测 13 项通过
+
 ## 3.3.2（2026-10-14）
 
 ### 修复：识别「仓库目录不可写」并给出正确处置

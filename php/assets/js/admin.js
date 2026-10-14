@@ -616,7 +616,9 @@ async function handleMigrateLocal() {
     clearLocalCache();
     window.location.reload();
   } catch (error) {
-    notifyError(error, { retry: () => void handleCloudUpload() });
+    // 重试要调的是 handleMigrateLocal（浏览器题库上云）：
+    // 之前这里写成了不存在的 handleCloudUpload，点「重试」会抛 ReferenceError
+    notifyError(error, { retry: () => void handleMigrateLocal() });
   }
 }
 

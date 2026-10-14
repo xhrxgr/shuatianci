@@ -578,6 +578,42 @@ async function main() {
     renamed.data
   );
 
+  // ⚠️ 回归：doneCount 曾经恒为 0。
+  // current_user_id_or_null() 读的是 $GLOBALS['__current_user']，
+  // 而 attach_user() 写入的键是 'current_user'（无下划线）——
+  // 那个键全仓库从没被赋过值，于是 done_count 的子查询整段是死代码，
+  // 登录用户的整卷进度永远显示 0。这里用真实作答记录把它钉住。
+  const dcName = `进度计数卷${Date.now().toString(36)}`;
+  await request("POST", "/papers", { token: adminToken, body: { name: dcName } });
+  await request("POST", "/questions", {
+    token: adminToken,
+    body: {
+      questions: [
+        {
+          originalSentence: "Progress probe ______ done.",
+          blanks: [
+            { blankIndex: 1, answer: ["in"], hintWord: null, hintType: "无提示词", tagIds: ["t_004", "t_026"], trapAnalysis: "进度计数用例。" },
+          ],
+          // source 与卷名一致，录题时就会自动归到这张卷
+          source: dcName,
+        },
+      ],
+    },
+  });
+  const dcQuestionId = (await request("GET", "/questions", { token: adminToken })).data.questions
+    .find((q) => q.originalSentence.startsWith("Progress probe"))?.id;
+  await request("POST", "/records", {
+    token: adminToken,
+    body: { questionId: dcQuestionId, isCorrect: true, wrongCount: 0, answers: ["in"] },
+  });
+  const dcRow = (await request("GET", "/papers", { token: adminToken })).data.papers
+    .find((p) => p.name === dcName);
+  check(
+    "登录用户的 doneCount 反映真实作答数（不是恒 0）",
+    dcRow && dcRow.questionCount === 1 && dcRow.doneCount === 1,
+    dcRow
+  );
+
   const paperNoAuth = await request("POST", "/papers", { body: { name: "未登录试卷" } });
   check("未登录建卷 -> 401", paperNoAuth.status === 401, paperNoAuth.data);
 

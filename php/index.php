@@ -162,12 +162,37 @@ function bootstrap()
 $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
 $path = request_path((string) ($_SERVER['REQUEST_URI'] ?? '/'));
 
-send_security_headers();
+// 把 notice / warning / deprecated 从「输出到响应体」改为「只记日志」。
+//
+// 必须这么做的原因：PHP 的 warning（如「Array to string conversion」）
+// 会被直接写进 stdout，于是响应体变成
+//     Warning: ... {"ok":true,...}
+// 前端 JSON.parse 立刻失败，报的还是一个与真实原因毫无关系的语法错误。
+// 代码里有若干处对用户输入做 (string) 转换的地方（validate.php 等），
+// 只要传进来的是数组就会触发这类 warning。
+//
+// 这里统一拦下并转成 error_log，与 errors.php 的既有做法一致；
+// 真实错误（Error 异常）仍走 try/catch 的统一出口，不受影响。
+set_error_handler(function ($severity, $message, $file, $line) {
+    if ((error_reporting() & $severity) === 0) {
+        return false; // 被 @ 抑制或本就没开启的错误类型，交回 PHP 默认处理
+    }
+    error_log(sprintf('[php] %s in %s:%d', $message, $file, $line));
+    return true; // 已处理，不输出到响应体
+});
 
-// 更新完成后自动生效：消费后台进程留下的「刷新 opcache」标记
-maybe_apply_reload_flag();
+// display_errors 在部分环境（php -S 的 dev-router）是 On，
+// 它会把上面的 warning 直接打印出来；显式关掉，避免漏网
+if (PHP_SAPI !== 'cli') {
+    @ini_set('display_errors', '0');
+}
 
 try {
+    send_security_headers();
+
+    // 更新完成后自动生效：消费后台进程留下的「刷新 opcache」标记
+    maybe_apply_reload_flag();
+
     // CORS 默认关闭；开启时预检请求会在这里结束
     if (send_cors_headers()) {
         exit;
@@ -176,8 +201,20 @@ try {
     bootstrap();
     attach_user();
 
-    // 页面与接口共用同一个入口：/api 返回 JSON，其余渲染 HTML 页面
+    // 页面与接口共用同一个入口：/api/* 走 JSON，其余渲染 HTML 页面。
+    //
+    // 判据必须是「原始 URI 是不是以 /api 开头」，不能用 request_path() 的结果：
+    // request_path() 已经把 /api 前缀剥掉了（/api/questions → /questions），
+    // 而且路由表里存在**与页面同名的 API 路由**（GET /papers 既在接口表里、
+    // 也是学生端页面），改成「匹配路由表」会让 /papers 页面命中接口路由、
+    // 直接返回 JSON，页面就白了。
     $uriPath = parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
+    // php -S 的 router 模式下 SCRIPT_NAME 就是请求路径本身，
+    // 可能带着 dev-router 前缀，判断前先剥掉
+    $scriptPrefix = isset($_SERVER['SCRIPT_NAME']) ? (string) $_SERVER['SCRIPT_NAME'] : '';
+    if (strpos((string) $uriPath, $scriptPrefix) === 0 && substr($scriptPrefix, -4) === '.php') {
+        $uriPath = substr((string) $uriPath, strlen($scriptPrefix));
+    }
     if (strpos((string) $uriPath, '/api') !== 0) {
         dispatch_page($method, $path);
         return;

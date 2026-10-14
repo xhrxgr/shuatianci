@@ -20,7 +20,23 @@ function json_response($data, $status = 200)
         header('Content-Type: application/json; charset=utf-8');
         header('Cache-Control: no-store');
     }
-    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    // json_encode 失败（非法的 UTF-8、递归引用、INF/NAN）会返回 false，
+    // 直接 echo 会输出**空响应体**：状态码已经是 200，前端 JSON.parse 报
+    // 的是一个和真实原因完全无关的语法错误，排查起来极其困难。
+    // 这里兜底成一段可读的 JSON，并把真实原因写进服务端日志。
+    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($json === false) {
+        error_log('[json_response] 编码失败：' . json_last_error_msg());
+        if (!headers_sent()) {
+            http_response_code(500);
+        }
+        echo json_encode(
+            ['error' => '返回数据包含无法编码的内容（如非法字符编码），详情见服务器日志'],
+            JSON_UNESCAPED_UNICODE
+        );
+        exit;
+    }
+    echo $json;
     exit;
 }
 

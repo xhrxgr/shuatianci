@@ -341,6 +341,42 @@ function throttle_read()
     return is_array($data) ? $data : [];
 }
 
+/** 记一次登录失败 */
+/**
+ * 在一把独占锁内完成「读 → 改 → 写」。
+ *
+ * 为什么必须这样：限速原来是 throttle_read()（LOCK_SH）+ throttle_write()（LOCK_EX）
+ * 两次独立的开锁，中间没有临界区。并发 N 个错误登录会各自读到同一份旧快照、
+ * 各自 +1 再互相覆盖 —— 8 次失败只记成 1 次，LOGIN_MAX_FAILURES 永远触发不了，
+ * 限速器形同虚设。
+ *
+ * @param callable $mutator 接收当前数据，返回写入的数据；返回 null 表示放弃写入
+ */
+function throttle_update(callable $mutator)
+{
+    $file = throttle_file();
+    $fp = @fopen($file, 'c+');
+    if ($fp === false) {
+        return;
+    }
+    // 全程持有 LOCK_EX：读也在锁内，杜绝 read-modify-write 的竞态
+    @flock($fp, LOCK_EX);
+
+    $raw = stream_get_contents($fp);
+    $data = json_decode((string) $raw, true);
+    $data = is_array($data) ? $data : [];
+
+    $updated = $mutator($data);
+    if (is_array($updated)) {
+        ftruncate($fp, 0);
+        rewind($fp);
+        fwrite($fp, json_encode($updated));
+        fflush($fp);
+    }
+
+    @flock($fp, LOCK_UN);
+    fclose($fp);
+}
 /**
  * 写限速状态（加独占锁）。
  *
@@ -351,24 +387,24 @@ function throttle_write(array $data)
     // 顺手清理过期条目，避免文件无限增长
     $now = time();
     foreach ($data as $key => $entry) {
-        $expired = ($now - (int) $entry['firstAt'] > LOGIN_WINDOW_SECONDS)
-            && (empty($entry['blockedUntil']) || (int) $entry['blockedUntil'] <= $now);
+        // 条目被外部改坏时可能不是数组，直接下标访问会产生
+        // "Trying to access array offset on value of type int" 警告
+        if (!is_array($entry)) {
+            unset($data[$key]);
+            continue;
+        }
+        $firstAt = (int) ($entry['firstAt'] ?? 0);
+        $blockedUntil = (int) ($entry['blockedUntil'] ?? 0);
+        $expired = ($now - $firstAt > LOGIN_WINDOW_SECONDS) && ($blockedUntil <= 0 || $blockedUntil <= $now);
         if ($expired) {
             unset($data[$key]);
         }
     }
 
-    $fp = @fopen(throttle_file(), 'c');
-    if ($fp === false) {
-        return;
-    }
-    @flock($fp, LOCK_EX);
-    ftruncate($fp, 0);
-    rewind($fp);
-    fwrite($fp, json_encode($data));
-    fflush($fp);
-    @flock($fp, LOCK_UN);
-    fclose($fp);
+    // 复用 throttle_update 的单锁写入，避免 read-modify-write 竞态
+    throttle_update(function () use ($data) {
+        return $data;
+    });
 }
 
 /**
@@ -397,29 +433,42 @@ function login_throttle($username)
     throw http_error(429, "登录失败次数过多，请 {$minutes} 分钟后再试");
 }
 
-/** 记一次登录失败 */
+
+/**
+ * 记一次登录失败，返回记完之后该账号的失败次数（供测试断言）。
+ *
+ * @return int
+ */
 function record_login_failure($username)
 {
     $key = throttle_key($username);
     if ($key === '') {
-        return;
+        return 0;
     }
     $now = time();
-    $data = throttle_read();
+    $result = 0;
 
-    if (!isset($data[$key]) || $now - (int) $data[$key]['firstAt'] > LOGIN_WINDOW_SECONDS) {
-        $data[$key] = ['count' => 1, 'firstAt' => $now, 'blockedUntil' => 0];
-        throttle_write($data);
-        return;
-    }
+    throttle_update(function ($data) use ($key, $now, &$result) {
+        // 文件被外部改坏时条目可能不是数组，直接丢弃重建
+        $entry = isset($data[$key]) && is_array($data[$key]) ? $data[$key] : null;
 
-    $data[$key]['count'] = (int) $data[$key]['count'] + 1;
-    if ((int) $data[$key]['count'] >= LOGIN_MAX_FAILURES) {
-        $data[$key]['blockedUntil'] = $now + LOGIN_WINDOW_SECONDS;
-        $data[$key]['count'] = 0;
-        $data[$key]['firstAt'] = $now;
-    }
-    throttle_write($data);
+        if ($entry === null || $now - (int) $entry['firstAt'] > LOGIN_WINDOW_SECONDS) {
+            $data[$key] = ['count' => 1, 'firstAt' => $now, 'blockedUntil' => 0];
+            $result = 1;
+            return $data;
+        }
+
+        $data[$key]['count'] = (int) $entry['count'] + 1;
+        if ((int) $data[$key]['count'] >= LOGIN_MAX_FAILURES) {
+            $data[$key]['blockedUntil'] = $now + LOGIN_WINDOW_SECONDS;
+            $data[$key]['count'] = 0;
+            $data[$key]['firstAt'] = $now;
+        }
+        $result = (int) $data[$key]['count'];
+        return $data;
+    });
+
+    return $result;
 }
 
 /** 登录成功后清空该账号的失败记录 */

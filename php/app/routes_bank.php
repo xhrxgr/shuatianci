@@ -384,6 +384,10 @@ function route_bank_reset()
 {
     require_permission('question:write');
     db_transaction(function () {
+        // 先解绑再删卷：papers 留着会变成永久空卷——
+        // 题目都删了，卷子列表里还挂着一堆 0 题的记录
+        execute('UPDATE questions SET paper_id = NULL WHERE paper_id IS NOT NULL');
+        execute('DELETE FROM papers');
         execute('DELETE FROM questions');
         execute('DELETE FROM tags');
     });
