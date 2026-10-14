@@ -36,6 +36,84 @@
       <div data-version-body></div>
     </section>
 
+    <!-- 更新源：服务器能不能直连 GitHub 因机器而异，放在这里配置，
+         不用 SSH 上去敲 git config。放在「检查更新」之前——
+         源没配好就去检查，失败时用户无从下手。 -->
+    <section class="rounded-xl border border-line bg-surface p-5">
+      <h2 class="mb-1 text-sm font-semibold text-ink">更新源</h2>
+      <p class="mb-4 text-xs leading-5 text-muted">
+        默认直连 GitHub。若服务器连不上，可以换一个加速通道；
+        改完点「测试连接」确认能拉通，再点「保存设置」。
+        设置只对在线更新生效，不会改动仓库目录里的文件。
+      </p>
+
+      <div class="space-y-4">
+        <div>
+          <label class="mb-1.5 block text-sm font-medium text-ink" for="us-remote">仓库地址</label>
+          <input
+            id="us-remote"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="https://github.com/xhrxgr/shuatianci.git"
+            class="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition focus:border-primary"
+          >
+          <p class="mt-1.5 text-xs text-muted">
+            官方仓库一般不用改。换自己的仓库才需要填。
+          </p>
+        </div>
+
+        <div>
+          <label class="mb-1.5 block text-sm font-medium text-ink" for="us-preset">连接方式</label>
+          <select
+            id="us-preset"
+            class="min-h-11 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition focus:border-primary"
+          ></select>
+          <p class="mt-1.5 text-xs text-muted" data-preset-hint></p>
+        </div>
+
+        <div data-custom-proxy hidden>
+          <label class="mb-1.5 block text-sm font-medium text-ink" for="us-proxy">加速地址前缀</label>
+          <input
+            id="us-proxy"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="https://你的反代/https://github.com/"
+            class="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition focus:border-primary"
+          >
+          <p class="mt-1.5 text-xs text-muted">
+            规则：把仓库地址里 <span class="font-mono">https://github.com/</span> 这一段换成它。
+            例如填 <span class="font-mono">https://gh-proxy.com/https://github.com/</span>，
+            实际就会去访问 <span class="font-mono">https://gh-proxy.com/https://github.com/你的仓库</span>。
+          </p>
+        </div>
+
+        <div class="rounded-lg border border-line bg-surface-alt p-3 text-xs leading-5 text-muted">
+          实际会访问：
+          <span class="mt-1 block break-all font-mono text-ink" data-effective-url>—</span>
+        </div>
+
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            id="us-test"
+            class="min-h-11 rounded-lg border border-line px-4 py-2 text-xs font-medium text-muted transition hover:bg-surface-alt disabled:cursor-not-allowed disabled:opacity-50"
+          >测试连接</button>
+          <button
+            type="button"
+            id="us-save"
+            class="min-h-11 rounded-lg bg-primary px-5 py-2 text-xs font-medium text-on-primary transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+          >保存设置</button>
+          <button
+            type="button"
+            id="us-reset"
+            class="min-h-11 rounded-lg border border-line px-4 py-2 text-xs text-muted transition hover:bg-surface-alt"
+          >恢复默认</button>
+        </div>
+      </div>
+    </section>
+
     <!-- 更新 -->
     <section class="rounded-xl border border-line bg-surface p-5">
       <h2 class="mb-1 text-sm font-semibold text-ink">检查更新</h2>

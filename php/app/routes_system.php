@@ -19,6 +19,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/util.php';
 require_once __DIR__ . '/errors.php';
 require_once __DIR__ . '/system_state.php';
+require_once __DIR__ . '/update_source.php';
 
 /**
  * 执行一条命令并取回输出。
@@ -110,6 +111,12 @@ function run_command($command, $cwd, $timeoutSec = 60)
  */
 function git_cmd(array $args, $timeoutSec = 30)
 {
+    // 若后台配了加速通道，把 -c url.X.insteadOf=Y 临时挂在这条命令上。
+    // 刻意**不写进 .git/config**：那个文件需要目录对该用户可写，
+    // 而线上恰恰常因属主错位写不进去（同「insufficient permission」那类故障）。
+    // 临时参数不碰任何文件，也就不受权限影响，改完配置立刻生效。
+    $args = array_merge(update_source_git_args(), $args);
+
     if (PHP_OS_FAMILY === 'Windows') {
         // Windows 下不能用 escapeshellarg：它会把参数里的 % 和 ! 替换成空格，
         // 而 git 的 --format=%cI / --format=%s 这类参数必须保留 %。
@@ -563,4 +570,120 @@ function route_system_update_status()
         'startedAt' => $state['startedAt'],
         'finishedAt' => $state['finishedAt'],
     ]);
+}
+
+/* ------------------------------------------------------------------ */
+/* 更新源配置（后台可配，不必 SSH 上去敲 git config）                  */
+/* ------------------------------------------------------------------ */
+
+/** GET /api/system/update-source —— 读取当前配置与可用预设 */
+function route_system_update_source_get()
+{
+    require_permission('system:read');
+
+    json_response([
+        'ok' => true,
+        'config' => update_source_read(),
+        'effective' => update_source_effective_url(),
+        'presets' => update_source_presets(),
+        'defaultRemote' => update_source_default_remote(),
+    ]);
+}
+
+/** PUT /api/system/update-source —— 保存配置 */
+function route_system_update_source_set()
+{
+    require_permission('system:write');
+
+    $body = request_body();
+    $result = update_source_save([
+        'remote' => $body['remote'] ?? '',
+        'proxy' => $body['proxy'] ?? '',
+        'preset' => $body['preset'] ?? 'direct',
+    ]);
+
+    if (!$result['ok']) {
+        json_response(['ok' => false, 'error' => $result['error']], 400);
+    }
+
+    json_response([
+        'ok' => true,
+        'config' => update_source_read(),
+        'effective' => update_source_effective_url(),
+    ]);
+}
+
+/**
+ * POST /api/system/update-source/test —— 拿这组参数真的拉一次远端。
+ *
+ * 这是这个功能最要紧的一环：配置错了如果只有「保存成功」，
+ * 用户还是得等「检查更新」失败才知道。而这里能立刻告诉他通不通，
+ * 而且用的是**和真正更新时完全一样的 git 命令**（同一个 git_cmd + 同一份配置），
+ * 所以测出来的结果就是真的。
+ */
+function route_system_update_source_test()
+{
+    require_permission('system:write');
+
+    $body = request_body();
+    // 不落盘，只验证传进来的这一组
+    $remote = update_source_normalize_remote((string) ($body['remote'] ?? ''));
+    if ($remote === '') {
+        json_response(['ok' => false, 'error' => '仓库地址不合法：只支持 https:// 或 http:// 开头的地址'], 400);
+    }
+    $rawProxy = trim((string) ($body['proxy'] ?? ''));
+    $proxy = update_source_normalize_proxy($rawProxy);
+    if ($rawProxy !== '' && $proxy === '') {
+        json_response(['ok' => false, 'error' => '加速地址不合法：只支持 https:// 或 http:// 开头的地址'], 400);
+    }
+
+    // 临时把配置写成这组，测完恢复——保证走的是与真正更新时一致的代码路径
+    $backup = update_source_read();
+    $saved = update_source_save([
+        'remote' => $remote,
+        'proxy' => $proxy,
+        'preset' => (string) ($body['preset'] ?? 'direct'),
+    ]);
+    if (!$saved['ok']) {
+        json_response(['ok' => false, 'error' => $saved['error']], 400);
+    }
+
+    // 这里**不能**写成 try { ... json_response(...) } finally { 还原 }。
+    // json_response() 内部是 exit，而 PHP 的 exit 会**跳过 finally**——
+    // 于是「测试后还原配置」根本不会执行（实测：连点几次测试后，
+    // 用户的配置被留在测试用的那组参数上）。所以先跑命令、
+    // 还原配置，最后再响应。
+    //
+    // 命令选型踩过两个坑，都是实测出来的：
+    //
+    // 1) 不能用 `ls-remote <完整URL>`：显式传 URL 时 git **绕过** insteadOf
+    //    直接连原地址，于是配了不通的代理也会报「连接成功」（假阳性）。
+    //    必须用 `ls-remote origin`，让它去读仓库里配置的远端。
+    // 2) 不能用 `fetch --dry-run`：实测它连接失败时退出码不稳定，
+    //    判定要同时看 stderr 里有没有 fatal，不能只看 code。
+    //    `ls-remote origin` 两者都可靠（成功 0 / 失败 128 + fatal）。
+    $result = git_cmd(['ls-remote', 'origin'], 45);
+
+    // 先还原配置，再响应：无论如何都不留下测试用的临时设置
+    update_source_save($backup);
+
+    $raw = trim($result['err'] !== '' ? $result['err'] : $result['out']);
+    // 双重判定：退出码非 0，或 stderr 里有 fatal，都算失败。
+    // 只看退出码会漏掉「报错但 code=0」的情况，那时会误报成连接成功。
+    $failed = $result['code'] !== 0 || stripos($raw, 'fatal:') !== false;
+    if (!$failed) {
+        json_response([
+            'ok' => true,
+            'reachable' => true,
+            'effective' => update_source_effective_url(),
+            'message' => '连接成功',
+        ]);
+    }
+    json_response([
+        'ok' => false,
+        'reachable' => false,
+        'hint' => git_failure_hint($raw, $result),
+        'detail' => $raw !== '' ? $raw : '(git 没有输出任何错误)',
+        'effective' => update_source_effective_url(),
+    ], 200);
 }

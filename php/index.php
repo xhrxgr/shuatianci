@@ -94,6 +94,9 @@ function route_table()
         ['POST', '/system/check-update', 'route_system_check_update'],
         ['POST', '/system/update', 'route_system_update'],
         ['GET', '/system/update-status', 'route_system_update_status'],
+        ['GET', '/system/update-source', 'route_system_update_source_get'],
+        ['PUT', '/system/update-source', 'route_system_update_source_set'],
+        ['POST', '/system/update-source/test', 'route_system_update_source_test'],
     ];
 }
 

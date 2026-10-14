@@ -1,7 +1,7 @@
 # 高考英语短文填空穷举题库
 
 服务端题库 + 刷题 + 错题本，支持多设备、多用户。
-当前版本 **3.3.3**（更新记录见 [CHANGELOG.md](CHANGELOG.md)）。
+当前版本 **3.4.0**（更新记录见 [CHANGELOG.md](CHANGELOG.md)）。
 
 ## 快速导航
 
@@ -589,7 +589,11 @@ sudo -u www git -C /www/wwwroot/项目目录 fetch origin --prune
 chown -R www:www /www/wwwroot/项目目录
 ```
 
-如服务器无法直连 github.com，再配置加速通道：
+如服务器无法直连 github.com，**推荐在网页上配置**：
+后台 →「系统设置」→「更新源」→「连接方式」选「gh-proxy.com」→ 测试连接 → 保存。
+该配置存在 `php/data/update_source.json`，只对在线更新生效。
+
+若想手工配（或旧版本没有该界面），也可以敲命令：
 
 ```bash
 cd /www/wwwroot/项目目录

@@ -173,4 +173,9 @@ export const api = {
   checkUpdate: () => request("/system/check-update", { method: "POST" }),
   startUpdate: () => request("/system/update", { method: "POST" }),
   updateStatus: () => request("/system/update-status"),
+  getUpdateSource: () => request("/system/update-source"),
+  saveUpdateSource: (config) =>
+    request("/system/update-source", { method: "PUT", body: config }),
+  testUpdateSource: (config) =>
+    request("/system/update-source/test", { method: "POST", body: config }),
 };

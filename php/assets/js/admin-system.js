@@ -6,6 +6,9 @@
  * - 检查更新：POST /api/system/check-update（列出待更新提交）
  * - 执行更新：POST /api/system/update，随后每 2 秒轮询 GET /api/system/update-status
  *   （服务重启期间轮询失败属预期内，继续等待）
+ * - 更新源配置：GET/PUT /api/system/update-source、POST /api/system/update-source/test
+ *   （服务器能不能直连 GitHub 因机器而异，可在这里切换加速通道，
+ *     不用 SSH 上去敲 git config）
  *
  * 状态机（version / gitAvailable / check / loading /
  * checking / updating / stage / logs / error / notice / restarting），
@@ -358,6 +361,201 @@ if (root) {
     }
   }
 
+  /* ---------------- 更新源配置 ---------------- */
+
+  /** 后端给的可用预设（直连 / 几种加速 / 自建反代） */
+  let updatePresets = [];
+  /** 后端给的默认仓库地址，「恢复默认」用 */
+  let defaultRemote = "";
+  /** 「自建反代」这个预设的 id：选了它才显示自定义前缀输入框 */
+  const CUSTOM_PRESET_ID = "hub-fgit";
+
+  const usEls = {
+    remote: document.getElementById("us-remote"),
+    preset: document.getElementById("us-preset"),
+    presetHint: root.querySelector("[data-preset-hint]"),
+    customProxy: root.querySelector("[data-custom-proxy]"),
+    proxy: document.getElementById("us-proxy"),
+    effective: root.querySelector("[data-effective-url]"),
+    testBtn: document.getElementById("us-test"),
+    saveBtn: document.getElementById("us-save"),
+    resetBtn: document.getElementById("us-reset"),
+  };
+
+  /** 当前选中的方式对应的加速前缀 */
+  function currentProxyValue() {
+    const id = usEls.preset?.value ?? "direct";
+    if (id === CUSTOM_PRESET_ID) {
+      return (usEls.proxy?.value ?? "").trim();
+    }
+    const found = updatePresets.find((item) => item.id === id);
+    return found?.proxy ?? "";
+  }
+
+  /**
+   * 本地算一遍「实际会访问的地址」，输入时实时显示。
+   *
+   * 规则与后端 update_source_effective_url() 一致：把仓库地址开头的
+   * https://github.com/ 换成加速前缀。用 textContent 赋值，不拼 HTML。
+   */
+  function renderEffectiveUrl() {
+    if (!usEls.effective) return;
+    const remote = (usEls.remote?.value ?? "").trim();
+    const proxy = currentProxyValue();
+    if (remote === "") {
+      usEls.effective.textContent = "—";
+      return;
+    }
+    if (proxy === "") {
+      usEls.effective.textContent = remote;
+      return;
+    }
+    if (remote.startsWith(proxy)) {
+      // 仓库地址本身已经是加速后的，避免套出两层前缀
+      usEls.effective.textContent = remote;
+      return;
+    }
+    const target = "https://github.com/";
+    usEls.effective.textContent = remote.startsWith(target)
+      ? proxy + remote.slice(target.length)
+      : remote + "（当前仓库不在 github.com，加速前缀不会生效）";
+  }
+
+  /** 切换「自建反代」时显示/隐藏自定义前缀输入框 */
+  function syncCustomProxyVisibility() {
+    if (!usEls.customProxy) return;
+    const isCustom = (usEls.preset?.value ?? "") === CUSTOM_PRESET_ID;
+    usEls.customProxy.hidden = !isCustom;
+    renderEffectiveUrl();
+  }
+
+  function renderPresetOptions(selectedId) {
+    if (!usEls.preset) return;
+    usEls.preset.textContent = "";
+    for (const item of updatePresets) {
+      const option = document.createElement("option");
+      option.value = item.id;
+      option.textContent = item.label;
+      usEls.preset.appendChild(option);
+    }
+    // 预设里没有当前配置（比如用户填了自定义前缀），补一条「自建反代」
+    if (selectedId && !updatePresets.some((item) => item.id === selectedId)) {
+      const option = document.createElement("option");
+      option.value = CUSTOM_PRESET_ID;
+      option.textContent = "自建反代";
+      usEls.preset.appendChild(option);
+    }
+    usEls.preset.value = selectedId || "direct";
+    syncCustomProxyVisibility();
+  }
+
+  function renderPresetHint() {
+    if (!usEls.presetHint) return;
+    const found = updatePresets.find((item) => item.id === (usEls.preset?.value ?? ""));
+    usEls.presetHint.textContent = found?.hint ?? "";
+  }
+
+  /** 把配置填进表单 */
+  function fillUpdateSourceForm(config) {
+    if (usEls.remote) usEls.remote.value = config?.remote ?? "";
+    if (usEls.proxy) usEls.proxy.value = config?.proxy ?? "";
+    renderPresetOptions(config?.preset || "direct");
+    renderPresetHint();
+    renderEffectiveUrl();
+  }
+
+  /** 读表单当前值 */
+  function readUpdateSourceForm() {
+    return {
+      remote: (usEls.remote?.value ?? "").trim(),
+      proxy: currentProxyValue(),
+      preset: usEls.preset?.value ?? "direct",
+    };
+  }
+
+  function setUpdateSourceBusy(busy) {
+    [usEls.testBtn, usEls.saveBtn, usEls.resetBtn].forEach((btn) => {
+      if (btn) btn.disabled = busy;
+    });
+  }
+
+  async function loadUpdateSource() {
+    try {
+      const data = await api.getUpdateSource();
+      updatePresets = Array.isArray(data.presets) ? data.presets : [];
+      defaultRemote = String(data.defaultRemote ?? "");
+      fillUpdateSourceForm(data.config);
+    } catch (error) {
+      // 这个区块是辅助功能，读不到不该挡住版本与更新的正常使用
+      notifyError(error, { boxId: "admin-system-error" });
+    }
+  }
+
+  /** 测试连接：用后端同一套 git 命令真拉一次远端 */
+  async function handleTestSource() {
+    const config = readUpdateSourceForm();
+    clearMessages();
+    setUpdateSourceBusy(true);
+    try {
+      const result = await api.testUpdateSource(config);
+      if (result.reachable) {
+        const via = result.effective?.proxy ? `（经由 ${result.effective.proxy}）` : "（直连）";
+        showMessage("notice", `连接成功${via}`, {
+          details: [`实际访问：${result.effective?.actual ?? config.remote}`],
+          sticky: true,
+        });
+      } else {
+        // 失败是「用户正在配置」，不该一闪而过：常驻 + 给出可操作的下一步
+        showMessage("error", result.hint || "连接失败", {
+          details: [result.effective?.actual || config.remote, result.detail || ""].filter(Boolean),
+          retry: () => void handleTestSource(),
+          sticky: true,
+        });
+      }
+    } catch (error) {
+      notifyError(error, { boxId: "admin-system-error", retry: () => void handleTestSource() });
+    } finally {
+      setUpdateSourceBusy(false);
+    }
+  }
+
+  async function handleSaveSource() {
+    const config = readUpdateSourceForm();
+    clearMessages();
+    setUpdateSourceBusy(true);
+    try {
+      const result = await api.saveUpdateSource(config);
+      fillUpdateSourceForm(result.config);
+      renderEffectiveUrl();
+      showMessage("notice", "已保存。现在可以点「检查更新」了", {
+        details: result.effective?.actual ? [`实际访问：${result.effective.actual}`] : [],
+      });
+    } catch (error) {
+      notifyError(error, { boxId: "admin-system-error", retry: () => void handleSaveSource() });
+    } finally {
+      setUpdateSourceBusy(false);
+    }
+  }
+
+  async function handleResetSource() {
+    clearMessages();
+    setUpdateSourceBusy(true);
+    try {
+      const result = await api.saveUpdateSource({
+        remote: defaultRemote,
+        proxy: "",
+        preset: "direct",
+      });
+      fillUpdateSourceForm(result.config);
+      renderEffectiveUrl();
+      showMessage("notice", "已恢复为官方仓库直连");
+    } catch (error) {
+      notifyError(error, { boxId: "admin-system-error" });
+    } finally {
+      setUpdateSourceBusy(false);
+    }
+  }
+
   /* ---------------- 事件绑定 ---------------- */
 
   root.addEventListener("click", (event) => {
@@ -379,10 +577,27 @@ if (root) {
     }
   });
 
+  // 更新源配置区
+  if (usEls.preset) {
+    usEls.preset.addEventListener("change", () => {
+      const found = updatePresets.find((item) => item.id === usEls.preset.value);
+      // 切到预设时把前缀直接填上，用户能看见实际值、也能继续改
+      if (found && found.proxy && usEls.proxy) usEls.proxy.value = found.proxy;
+      renderPresetHint();
+      syncCustomProxyVisibility();
+    });
+  }
+  usEls.remote?.addEventListener("input", renderEffectiveUrl);
+  usEls.proxy?.addEventListener("input", renderEffectiveUrl);
+  usEls.testBtn?.addEventListener("click", () => void handleTestSource());
+  usEls.saveBtn?.addEventListener("click", () => void handleSaveSource());
+  usEls.resetBtn?.addEventListener("click", () => void handleResetSource());
+
   // 离开页面时停止轮询（原生页面直接离开即可）
   window.addEventListener("beforeunload", () => {
     if (pollTimer !== null) window.clearInterval(pollTimer);
   });
 
   void loadVersion();
+  void loadUpdateSource();
 }
