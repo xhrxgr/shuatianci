@@ -978,6 +978,9 @@ async function main() {
   // 录两道题到这套卷：粘贴新格式 JSON，卷名自动填好，
   // 且因为库里已有同名卷，页面应提示会归到那张卷而不是新建
   await page.locator('[data-admin-tab="ai"]').click();
+  // 等面板真的可见再操作：服务器慢的时候 JS 可能还没绑定完事件，
+  // 点了页签但没切过去，后面的 fill 就会一直超时
+  await page.locator('#admin-ai-json').waitFor({ state: "visible", timeout: 15000 });
   await page.locator("#admin-ai-json").fill(
     JSON.stringify({
       source: paperName,
