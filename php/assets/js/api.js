@@ -161,6 +161,12 @@ export const api = {
     request("/questions/check-duplicates", { method: "POST", body: { questions } }),
   updateQuestion: (id, patch) => request(`/questions/${id}`, { method: "PUT", body: patch }),
   deleteQuestion: (id) => request(`/questions/${id}`, { method: "DELETE" }),
+  /* ---- 篇章：一道大题共享的完整原文 ---- */
+  listPassages: (paperId) => request(`/passages${paperId ? `?paperId=${encodeURIComponent(paperId)}` : ""}`),
+  createPassage: (payload) => request("/passages", { method: "POST", body: payload }),
+  updatePassage: (id, payload) => request(`/passages/${id}`, { method: "PUT", body: payload }),
+  deletePassage: (id) => request(`/passages/${id}`, { method: "DELETE" }),
+
   saveTags: (tagDictionary) => request("/tags", { method: "PUT", body: { tagDictionary } }),
   resetBank: () => request("/bank/reset", { method: "POST" }),
 

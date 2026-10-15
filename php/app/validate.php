@@ -181,3 +181,32 @@ function normalize_passage_text($value)
     }
     return $text;
 }
+
+/**
+ * 规范化「所属篇章」id。
+ *
+ * 规则：
+ * - null / 空串 → null（表示不挂篇章）
+ * - 必须是字符串，且指向真实存在的篇章——否则会留下悬空引用，
+ *   做题时取不到原文，而且没有任何报错（最难查的那类）
+ */
+function normalize_passage_id($value)
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+    if (!is_string($value)) {
+        throw http_error(400, 'passageId 必须是字符串');
+    }
+    $value = trim($value);
+    if ($value === '') {
+        return null;
+    }
+    $row = function_exists('query_one')
+        ? query_one('SELECT id FROM passages WHERE id = ?', [$value])
+        : null;
+    if ($row === null) {
+        throw http_error(400, '篇章不存在或已删除：' . $value);
+    }
+    return (string) $row['id'];
+}

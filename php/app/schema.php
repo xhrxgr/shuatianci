@@ -106,6 +106,9 @@ function migrate_question_columns()
         // 未挖空的完整原文：一道大题（一篇阅读挖多个空）录成一道题时，
         // 用它给学生做上下文对照。可空，老题没有也不影响任何既有路径
         'passage_text' => 'ALTER TABLE questions ADD COLUMN passage_text TEXT',
+        // 所属篇章（passages.id）：一道大题的 10 道小题共享同一篇原文时用它。
+        // 读取时 passages.text 优先，passage_text 仅作老数据兜底
+        'passage_id' => 'ALTER TABLE questions ADD COLUMN passage_id TEXT',
     ];
 
     $changed = false;

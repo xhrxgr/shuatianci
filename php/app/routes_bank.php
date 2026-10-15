@@ -30,11 +30,12 @@ function map_question(array $row)
     return [
         'id' => (string) ($row['id'] ?? ''),
         'originalSentence' => (string) ($row['original_sentence'] ?? ''),
-        // 未挖空的完整原文：老题没有这一列时给 null（不是空串），
-        // 前端据此区分「没有原文」与「原文是空的」
-        'passageText' => isset($row['passage_text']) && trim((string) $row['passage_text']) !== ''
-            ? (string) $row['passage_text']
-            : null,
+        // 所属篇章：新模型（一道大题 10 道小题共享一篇原文）
+        'passageId' => !empty($row['passage_id']) ? (string) $row['passage_id'] : null,
+        'passageTitle' => isset($row['passage_title']) ? (string) $row['passage_title'] : '',
+        // 完整原文：**优先取篇章里的**（passages.text），没有再退回题目自己那一列
+        // （v3.6.13 的旧形态，一题一份；用户明确说不迁移老数据，所以两套并存）
+        'passageText' => questions_passage_text($row),
         'blanks' => is_array($blanks) ? $blanks : [],
         'source' => (string) ($row['source'] ?? ''),
         'paperId' => !empty($row['paper_id']) ? (string) $row['paper_id'] : null,
@@ -122,27 +123,27 @@ function route_questions_list()
         }
         // 走成员表而不是 questions.paper_id：成员表才是完整归属关系，
         // 将来一题多卷时这里不用改
-        $where[] = 'id IN (SELECT question_id FROM paper_items WHERE paper_id = ?)';
+        $where[] = 'q.id IN (SELECT question_id FROM paper_items WHERE paper_id = ?)';
         $params[] = $paperId;
     }
 
     // ---- 按来源 ----
     $source = isset($_GET['source']) ? trim((string) $_GET['source']) : '';
     if ($source !== '') {
-        $where[] = 'source = ?';
+        $where[] = 'q.source = ?';
         $params[] = $source;
     }
 
     // ---- 按发布状态 ----
     $publishStatus = isset($_GET['publishStatus']) ? trim((string) $_GET['publishStatus']) : '';
     if ($publishStatus !== '') {
-        $where[] = 'publish_status = ?';
+        $where[] = 'q.publish_status = ?';
         $params[] = $publishStatus;
     }
 
     // ---- 按录入人 ----
     if (isset($_GET['owner']) && $_GET['owner'] !== '') {
-        $where[] = 'owner_id = ?';
+        $where[] = 'q.owner_id = ?';
         $params[] = (int) $_GET['owner'];
     }
 
@@ -170,10 +171,10 @@ function route_questions_list()
         $tagMatch = isset($_GET['tagMatch']) && strtolower((string) $_GET['tagMatch']) === 'any' ? 'any' : 'all';
         if ($tagMatch === 'all') {
             // 交集：必须同时挂上这些标签
-            $where[] = "id IN (SELECT question_id FROM question_tags WHERE tag_id IN ($placeholders)
+            $where[] = "q.id IN (SELECT question_id FROM question_tags WHERE tag_id IN ($placeholders)
                                 GROUP BY question_id HAVING COUNT(DISTINCT tag_id) = " . count($tagIds) . ')';
         } else {
-            $where[] = "id IN (SELECT question_id FROM question_tags WHERE tag_id IN ($placeholders))";
+            $where[] = "q.id IN (SELECT question_id FROM question_tags WHERE tag_id IN ($placeholders))";
         }
         foreach ($tagIds as $t) {
             $params[] = $t;
@@ -185,7 +186,7 @@ function route_questions_list()
     if ($hintType !== '') {
         // JSON1 的 json_each 逐空展开。hintType 取值受限（5 个常量），
         // 但这里仍走参数绑定，不做字符串拼接
-        $where[] = "EXISTS (SELECT 1 FROM json_each(questions.blanks_json)
+        $where[] = "EXISTS (SELECT 1 FROM json_each(q.blanks_json)
                              WHERE json_extract(value, '$.hintType') = ?)";
         $params[] = $hintType;
     }
@@ -199,11 +200,11 @@ function route_questions_list()
     // 没有亲和性**，此时 `2 >= '2'` 按 SQLite 的类型序（INTEGER < TEXT）
     // 恒为假 —— 实测「>= 2」返回 0 条、「<= 1」返回全部，筛选静默失效。
     if ($blankMin !== null) {
-        $where[] = 'json_array_length(blanks_json) >= CAST(? AS INTEGER)';
+        $where[] = 'json_array_length(q.blanks_json) >= CAST(? AS INTEGER)';
         $params[] = $blankMin;
     }
     if ($blankMax !== null) {
-        $where[] = 'json_array_length(blanks_json) <= CAST(? AS INTEGER)';
+        $where[] = 'json_array_length(q.blanks_json) <= CAST(? AS INTEGER)';
         $params[] = $blankMax;
     }
 
@@ -213,7 +214,7 @@ function route_questions_list()
         // LIKE 的通配符必须转义，否则用户搜 "50%" 会变成「以 50 开头」
         $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $keyword);
         $like = '%' . $escaped . '%';
-        $where[] = "(original_sentence LIKE ? ESCAPE '\\' OR blanks_json LIKE ? ESCAPE '\\')";
+        $where[] = "(q.original_sentence LIKE ? ESCAPE '\\' OR q.blanks_json LIKE ? ESCAPE '\\')";
         $params[] = $like;
         $params[] = $like;
     }
@@ -221,19 +222,23 @@ function route_questions_list()
     $whereSql = count($where) > 0 ? ' WHERE ' . implode(' AND ', $where) : '';
 
     // ---- 排序：白名单映射，绝不把用户输入拼进 SQL ----
+    // 列名一律带 q. 前缀：JOIN 了 passages 之后 paper_id 两边都有，
+    // 不带前缀迟早踩歧义。统一带上，读起来也知道在排哪张表
     $orderMap = [
-        'created_at' => 'created_at DESC, id',
-        'updated_at' => 'COALESCE(updated_at, created_at) DESC, id',
-        'source' => 'source ASC, created_at DESC, id',
-        'sentence' => 'original_sentence ASC, id',
+        'created_at' => 'q.created_at DESC, q.id',
+        'updated_at' => 'COALESCE(q.updated_at, q.created_at) DESC, q.id',
+        'source' => 'q.source ASC, q.created_at DESC, q.id',
+        'sentence' => 'q.original_sentence ASC, q.id',
     ];
     $orderKey = isset($_GET['order']) ? (string) $_GET['order'] : 'created_at';
     $orderSql = $orderMap[$orderKey] ?? $orderMap['created_at'];
 
     // passage_text 也要选出来：完整原文是题目的一部分，列表页（题库总览）
     // 与详情都要能读到。不选的话 map_question 里那一列永远是 null
-    $columns = 'id, original_sentence, passage_text, blanks_json, source, paper_id, schema_version,
-                fingerprint, publish_status, owner_id, created_at, updated_at';
+    // 列清单与 FROM 走公共函数：所有查题的地方必须统一 JOIN passages，
+    // 各自拼一遍总有漏的（漏了 map_question 里那两列就永远是 null）
+    $columns = questions_select_columns();
+    $fromClause = questions_from_clause();
 
     // ---- 分页：不传 page 时返回全部（老调用方行为不变）----
     $page = isset($_GET['page']) && $_GET['page'] !== '' ? max(1, (int) $_GET['page']) : null;
@@ -241,10 +246,12 @@ function route_questions_list()
     // 上限 500：一次拉太多会让响应体和前端渲染都变慢
     $pageSize = max(1, min(500, $pageSize));
 
-    $total = scalar_int('SELECT COUNT(*) AS n FROM questions' . $whereSql, $params);
+    // COUNT 也要带同一个 FROM/JOIN：where 里的列都加了 q. 前缀，
+    // 少了 JOIN 子句就会报「no such column: q.id」（实测 500）
+    $total = scalar_int('SELECT COUNT(*) AS n' . $fromClause . $whereSql, $params);
 
     if ($page === null) {
-        $rows = query("SELECT $columns FROM questions$whereSql ORDER BY $orderSql", $params);
+        $rows = query("SELECT $columns$fromClause$whereSql ORDER BY $orderSql", $params);
         json_response(['questions' => array_map('map_question', $rows), 'total' => $total]);
     }
 
@@ -506,17 +513,24 @@ function route_questions_create()
             $blanks = isset($question['blanks']) && is_array($question['blanks']) ? $question['blanks'] : [];
             $paperId = ensure_paper_by_name($source);
             $createdAt = to_sql_date(isset($question['createdAt']) ? $question['createdAt'] : null);
-            // 完整原文可空：没填就不给上下文对照，老题与单句题都是这个形态
-            $passage = normalize_passage_text(isset($question['passageText']) ? $question['passageText'] : null);
+            // 完整原文两套并存：
+            // - 新模型：passageId 指向 passages 表（一道大题 10 道小题共享一篇，
+            //   改一处全篇生效）—— 传了它就以它为准
+            // - 旧形态：passageText 一题一份（v3.6.13 起，用户明确说不迁移老数据）
+            $passageId = normalize_passage_id(isset($question['passageId']) ? $question['passageId'] : null);
+            $passage = $passageId !== null
+                ? null
+                : normalize_passage_text(isset($question['passageText']) ? $question['passageText'] : null);
 
             execute(
                 'INSERT INTO questions
-                   (id, original_sentence, passage_text, blanks_json, source, paper_id, schema_version,
+                   (id, original_sentence, passage_id, passage_text, blanks_json, source, paper_id, schema_version,
                     fingerprint, content_hash, owner_id, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 [
                     $id,
                     $sentence,
+                    $passageId,
                     $passage,
                     json_encode($blanks, JSON_UNESCAPED_UNICODE),
                     $source,
@@ -582,6 +596,11 @@ function route_questions_update($id)
         $fields[] = 'passage_text = ?';
         $values[] = normalize_passage_text($patch['passageText']);
     }
+    // 所属篇章：显式传 null 表示把题从篇章里摘出来（变回"没有原文"）
+    if (array_key_exists('passageId', $patch)) {
+        $fields[] = 'passage_id = ?';
+        $values[] = normalize_passage_id($patch['passageId']);
+    }
 
     // 显式指定所属试卷（null 表示移出该卷）
     if (array_key_exists('paperId', $patch)) {
@@ -611,7 +630,16 @@ function route_questions_update($id)
 
     // 与新增走同一套校验：未提及的字段取库里的现值一起校验，
     // 否则「只改 blanks 不改原句」会让空格数量与 blanks 数量对不上
-    $rows = query('SELECT id, original_sentence, passage_text, blanks_json, source, paper_id FROM questions WHERE id = ?', [$id]);
+    // 也要 JOIN passages：编辑弹窗要能看到这道题当前挂的篇章原文
+    $rows = query(
+        'SELECT q.id, q.original_sentence, q.passage_id, q.passage_text,
+                p.title AS passage_title, p.text AS passage_text_now,
+                q.blanks_json, q.source, q.paper_id
+           FROM questions q
+           LEFT JOIN passages p ON p.id = q.passage_id
+          WHERE q.id = ?',
+        [$id]
+    );
     if (count($rows) === 0) {
         throw http_error(404, '题目不存在或已删除');
     }
@@ -625,6 +653,9 @@ function route_questions_update($id)
         'passageText' => array_key_exists('passageText', $patch)
             ? $patch['passageText']
             : ($row['passage_text'] ?? null),
+        'passageId' => array_key_exists('passageId', $patch)
+            ? $patch['passageId']
+            : ($row['passage_id'] ?? null),
         'blanks' => array_key_exists('blanks', $patch)
             ? $patch['blanks']
             : json_decode((string) $row['blanks_json'], true),

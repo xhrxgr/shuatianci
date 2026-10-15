@@ -166,7 +166,7 @@ async function main() {
     "题目字段结构完整（含 v3.5.0 新增的指纹与发布状态）",
     first &&
       Object.keys(first).sort().join(",") ===
-        "blanks,createdAt,fingerprint,id,originalSentence,ownerId,paperId,passageText,publishStatus,schemaVersion,source,status,updatedAt,wrongCount",
+        "blanks,createdAt,fingerprint,id,originalSentence,ownerId,paperId,passageId,passageText,passageTitle,publishStatus,schemaVersion,source,status,updatedAt,wrongCount",
     Object.keys(first || {})
   );
   record("questions", questions.status, { count: questions.data.questions?.length, first });
@@ -353,6 +353,62 @@ async function main() {
     body: { passageText: "x".repeat(5001) },
   });
   check("原文超过 5000 字 -> 400", tooLong.status === 400, tooLong.data);
+
+  /* ---- 篇章（passages）：一道大题 10 道小题共享一篇原文 ---- */
+  const passageCreated = await request("POST", "/passages", {
+    token: adminToken,
+    body: { title: "A 篇", text: "Editors correct every page before printing, and they double-check the cover." },
+  });
+  check("建篇章成功（201）", passageCreated.status === 201 && passageCreated.data.passage?.id, passageCreated.data);
+  const passageId = passageCreated.data.passage?.id ?? "";
+  const passageListShared = await request("GET", "/passages", { token: adminToken });
+  check("篇章列表能读回", (passageListShared.data.passages ?? []).some((p) => p.id === passageId));
+
+  // 题挂到篇章上：passageId 优先于 passageText
+  const qOnPassageShared = await request("POST", "/questions", {
+    token: adminToken,
+    body: { question: {
+      originalSentence: "Editors ______ (correct) every page twice, and ______ check the cover.",
+      // 独立 source：默认的「手动录入」会被归成卷，干扰后面按卷计数的断言
+      source: "篇章自测卷",
+      passageId,
+      blanks: [
+        { blankIndex: 1, answer: ["correct"], hintType: "给动词", hintWord: "correct", trapAnalysis: "挂在篇章上的题。" },
+        { blankIndex: 2, answer: ["they"], hintType: "无提示词", hintWord: null, trapAnalysis: "指代上句。" },
+      ],
+    } },
+  });
+  check("建题可挂篇章（201）", qOnPassageShared.status === 201, qOnPassageShared.data);
+  const listOnPassageShared = await request("GET", "/questions", { token: adminToken });
+  const onPassageShared = (listOnPassageShared.data.questions ?? []).find((q) => String(q.originalSentence).startsWith("Editors ______ (correct)"));
+  check("题读回 passageId", onPassageShared?.passageId === passageId, onPassageShared?.passageId);
+  check("passageText 取自篇章（共享）", onPassageShared?.passageText?.includes("Editors correct every page") === true, onPassageShared?.passageText);
+  check("passageTitle 一并带回", onPassageShared?.passageTitle === "A 篇", onPassageShared?.passageTitle);
+
+  // 改篇章原文：一处改，挂在上面的题全部跟着变
+  await request("PUT", `/passages/${passageId}`, { token: adminToken, body: { text: "改过的篇章原文。" } });
+  const listAfterEdit = await request("GET", "/questions", { token: adminToken });
+  const afterEditShared = (listAfterEdit.data.questions ?? []).find((q) => q.id === onPassageShared?.id);
+  check("改一处全篇生效", afterEditShared?.passageText === "改过的篇章原文。", afterEditShared?.passageText);
+
+  // 不存在的篇章 id 要被拒（悬空引用会让做题时静默拿不到原文）
+  const badPassage = await request("POST", "/questions", {
+    token: adminToken,
+    body: { question: {
+      originalSentence: "Bad ______ passage id.",
+      source: "篇章自测卷",
+      passageId: "p_not_exist",
+      blanks: [{ blankIndex: 1, answer: ["x"], hintType: "无提示词", hintWord: null, trapAnalysis: "应被拒绝。" }],
+    } },
+  });
+  check("挂不存在的篇章 -> 400", badPassage.status === 400, badPassage.data);
+
+  // 删篇章：题目保留，只是不再有原文
+  await request("DELETE", `/passages/${passageId}`, { token: adminToken });
+  const listAfterDelete = await request("GET", "/questions", { token: adminToken });
+  const afterDeleteShared = (listAfterDelete.data.questions ?? []).find((q) => q.id === onPassageShared?.id);
+  check("删篇章后题还在", afterDeleteShared !== undefined);
+  check("删篇章后原文变 null", afterDeleteShared?.passageText === null, afterDeleteShared?.passageText);
 
   // 缺 id 时由服务端生成，AI 导入不再要求 AI 输出编号
   const noId = await request("POST", "/questions", {

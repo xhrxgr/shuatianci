@@ -845,6 +845,7 @@ let submitting = false;
  */
 let previewList = [];      // 解析 + 修复后的题目（全量，含未勾选的）
 let previewEditIndex = null; // 正在编辑的题号（同一时间只编辑一张卡片）
+let previewPassageId = null; // 本批共用的篇章 id（一道大题 10 道小题共享一篇原文）
 let previewVerdicts = [];  // 每题查重结果
 let previewChecks = [];    // 每题是否勾选
 /** 预览对应的 textarea 内容，用于判断「粘贴后立刻点导入」时预览是否还是新的 */
@@ -1221,6 +1222,11 @@ function renderPreviewItem(item, verdict, index) {
   }
   body.appendChild(blankBox);
 
+  // 所属篇章：套用了共用原文时显示一句，让用户知道这题有全文对照
+  if (item.passageId) {
+    head.appendChild(el("span", "rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[11px] text-primary", "共用原文"));
+  }
+
   // 完整原文：这道题有全文时才显示，让学生/老师导入前就能核对
   if (item.passageText) {
     const passageBox = el("div", "rounded border border-line bg-surface-alt p-2.5");
@@ -1297,6 +1303,83 @@ function removePreviewItem(index) {
   syncLastBuild();
   renderPreview();
   renderPreviewSummary();
+  renderPassagePanel();
+}
+
+/* ---------------- 本篇完整原文（一道大题共享） ---------------- */
+
+/** 刷新原文区的显隐与状态文字（预览有题时才显示这一块） */
+function renderPassagePanel() {
+  if (!els.passageBox) return;
+  const has = previewList.length > 0;
+  els.passageBox.hidden = !has;
+  if (!has) return;
+  if (previewPassageId) {
+    els.passageStatus.textContent = `已套用到本批 ${previewList.length} 道题（改原文只改一处，全部立即生效）`;
+    els.passageApply.textContent = "重新套用";
+  } else {
+    const own = previewList.filter((q) => typeof q.passageText === "string" && q.passageText.trim() !== "").length;
+    els.passageStatus.textContent = own > 0
+      ? `尚未设置共用原文（当前有 ${own} 道题各带一份自己的原文）`
+      : "尚未设置原文";
+    els.passageApply.textContent = "套用到本批题目";
+  }
+}
+
+/**
+ * 建一篇篇章并把本批所有题指向它。
+ *
+ * 为什么是建表而不是把文本塞进每题：一道大题 10 道小题共享一篇原文，
+ * 塞进每题就要填 10 遍、改 10 遍；建成篇章只存一份，改一处全篇生效。
+ */
+async function applyPassageToBatch() {
+  const text = (els.passageText?.value ?? "").trim();
+  if (text === "") {
+    renderError("请先粘贴这篇阅读的完整原文");
+    return;
+  }
+  if (previewList.length === 0) {
+    renderError("先粘贴 AI 返回的 JSON，等预览出现后再套用原文");
+    return;
+  }
+  els.passageApply.disabled = true;
+  try {
+    // 已经建过就改它，不要每点一次建一篇（那会留下一堆空篇章）
+    let passageId = previewPassageId;
+    if (passageId) {
+      await api.updatePassage(passageId, { text });
+    } else {
+      const created = await api.createPassage({ text });
+      passageId = created.passage?.id ?? null;
+      if (!passageId) throw new Error("建篇章失败");
+    }
+    previewPassageId = passageId;
+    // 本批所有题统一指向这篇；各题自己的 passageText 清掉，避免两处各说各话
+    previewList.forEach((question) => {
+      question.passageId = passageId;
+      question.passageText = null;
+    });
+    syncLastBuild();
+    clearError();
+    renderPassagePanel();
+    renderPreview();
+  } catch (error) {
+    notifyError(error, { retry: () => void applyPassageToBatch() });
+  } finally {
+    els.passageApply.disabled = false;
+  }
+}
+
+/** 清除共用原文：把本批所有题的篇章引用摘掉（不影响已导入的题） */
+function clearPassageFromBatch() {
+  if (!previewPassageId) return;
+  previewPassageId = null;
+  previewList.forEach((question) => {
+    question.passageId = null;
+  });
+  syncLastBuild();
+  renderPassagePanel();
+  renderPreview();
 }
 
 /**
@@ -1769,6 +1852,8 @@ async function buildPreviewInner(raw) {
   renderMissing();
 
   previewList = list;
+  // 换了一批题，上一篇的共用引用作废（否则会把上一篇的原文套到新一批上）
+  previewPassageId = null;
   previewVerdicts = list.map((_, index) => verdicts[index] ?? { state: "new", hint: "", matched: [] });
   // 默认勾选规则：新增勾上；已存在 / 答案不同默认不勾（宁可少录，不要默默产生两条互相矛盾的题）
   previewChecks = previewVerdicts.map((v) => v.state === "new");
@@ -2080,6 +2165,11 @@ export function setupAiAssistant({
     preview: document.getElementById("admin-ai-preview"),
     previewSummary: document.getElementById("admin-ai-preview-summary"),
     previewList: document.getElementById("admin-ai-preview-list"),
+    passageBox: document.getElementById("admin-ai-passage"),
+    passageText: document.getElementById("admin-ai-passage-text"),
+    passageApply: document.getElementById("admin-ai-passage-apply"),
+    passageClear: document.getElementById("admin-ai-passage-clear"),
+    passageStatus: document.getElementById("admin-ai-passage-status"),
     selectAllBtn: document.getElementById("admin-ai-select-all"),
     selectNoneBtn: document.getElementById("admin-ai-select-none"),
   };
@@ -2125,6 +2215,8 @@ export function setupAiAssistant({
       renderPreview();
     });
     els.source?.addEventListener("input", () => updatePaperHint(false));
+    els.passageApply?.addEventListener("click", () => void applyPassageToBatch());
+    els.passageClear?.addEventListener("click", clearPassageFromBatch);
     window.addEventListener("beforeunload", () => {
       if (copyTimer !== null) window.clearTimeout(copyTimer);
     });

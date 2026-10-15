@@ -185,10 +185,13 @@ function merge_progress(array $questions, $user)
 
 function load_questions_with_progress($user)
 {
+    // 必须 LEFT JOIN passages：完整原文挂在篇章上（一道大题 10 道小题共享一篇）。
+    // 列清单走公共函数，避免以后加列时漏掉 JOIN —— 漏了 map/取原文就永远是 null
     $rows = query(
-        'SELECT id, original_sentence, blanks_json, source, paper_id, schema_version, created_at
-           FROM questions
-          ORDER BY created_at DESC, id'
+        'SELECT ' . questions_select_columns() . '
+           FROM questions q
+           LEFT JOIN passages p ON p.id = q.passage_id
+          ORDER BY q.created_at DESC, q.id'
     );
 
     $progress = [];
@@ -208,6 +211,9 @@ function load_questions_with_progress($user)
             'blanks' => is_array($blanks) ? $blanks : [],
             'source' => (string) $row['source'],
             'paperId' => $row['paper_id'] !== null ? (string) $row['paper_id'] : null,
+            'passageId' => !empty($row['passage_id']) ? (string) $row['passage_id'] : null,
+            'passageTitle' => isset($row['passage_title']) ? (string) $row['passage_title'] : '',
+            'passageText' => questions_passage_text($row),
             'schemaVersion' => (int) $row['schema_version'],
             'status' => $item !== null ? (string) $item['status'] : 'unmastered',
             'wrongCount' => $item !== null ? (int) $item['wrong_count'] : 0,

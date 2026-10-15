@@ -200,11 +200,12 @@ function page_paper_practice($id)
     // 直接取该卷题目并合并个人进度，省掉前端再请求一次。
     // 顺序与分篇以 paper_items 为准（第 2 期起）：生成的虚拟卷只登记在成员表里，
     // 按 questions.paper_id 查会得到空卷；原始卷两边数据一致，改这里不影响它。
+    // 同样要 LEFT JOIN passages：整卷练习的题目也可能属于某篇阅读
     $questionRows = query(
-        'SELECT q.id, q.original_sentence, q.blanks_json, q.source, q.paper_id,
-                q.schema_version, q.created_at, i.section_no, i.order_no
+        'SELECT ' . questions_select_columns() . ', i.section_no, i.order_no
            FROM paper_items i
            JOIN questions q ON q.id = i.question_id
+           LEFT JOIN passages p ON p.id = q.passage_id
           WHERE i.paper_id = ?
           ORDER BY i.section_no, i.order_no',
         [$id]

@@ -166,3 +166,44 @@ function request_path($requestUri)
     }
     return rtrim($path, '/') === '' ? '/' : rtrim($path, '/');
 }
+
+/**
+ * 查题的公共列清单与 FROM 子句。
+ *
+ * 必须 LEFT JOIN passages：完整原文现在挂在篇章上（10 道小题共享一篇），
+ * 不 JOIN 的话 map_question 里那两列永远取不到。
+ * 用 LEFT 而不是 INNER：老题与单句题没有篇章，也得能查出来。
+ */
+function questions_select_columns()
+{
+    return 'q.id, q.original_sentence, q.passage_id, q.passage_text,
+            p.title AS passage_title, p.text AS passage_text_now,
+            q.blanks_json, q.source, q.paper_id, q.schema_version,
+            q.fingerprint, q.publish_status, q.owner_id, q.created_at, q.updated_at';
+}
+
+function questions_from_clause()
+{
+    return ' FROM questions q LEFT JOIN passages p ON p.id = q.passage_id';
+}
+
+/**
+ * 从一行题目数据里取「完整原文」：篇章优先，题目自身列兜底。
+ *
+ * 两套并存的过渡期专用：
+ * - 新数据走 passages 表（10 道小题共享一篇，改一处全篇生效）
+ * - 老数据还留在 questions.passage_text（一题一份，用户明确说不迁移）
+ *
+ * @param array $row 已按 questions_select_columns() 选出的行
+ * @return string|null 没有原文返回 null（不是空串，前端据此区分）
+ */
+function questions_passage_text(array $row)
+{
+    if (isset($row['passage_text_now']) && trim((string) $row['passage_text_now']) !== '') {
+        return (string) $row['passage_text_now'];
+    }
+    if (isset($row['passage_text']) && trim((string) $row['passage_text']) !== '') {
+        return (string) $row['passage_text'];
+    }
+    return null;
+}

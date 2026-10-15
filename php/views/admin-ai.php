@@ -103,6 +103,36 @@ foreach ($aiTags as $aiTag) {
     </div>
 
     <!-- 预览区：粘贴即渲染，用户点导入前就能完整看到这批题长什么样、哪几道库里已有 -->
+    <!-- 本篇完整原文：一道大题是「一篇阅读挖多个空」，本批所有题共享同一篇原文。
+         在这里填一次、套用到本批，不用每道题各填一遍（v3.6.15 之前正是那样） -->
+    <div class="mt-4 rounded-xl border border-line bg-surface p-4" id="admin-ai-passage" hidden>
+      <label class="mb-1.5 block text-xs font-medium text-ink" for="admin-ai-passage-text">
+        本篇完整原文 <span class="text-faint">（选填，一篇填一次，套用到本批所有题）</span>
+      </label>
+      <textarea
+        id="admin-ai-passage-text"
+        rows="4"
+        placeholder="把这篇阅读未挖掉的原文粘在这里。代词指代、时态呼应、篇章逻辑这类空，学生需要能随时展开全文对照。"
+        class="w-full rounded-lg border border-line bg-surface-alt px-3 py-2 text-xs leading-5 outline-none transition focus:border-primary"
+      ></textarea>
+      <div class="mt-2 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          id="admin-ai-passage-apply"
+          class="min-h-11 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-on-primary transition hover:bg-primary-hover"
+        >套用到本批题目</button>
+        <button
+          type="button"
+          id="admin-ai-passage-clear"
+          class="min-h-11 rounded-lg border border-line px-4 py-2 text-xs text-muted transition hover:bg-surface-alt"
+        >清除</button>
+        <p class="text-xs text-faint" id="admin-ai-passage-status">尚未设置原文</p>
+      </div>
+      <p class="mt-2 text-xs text-faint">
+        导入后这篇原文只存一份，本批所有题共用；以后改原文也只改一处，全部题目立即生效。
+      </p>
+    </div>
+
     <div class="mt-4" id="admin-ai-preview" hidden>
       <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
         <p class="text-xs leading-5 text-muted" id="admin-ai-preview-summary"></p>

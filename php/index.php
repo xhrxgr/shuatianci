@@ -28,6 +28,7 @@ require_once __DIR__ . '/app/routes_papers.php';
 require_once __DIR__ . '/app/routes_blueprints.php';
 require_once __DIR__ . '/app/routes_admin.php';
 require_once __DIR__ . '/app/routes_system.php';
+require_once __DIR__ . '/app/routes_passages.php';
 require_once __DIR__ . '/app/routes_pages.php';
 
 /**
@@ -118,6 +119,12 @@ function route_table()
         ['GET', '/system/update-source', 'route_system_update_source_get'],
         ['PUT', '/system/update-source', 'route_system_update_source_set'],
         ['POST', '/system/update-source/test', 'route_system_update_source_test'],
+
+        // 篇章（一道大题共享的完整原文）
+        ['GET', '/passages', 'route_passages_list'],
+        ['POST', '/passages', 'route_passages_create'],
+        ['PUT', '/passages/{id}', 'route_passages_update'],
+        ['DELETE', '/passages/{id}', 'route_passages_delete'],
     ];
 }
 

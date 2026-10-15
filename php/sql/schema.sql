@@ -58,7 +58,10 @@ CREATE INDEX IF NOT EXISTS idx_papers_date ON papers(exam_date);
 CREATE TABLE IF NOT EXISTS questions (
   id               TEXT PRIMARY KEY,           -- 如 q_0001
   original_sentence TEXT NOT NULL,            -- 原句（挖空后的全文），空格用 ______ 表示
+  passage_id       TEXT,                      -- 所属篇章，指向 passages.id；可空（老题/单句题）
   passage_text     TEXT,                      -- 未挖空的完整原文，可空。短文填空的答案常依赖上下文
+                                              -- （这是 v3.6.13 的旧形态：一题一份原文。新数据走 passage_id，
+                                              --  读取时 passages.text 优先，本列仅作老数据兜底）
                                               --（代词指代/时态呼应/篇章逻辑），只存挖空句等于让学生做单句填空，
                                               -- 与卷面形态不符。同一大题（一篇阅读多个空）录成一道题时填这份全文
   blanks_json      TEXT NOT NULL,             -- JSON 数组：各空配置
@@ -73,6 +76,22 @@ CREATE TABLE IF NOT EXISTS questions (
   created_at       TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at       TEXT
 );
+
+-- 篇章：一篇阅读/一个大题的完整原文（未挖空）。
+-- 为什么单独建表：一道大题是「一篇阅读挖多个空」，卷子上是 10 道小题，
+-- 它们共享同一篇原文。原文挂在题目上就要填 10 遍、改 10 遍；
+-- 挂成篇章只存一份，10 道题通过 passage_id 指向它。
+-- 一张卷可以含多篇（A 篇 / B 篇…），所以共享单位是「篇」而不是「卷」。
+CREATE TABLE IF NOT EXISTS passages (
+  id          TEXT PRIMARY KEY,             -- 如 p_0001
+  paper_id    TEXT,                         -- 所属试卷（冗余，便于按卷列篇章；可空）
+  title       TEXT NOT NULL DEFAULT '',     -- 篇章标题（如「A 篇」；一卷一篇时留空）
+  text        TEXT NOT NULL,                -- 完整原文（未挖空）
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_passages_paper ON passages(paper_id);
 
 CREATE INDEX IF NOT EXISTS idx_questions_source ON questions(source);
 CREATE INDEX IF NOT EXISTS idx_questions_created ON questions(created_at);
