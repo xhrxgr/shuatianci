@@ -84,9 +84,15 @@ function switchTab(tab) {
   document.querySelectorAll("[data-admin-tab]").forEach((button) => {
     const active = button.dataset.adminTab === tab;
     button.setAttribute("aria-selected", active ? "true" : "false");
-    button.className = `min-h-11 flex-1 rounded-lg px-3 py-2 text-xs font-medium transition sm:flex-none ${
-      active ? "bg-ink text-surface" : "text-muted hover:bg-surface-alt"
-    }`;
+    // 只切配色，**不重建整个 className**。
+    // 布局类（shrink-0 / whitespace-nowrap / 横滚容器）由 PHP 模板统一负责，
+    // JS 再抄一份的话，改模板时很容易漏掉这边——v3.6.8 就漏过一次：
+    // 模板改成了手机横滚，JS 里还是旧的 flex-1，一点页签布局就被打回原形
+    // （手机上 7 个页签重新折成 7 行，用户描述为「原形毕露」）。
+    button.classList.toggle("bg-ink", active);
+    button.classList.toggle("text-surface", active);
+    button.classList.toggle("text-muted", !active);
+    button.classList.toggle("hover:bg-surface-alt", !active);
   });
 
   const notice = document.getElementById("admin-notice");

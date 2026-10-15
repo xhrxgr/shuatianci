@@ -468,6 +468,17 @@ async function main() {
   check("题库管理有 7 个页签", (await page.locator("[data-admin-tab]").count()) === 7);
   check("含「蓝图组卷」页签", (await page.locator('[data-admin-tab="blueprints"]').count()) === 1);
   check("默认停在手动录入", await page.locator('[data-admin-panel="manual"]').isVisible());
+
+  // v3.6.11 防回归：切过 tab 之后，页签按钮的布局类不能被 JS 打回旧版。
+  // 此前 switchTab 用 JS 里的旧类字符串重建 className，把 PHP 模板的横滚布局
+  // 覆盖成 flex-1 —— 手机上 7 个页签会重新折成 7 行（用户：「原形毕露」）
+  await page.locator('[data-admin-tab="papers"]').click();
+  const tabCls = await page.locator('[data-admin-tab="manual"]').getAttribute("class") ?? "";
+  check(
+    "切 tab 后页签仍是横滚布局类",
+    tabCls.includes("shrink-0") && tabCls.includes("whitespace-nowrap") && !tabCls.includes("flex-1"),
+    tabCls
+  );
   check("其它页签默认收起", !(await page.locator('[data-admin-panel="import"]').isVisible()));
 
   // 输入原句 -> 自动拆空 -> 预览
