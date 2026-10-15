@@ -377,6 +377,9 @@ if (root) {
     customProxy: root.querySelector("[data-custom-proxy]"),
     proxy: document.getElementById("us-proxy"),
     effective: root.querySelector("[data-effective-url]"),
+    mismatchBox: root.querySelector("[data-remote-mismatch]"),
+    gitRemoteText: root.querySelector("[data-git-remote]"),
+    thirdPartyBox: root.querySelector("[data-third-party-warn]"),
     testBtn: document.getElementById("us-test"),
     saveBtn: document.getElementById("us-save"),
     resetBtn: document.getElementById("us-reset"),
@@ -419,6 +422,27 @@ if (root) {
     usEls.effective.textContent = remote.startsWith(target)
       ? proxy + remote.slice(target.length)
       : remote + "（当前仓库不在 github.com，加速前缀不会生效）";
+  }
+
+  /**
+   * 「网页填的地址」与「git 实际用的地址」是否一致、走的是不是第三方通道。
+   *
+   * 这两件事都必须让用户看到：
+   * - 不一致时表单里填的地址是空文（更新跑的是 git fetch origin，读 .git/config）
+   * - 第三方通道是中间人，git 无法验证拿到的就是 GitHub 发布的原版
+   */
+  function renderSourceWarnings(effective) {
+    const gitRemote = String(effective?.gitRemote ?? "");
+    const synced = effective?.synced;
+    if (usEls.mismatchBox) {
+      // synced 为 null 表示拿不到 git 的地址（非 git 仓库），这时不吓唬人
+      const mismatch = synced === false;
+      usEls.mismatchBox.hidden = !mismatch;
+      if (usEls.gitRemoteText) usEls.gitRemoteText.textContent = gitRemote || "(读取不到)";
+    }
+    if (usEls.thirdPartyBox) {
+      usEls.thirdPartyBox.hidden = effective?.thirdParty !== true;
+    }
   }
 
   /** 切换「自建反代」时显示/隐藏自定义前缀输入框 */
@@ -485,6 +509,7 @@ if (root) {
       updatePresets = Array.isArray(data.presets) ? data.presets : [];
       defaultRemote = String(data.defaultRemote ?? "");
       fillUpdateSourceForm(data.config);
+      renderSourceWarnings(data.effective);
     } catch (error) {
       // 这个区块是辅助功能，读不到不该挡住版本与更新的正常使用
       notifyError(error, { boxId: "admin-system-error" });
@@ -527,9 +552,18 @@ if (root) {
       const result = await api.saveUpdateSource(config);
       fillUpdateSourceForm(result.config);
       renderEffectiveUrl();
-      showMessage("notice", "已保存。现在可以点「检查更新」了", {
-        details: result.effective?.actual ? [`实际访问：${result.effective.actual}`] : [],
-      });
+      renderSourceWarnings(result.effective);
+      const details = [];
+      if (result.effective?.actual) details.push(`实际访问：${result.effective.actual}`);
+      // 地址同步到 git 失败要单独说：配置存下来了，但更新用的还是旧地址
+      if (result.remoteSynced === false && result.remoteWarn) {
+        details.push(result.remoteWarn);
+      }
+      showMessage(result.remoteSynced === false ? "error" : "notice",
+        result.remoteSynced === false
+          ? "设置已保存，但地址没能同步到 git"
+          : "已保存。现在可以点「检查更新」了",
+        { details, sticky: result.remoteSynced === false });
     } catch (error) {
       notifyError(error, { boxId: "admin-system-error", retry: () => void handleSaveSource() });
     } finally {

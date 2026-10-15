@@ -63,20 +63,99 @@ function update_source_presets()
             'label' => 'gh-proxy.com',
             'hint' => '最常用的公共加速通道',
             'proxy' => 'https://gh-proxy.com/https://github.com/',
+            'thirdParty' => true,
         ],
         [
             'id' => 'ghfast',
             'label' => 'ghfast.top',
             'hint' => 'gh-proxy 的镜像',
             'proxy' => 'https://ghfast.top/https://github.com/',
+            'thirdParty' => true,
         ],
         [
             'id' => 'hub-fgit',
             'label' => '自建反代',
             'hint' => '若你有自己的 GitHub 反代，把它的前缀填在下面',
             'proxy' => '',
+            'thirdParty' => true,
         ],
     ];
+}
+
+/**
+ * 当前选的加速通道是不是第三方（会把流量交给别人的服务器）。
+ *
+ * 这件事必须让用户知道：加速通道是**中间人**，它转发的是另一台机器上的内容。
+ * git 只能保证取回来的对象自洽（内容寻址），**无法保证那就是 GitHub 发布的原版**——
+ * 代理理论上可以返回构造好的对象，等于在服务器上执行别人的代码。
+ * 所以界面上要写明，而不是悄悄走掉。
+ *
+ * @param array $config update_source_read() 的结果
+ * @return bool
+ */
+function update_source_is_third_party(array $config)
+{
+    if ($config['preset'] === 'direct' || $config['proxy'] === '') {
+        return false;
+    }
+    foreach (update_source_presets() as $preset) {
+        if ($preset['id'] === $config['preset']) {
+            return !empty($preset['thirdParty']);
+        }
+    }
+    // 自定义前缀：也是第三方
+    return true;
+}
+
+/**
+ * 仓库里实际配置的 origin 地址（git 眼中的远端）。
+ *
+ * 网页上填的地址**必须**同步到这里，否则形同虚设：
+ * 测试连接与真正更新执行的都是 `git fetch origin` / `ls-remote origin`，
+ * 读的是 git 自己记的那个地址，不是我们配置文件里的那个。
+ *
+ * @return string 取不到返回空串
+ */
+function update_source_git_remote()
+{
+    if (!function_exists('git_cmd')) {
+        return '';
+    }
+    $result = git_cmd(['config', '--get', 'remote.origin.url'], 15);
+    if ($result['code'] !== 0) {
+        return '';
+    }
+    return trim($result['out']);
+}
+
+/**
+ * 把地址写进 git 自己的配置（remote.origin.url）。
+ *
+ * 只写配置文件不够——更新时 git 用的是 `.git/config` 里的 origin。
+ * 写失败不阻断保存（多半是属主/权限问题），但要如实告诉用户需要手工补一步。
+ *
+ * @param string $remote
+ * @return array{ok:bool,error:string}
+ */
+function update_source_apply_remote($remote)
+{
+    $remote = update_source_normalize_remote($remote);
+    if ($remote === '') {
+        return ['ok' => false, 'error' => '仓库地址不合法'];
+    }
+    if (!function_exists('git_cmd')) {
+        return ['ok' => false, 'error' => '当前环境无法执行 git 命令'];
+    }
+    $result = git_cmd(['remote', 'set-url', 'origin', $remote], 20);
+    if ($result['code'] !== 0) {
+        $raw = trim($result['err'] !== '' ? $result['err'] : $result['out']);
+        return [
+            'ok' => false,
+            'error' => '已保存配置，但同步到 git 失败（' . ($raw !== '' ? $raw : '未知原因')
+                . '）。请在服务器项目目录执行：git remote set-url origin ' . $remote,
+        ];
+    }
+    return ['ok' => true, 'error' => ''];
 }
 
 /**
@@ -296,13 +375,22 @@ function update_source_effective_url()
         }
     }
     $args = update_source_git_args();
+    // git 自己记的远端地址：更新时真正用的是它，不是我们配置文件里的那个。
+    // 两者不一致时网页上填的地址就是空文，必须在界面上指出
+    $gitRemote = update_source_git_remote();
+    $common = [
+        'gitRemote' => $gitRemote,
+        // 拿不到 git 的地址（非 git 仓库 / git 不可用）时给 null，让前端区别「未知」与「不一致」
+        'synced' => $gitRemote === '' ? null : ($gitRemote === $config['remote']),
+        'thirdParty' => update_source_is_third_party($config),
+    ];
     if ($args === []) {
         return [
             'direct' => $config['remote'],
             'proxy' => '',
             'preset' => $presetId === '' ? 'direct' : $presetId,
             'actual' => $config['remote'],
-        ];
+        ] + $common;
     }
     $proxy = $config['proxy'];
     $target = 'https://github.com/';
@@ -316,5 +404,5 @@ function update_source_effective_url()
         'proxy' => $proxy,
         'preset' => $presetId,
         'actual' => $actual,
-    ];
+    ] + $common;
 }

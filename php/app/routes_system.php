@@ -609,10 +609,19 @@ function route_system_update_source_set()
         json_response(['ok' => false, 'error' => $result['error']], 400);
     }
 
+    // 光写进配置文件没用：更新跑的是 `git fetch origin`，读的是 .git/config
+    // 里那个地址。所以保存后立刻同步一次，让「网页上填的」与「git 实际用的」
+    // 永远一致——两者不一致时界面显示的一切都是假象。
+    $config = update_source_read();
+    $applied = update_source_apply_remote($config['remote']);
+
     json_response([
         'ok' => true,
-        'config' => update_source_read(),
+        'config' => $config,
         'effective' => update_source_effective_url(),
+        // 同步失败也要如实回给前端（多半是属主/权限问题），让用户知道还得手工补一步
+        'remoteSynced' => $applied['ok'],
+        'remoteWarn' => $applied['ok'] ? '' : $applied['error'],
     ]);
 }
 

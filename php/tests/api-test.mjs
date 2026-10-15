@@ -844,6 +844,33 @@ async function main() {
     proxySource.data?.effective
   );
 
+  // 地址必须同步到 git 自己：更新跑的是 git fetch origin，
+  // 读的是 .git/config 里那个地址，光存进配置文件等于没改
+  const syncSource = await request("PUT", "/system/update-source", {
+    token: adminToken,
+    body: { remote: REMOTE, proxy: "", preset: "direct" },
+  });
+  check(
+    "保存地址会同步到 git（remoteSynced）",
+    syncSource.data?.remoteSynced === true,
+    syncSource.data
+  );
+  check(
+    "effective 带回 git 实际地址，且与配置一致",
+    syncSource.data?.effective?.gitRemote === REMOTE && syncSource.data?.effective?.synced === true,
+    syncSource.data?.effective
+  );
+  check(
+    "直连不算第三方通道",
+    syncSource.data?.effective?.thirdParty === false,
+    syncSource.data?.effective
+  );
+  check(
+    "走加速通道时标记为第三方（界面要提示中间人风险）",
+    proxySource.data?.effective?.thirdParty === true,
+    proxySource.data?.effective
+  );
+
   // 还原成直连，别把后面的测试留在带代理的状态
   await request("PUT", "/system/update-source", {
     token: adminToken,

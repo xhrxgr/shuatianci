@@ -94,6 +94,42 @@
           <span class="mt-1 block break-all font-mono text-ink" data-effective-url>—</span>
         </div>
 
+        <!-- 「配置文件里的地址」与「git 实际用的地址」不一致时显示。
+             不一致意味着上面填的地址是空文：更新跑的是 git fetch origin，
+             读的是 .git/config 里那个。这个提示由 JS 控制显隐。 -->
+        <div
+          class="rounded-lg border border-warning/40 bg-warning-soft p-3 text-xs leading-5 text-muted"
+          data-remote-mismatch
+          hidden
+        >
+          <p class="font-medium text-ink">网页上填的地址与 git 实际使用的地址不一致</p>
+          <p class="mt-1">git 实际用的是：<span class="break-all font-mono" data-git-remote>—</span></p>
+          <p class="mt-1">
+            更新跑的是 <span class="font-mono">git fetch origin</span>，用的是上面这个地址，
+            不是表单里填的那个。点「保存设置」会自动同步；若同步失败（属主问题），
+            请在服务器项目目录执行
+            <span class="font-mono">git remote set-url origin &lt;你要的地址&gt;</span>。
+          </p>
+        </div>
+
+        <!-- 走第三方加速通道时的风险提示：代理是中间人，git 只能验证对象自洽，
+             无法验证那就是 GitHub 发布的原版 -->
+        <div
+          class="rounded-lg border border-line bg-surface-alt p-3 text-xs leading-5 text-muted"
+          data-third-party-warn
+          hidden
+        >
+          <p class="font-medium text-ink">正在使用第三方加速通道</p>
+          <p class="mt-1">
+            加速通道是<strong>中间人</strong>：代码经别人的服务器转发到你的服务器。
+            git 能保证取回来的内容自洽，但无法保证那就是 GitHub 发布的原版——
+            代理理论上可以返回构造好的代码。
+          </p>
+          <p class="mt-1">
+            能用直连就尽量用直连；必须用加速时，选你信得过的通道。
+          </p>
+        </div>
+
         <div class="flex flex-wrap gap-2">
           <button
             type="button"
