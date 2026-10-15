@@ -63,6 +63,38 @@ try {
     }
 
     $target = 'origin/' . $branch;
+
+    // ---- 1.5 更新方向检查（只警示，不阻断）----
+    // 为什么不断然拒绝「非快进」：这个仓库的提交历史被重写过（v3.0.0），
+    // 那时远端与本地不同源是正常的，拒绝等于永远更新不了。
+    // 所以这里做的是**把话说清楚**，让管理员知道这次更新到底在干什么。
+    $remoteCommit = git_cmd(['rev-parse', $target], 20);
+    $remoteCommit = trim($remoteCommit['out']);
+    if ($remoteCommit !== '' && $remoteCommit === $rollbackCommit) {
+        update_state_log('远端与本地同为 ' . substr($remoteCommit, 0, 7) . '，已是最新');
+    } else {
+        $ancestor = git_cmd(['merge-base', '--is-ancestor', 'HEAD', $target], 20);
+        if ($ancestor['code'] === 0) {
+            update_state_log('远端是当前版本的后代，属于正常前进');
+        } else {
+            update_state_log(
+                '注意：远端提交不是当前版本的后代（远端历史被重写过，或本地有独立提交），'
+                . '本次会用远端内容覆盖本地'
+            );
+        }
+
+        // 降级检查：远端的提交时间比本地更早，说明这次是往回退。
+        // 数据库结构不会随代码一起回退（迁移只做加法），所以必须让人知道
+        $localDate = trim(git_cmd(['log', '-1', '--format=%cI'], 20)['out']);
+        $remoteDate = trim(git_cmd(['log', '-1', '--format=%cI', $target], 20)['out']);
+        if ($localDate !== '' && $remoteDate !== '' && strtotime($remoteDate) < strtotime($localDate)) {
+            update_state_log(
+                "注意：远端提交时间（{$remoteDate}）早于本地（{$localDate}），本次是**降级**。"
+                . '数据库结构不会随之回退，若新版带过迁移，回退后可能出现字段不匹配'
+            );
+        }
+    }
+
     update_state_log("git reset --hard {$target}");
     $reset = git_cmd(['reset', '--hard', $target], 60);
     if ($reset['code'] !== 0) {
@@ -71,6 +103,13 @@ try {
 
     $new = git_cmd(['rev-parse', 'HEAD'], 20);
     update_state_log('代码已更新到 ' . substr($new['out'], 0, 7));
+    // 落地校验：说了要更新到哪，就得真的在那，否则后面的「更新完成」是假的
+    if ($remoteCommit !== '' && trim($new['out']) !== $remoteCommit) {
+        update_state_log(
+            '注意：更新后 HEAD（' . substr(trim($new['out']), 0, 7) . '）与远端目标（'
+            . substr($remoteCommit, 0, 7) . '）不一致，请检查仓库状态'
+        );
+    }
 
     // ---- 2. 收尾：刷新 PHP 缓存 ----
     update_state_write(['stage' => '应用新代码']);
