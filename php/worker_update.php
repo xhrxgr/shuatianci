@@ -37,6 +37,15 @@ $branch = $version !== null ? $version['branch'] : 'master';
 $rollback = git_cmd(['rev-parse', 'HEAD'], 20);
 $rollbackCommit = $rollback['out'];
 
+// 兜底：进程若因致命错误提前死掉（require 失败、CLI 版本不兼容等），
+// 状态会永远停在 running——界面一直转圈，后续更新也被 409 挡住。
+// 正常结束时下面会 define 这个常量，shutdown 里据此判断要不要补写状态。
+register_shutdown_function(function () {
+    if (!defined('EQ_UPDATE_DONE')) {
+        @update_state_finish('更新进程异常退出（未正常结束），详见 php/data/update_worker.log');
+    }
+});
+
 try {
     update_state_start();
     update_state_log("开始更新，当前分支 {$branch}，提交 " . substr($rollbackCommit, 0, 7));
@@ -116,6 +125,7 @@ try {
     update_state_log('前端为 PHP 渲染，无构建步骤；代码已生效');
     mark_reload();
     update_state_log('已刷新 PHP 缓存');
+    define('EQ_UPDATE_DONE', true);
     update_state_finish(null);
 } catch (Throwable $e) {
     // ---- 回滚 ----
@@ -131,6 +141,11 @@ try {
         update_state_log('代码回滚失败：' . trim($resetBack['err']));
     }
 
+    // 数据库结构不会跟着代码回退：迁移是 bootstrap 自动跑的，只做加法。
+    // 这层必须说清楚，否则管理员以为一切回到原样，实际库已经是新版结构
+    update_state_log('注意：代码已回滚，但数据库结构不会随之回退（迁移只做加法）。'
+        . '若本次更新带过迁移，请确认旧代码能兼容新的库结构。');
     update_state_log('已停止在旧版本，站点仍可正常使用');
+    define('EQ_UPDATE_DONE', true);
     update_state_finish($detail);
 }

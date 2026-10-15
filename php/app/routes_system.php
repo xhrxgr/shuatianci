@@ -561,14 +561,16 @@ function route_system_update()
 {
     require_permission('system:write');
 
-    $state = update_state_read();
-    if (!empty($state['running'])) {
+    // 检查与置位在同一个独占锁里（update_state_try_start）：
+    // 分开做会有时间窗，两个请求能同时通过、各启一个后台进程互相踩
+    if (!update_state_try_start()) {
         json_response(['ok' => false, 'error' => '已有更新正在进行中'], 409);
     }
 
     // 先确认环境可用，避免点了按钮才发现问题
     $problem = git_repo_problem();
     if ($problem !== null) {
+        update_state_finish($problem);
         json_response(['ok' => false, 'error' => $problem], 500);
     }
 
@@ -576,6 +578,8 @@ function route_system_update()
     // 光在「检查更新」里提示不够——用户可以直接点更新按钮。
     $dirty = git_tracked_changes();
     if (!empty($dirty)) {
+        // 已经置了 running，这里要把状态收掉，否则界面会一直显示「更新中」
+        update_state_finish('已取消：存在未提交的本地改动');
         json_response([
             'ok' => false,
             'error' => git_dirty_message($dirty),
@@ -630,13 +634,19 @@ function route_system_update_status()
     maybe_apply_reload_flag();
 
     $state = update_state_read();
+    // 后台进程若异常退出（致命错误来不及写状态），界面会永远停在「更新中」，
+    // 且后续更新被 409 挡死。这里按耗时判定并如实告知，让用户可以重试
+    $stale = update_state_is_stale($state);
     json_response([
         'ok' => true,
         'running' => !empty($state['running']),
-        'stage' => (string) $state['stage'],
+        'stage' => $stale ? '更新进程已超时未响应' : (string) $state['stage'],
         'log' => array_values((array) $state['log']),
-        'error' => $state['error'],
+        'error' => $stale
+            ? '更新进程超过 10 分钟没有进展，多半已异常退出（详见 php/data/update_worker.log）。可重新发起更新。'
+            : $state['error'],
         'finished' => !empty($state['finished']),
+        'stale' => $stale,
         'startedAt' => $state['startedAt'],
         'finishedAt' => $state['finishedAt'],
     ]);

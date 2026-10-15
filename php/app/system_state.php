@@ -145,6 +145,76 @@ function update_state_start()
     ]);
 }
 
+/**
+ * 尝试开始一次更新：只有在「当前没在跑」时才置位。
+ *
+ * 与「先 read 再 start」的区别：那两步之间有时间窗，两个请求可以同时通过检查、
+ * 各启一个后台进程，两个 git reset --hard 互相踩。
+ * 这里把「检查」与「置位」放进同一个独占锁里，只有一个请求能成功。
+ *
+ * @return bool true 表示由本次调用启动；false 表示已有更新在跑
+ */
+function update_state_try_start()
+{
+    $fp = @fopen(update_state_file(), 'c');
+    if ($fp === false) {
+        return false;
+    }
+    @flock($fp, LOCK_EX);
+
+    $raw = stream_get_contents($fp);
+    $current = json_decode((string) $raw, true);
+    if (!is_array($current)) {
+        $current = update_state_blank();
+    }
+    if (!empty($current['running'])) {
+        @flock($fp, LOCK_UN);
+        fclose($fp);
+        return false;
+    }
+
+    $next = array_merge($current, [
+        'running' => true,
+        'stage' => '准备中',
+        'log' => [],
+        'error' => null,
+        'finished' => false,
+        'startedAt' => now_iso(),
+        'finishedAt' => null,
+    ]);
+    ftruncate($fp, 0);
+    rewind($fp);
+    fwrite($fp, json_encode($next, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    fflush($fp);
+    @flock($fp, LOCK_UN);
+    fclose($fp);
+
+    return true;
+}
+
+/**
+ * 这次「进行中」的更新是不是已经明显超时（多半是后台进程挂了）。
+ *
+ * worker 正常流程最长不过两三分钟（fetch / reset 各有 60s 超时），
+ * 超过这个量级还停在 running，基本可以确定进程已经异常退出——
+ * 而它退出时可能来不及写状态，界面就会永远转圈、且后续更新被 409 挡死。
+ *
+ * @param array $state
+ * @param int   $staleSeconds 判定时长，默认 10 分钟
+ * @return bool
+ */
+function update_state_is_stale(array $state, $staleSeconds = 600)
+{
+    if (empty($state['running']) || empty($state['startedAt'])) {
+        return false;
+    }
+    $started = strtotime((string) $state['startedAt']);
+    if ($started <= 0) {
+        return false;
+    }
+    return (time() - $started) > $staleSeconds;
+}
+
 /** 结束一次更新 */
 function update_state_finish($error = null)
 {
