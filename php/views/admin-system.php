@@ -36,9 +36,19 @@
       <div data-version-body></div>
     </section>
 
+    <!-- 更新 -->
+    <section class="rounded-xl border border-line bg-surface p-5">
+      <h2 class="mb-1 text-sm font-semibold text-ink">检查更新</h2>
+      <div data-update-actions></div>
+      <div data-check-result></div>
+    </section>
+
     <!-- 更新源：服务器能不能直连 GitHub 因机器而异，放在这里配置，
-         不用 SSH 上去敲 git config。放在「检查更新」之前——
-         源没配好就去检查，失败时用户无从下手。 -->
+         不用 SSH 上去敲 git config。
+
+         顺序上放在「检查更新」之后：检查更新是主路径（多数人每次来就点它），
+         更新源是低频配置（能直连的机器从不需要改）。主路径在上、例外路径在下；
+         而且检查更新失败时会提示去配加速通道，配置区紧跟在下正好接得上。 -->
     <section class="rounded-xl border border-line bg-surface p-5">
       <h2 class="mb-1 text-sm font-semibold text-ink">更新源</h2>
       <p class="mb-4 text-xs leading-5 text-muted">
@@ -148,13 +158,6 @@
           >恢复默认</button>
         </div>
       </div>
-    </section>
-
-    <!-- 更新 -->
-    <section class="rounded-xl border border-line bg-surface p-5">
-      <h2 class="mb-1 text-sm font-semibold text-ink">检查更新</h2>
-      <div data-update-actions></div>
-      <div data-check-result></div>
     </section>
 
     <!-- 更新进度 -->
