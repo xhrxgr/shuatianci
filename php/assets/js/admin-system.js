@@ -300,6 +300,22 @@ if (root) {
         logs = status.log;
         renderProgress();
 
+        // 后台进程半天没进展（多半已异常退出）：后端会给出 stale，
+        // 这时要停掉轮询并告诉用户可以重试，否则永远转圈
+        if (status.stale) {
+          if (pollTimer !== null) window.clearInterval(pollTimer);
+          pollTimer = null;
+          updating = false;
+          showMessage("error", status.error || "更新进程超时未响应", {
+            details: Array.isArray(logs) ? logs.slice(-8) : [],
+            retry: () => void handleUpdate(),
+            sticky: true,
+          });
+          renderUpdateActions();
+          renderProgress();
+          return;
+        }
+
         if (status.finished) {
           if (pollTimer !== null) window.clearInterval(pollTimer);
           pollTimer = null;
@@ -323,7 +339,18 @@ if (root) {
           renderCheckResult();
           renderProgress();
         }
-      } catch {
+      } catch (error) {
+        // 鉴权失效不是「重启中」，继续轮询只会让人干等——直接停下并说清楚
+        const status = Number(error?.status ?? 0);
+        if (status === 401 || status === 403) {
+          if (pollTimer !== null) window.clearInterval(pollTimer);
+          pollTimer = null;
+          updating = false;
+          showMessage("error", "登录状态已失效，请重新登录后再查看更新进度", { sticky: true });
+          renderUpdateActions();
+          renderProgress();
+          return;
+        }
         // 后端重启期间请求会失败，这是预期内的，继续轮询等它回来
         restarting = true;
         renderProgress();
