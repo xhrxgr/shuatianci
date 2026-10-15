@@ -7,18 +7,20 @@
 
 ## 一、项目名称
 
-| 位置 | 改动前 | 改动后 | 理由 |
-|---|---|---|---|
-| `views/layout.php` 导航栏 | 英语短文填空题库 | **短文填空穷举题库** | 与正式名同源，导航空间有限故取短名 |
-| `views/home.php` 页面标题 | 高考英语短文填空 · 穷举题库 | **高考英语短文填空穷举题库** | 去掉装饰性分隔符，与 README / package.json 一致 |
-| `app/views.php` 浏览器标题 | 高考英语短文填空题库 | **English Cloze Question Bank** | 2026-10-15 起浏览器标签用英文；页面内容与导航仍是中文 |
-| GitHub 仓库描述 | …含命题陷阱分析… | …每题附标准答案与命题意图分析… | 「命题陷阱分析」为旧字段名，已统一为「命题意图与判断依据」 |
+**站点名称一律用英文**，中文只出现在正文说明里。
 
-**正式名（中文）**：高考英语短文填空穷举题库　**短名**：短文填空穷举题库
-**浏览器标签（英文）**：English Cloze Question Bank　404 页：Page Not Found
+| 位置 | 现行文案 | 说明 |
+|---|---|---|
+| `views/layout.php` 导航栏 | **English Cloze** | 导航空间有限，取短名 |
+| `views/home.php` 页面标题 | **English Cloze Question Bank** | 与浏览器标签、README、package.json 同名 |
+| `app/views.php` 浏览器标签 | **English Cloze Question Bank** | 404 页：Page Not Found |
+| README 标题 / package.json description | **English Cloze Question Bank** | description 另加一句功能与技术栈说明 |
+| 页面正文、按钮、提示 | 中文 | 站点主体读者是国内高中生 |
 
-> 浏览器标题是英文，**页面正文、导航、按钮全部保持中文** —— 站点主体读者是国内高中生，
-> 改的只是标签页那一句。改标题时 `php/tests/ui-test.mjs` 里有一条断言跟着改。
+> 2026-10-15 统一：此前的「高考英语短文填空穷举题库 / 短文填空穷举题库」已弃用 ——
+> 「穷举题库」这个说法过于自夸，改成平实的英文说明。
+> 改名时记得 `php/tests/ui-test.mjs` 里「首页标题正确（英文）」那条断言。
+> README 首段保留一句中文说明，让读者一眼知道这是给谁用的。
 
 ---
 

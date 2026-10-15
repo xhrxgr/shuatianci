@@ -1,7 +1,7 @@
-# 高考英语短文填空穷举题库
+# English Cloze Question Bank
 
-服务端题库 + 刷题 + 错题本，支持多设备、多用户。
-当前版本 **3.6.1**（更新记录见 [CHANGELOG.md](CHANGELOG.md)）。
+高考英语短文填空题库：服务端题库 + 刷题 + 错题本，支持多设备、多用户。
+当前版本 **3.6.2**（更新记录见 [CHANGELOG.md](CHANGELOG.md)）。
 
 ## 快速导航
 

@@ -34,7 +34,7 @@ $items = nav_items($user);
     <div class="flex min-h-full flex-col">
       <header class="sticky top-0 z-50 border-b border-line bg-surface/90 backdrop-blur">
         <div class="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6">
-          <a href="/" class="text-sm font-semibold text-ink sm:text-base">短文填空穷举题库</a>
+          <a href="/" class="text-sm font-semibold text-ink sm:text-base">English Cloze</a>
 
           <!-- 移动端汉堡按钮 -->
           <button

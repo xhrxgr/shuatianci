@@ -11,6 +11,30 @@
 当前版本写在根目录的 `VERSION` 文件里，与 `package.json` 的 `version`、git 标签 `v{VERSION}`
 三处保持一致；发版流程见 README「发版」一节。
 
+## 3.6.2（2026-10-15）—— 站点名称统一为英文
+
+上一版只改了浏览器标签，界面上的品牌名还是中文，这次一并清干净。
+**「穷举题库」的说法过于自夸**，改成平实的英文说明。
+
+| 位置 | 现行文案 |
+|---|---|
+| 导航栏 | **English Cloze**（空间有限，取短名） |
+| 首页标题 / 浏览器标签 | **English Cloze Question Bank** |
+| 404 页标签 | Page Not Found |
+| README 标题 / package.json description | English Cloze Question Bank |
+| 首页介绍、按钮、提示 | 保持中文（读者是国内高中生） |
+
+首页介绍句里的「按知识点**穷举**整理短文填空题目」也去掉了「穷举」。
+
+历史记录（CHANGELOG 旧条目、`docs/CODE_REVIEW_*.md`）里出现的旧名称按原样保留 ——
+那是当时的记录，改了等于篡改历史。`docs/COPY_GUIDE.md` 已更新名称口径。
+
+措辞想换随时说，改一行的事（`php/views/layout.php` 与 `php/views/home.php`）。
+
+### 验证
+
+页面交互自测 `ui-test.mjs` 183 项全通过（首页标题断言）。
+
 ## 3.6.1（2026-10-15）—— 修「选了直连却走加速地址」+ 标题英文化
 
 ### 修复：界面显示直连，实际访问却是加速地址

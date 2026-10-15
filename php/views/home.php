@@ -17,9 +17,9 @@ $cards = [
 ?>
 <div class="space-y-6">
   <section class="rounded-2xl border border-line bg-surface p-6 sm:p-8">
-    <h2 class="text-xl font-semibold text-ink">高考英语短文填空穷举题库</h2>
+    <h2 class="text-xl font-semibold text-ink">English Cloze Question Bank</h2>
     <p class="mt-2 max-w-2xl text-sm leading-6 text-muted">
-      按知识点穷举整理短文填空题目，每道题均附标准答案、可接受答案集合，以及命题意图与判断依据。
+      按知识点整理短文填空题目，每道题均附标准答案、可接受答案集合，以及命题意图与判断依据。
       数据保存在服务器，登录后更换设备也可继续练习。
     </p>
     <div class="mt-5 flex flex-col gap-3 sm:flex-row">
