@@ -166,7 +166,7 @@ async function main() {
     "题目字段结构完整（含 v3.5.0 新增的指纹与发布状态）",
     first &&
       Object.keys(first).sort().join(",") ===
-        "blanks,createdAt,fingerprint,id,originalSentence,ownerId,paperId,publishStatus,schemaVersion,source,status,updatedAt,wrongCount",
+        "blanks,createdAt,fingerprint,id,originalSentence,ownerId,paperId,passageText,publishStatus,schemaVersion,source,status,updatedAt,wrongCount",
     Object.keys(first || {})
   );
   record("questions", questions.status, { count: questions.data.questions?.length, first });
@@ -308,6 +308,51 @@ async function main() {
     dup.status === 201 && dup.data.added === 1 && dup.data.renamed === 1 && dupKept.length === 2,
     dup.data
   );
+
+  /* ---- 完整原文（passageText）：一道大题 = 一篇阅读多个空 ---- */
+  const withPassage = await request("POST", "/questions", {
+    token: adminToken,
+    body: {
+      question: {
+        originalSentence: "Editors ______ (correct) every page before printing, and ______ double-check the cover.",
+        passageText: "Editors correct every page before printing, and they double-check the cover. This is why typos rarely survive.",
+        blanks: [
+          { blankIndex: 1, answer: ["correct"], hintType: "给动词", hintWord: "correct", trapAnalysis: "全文是现在的常规做法，用原形。" },
+          { blankIndex: 2, answer: ["they"], hintType: "无提示词", hintWord: null, trapAnalysis: "指代上句的 editors，只看本句判断不了。" },
+        ],
+      },
+    },
+  });
+  check("创建题目可带完整原文（201）", withPassage.status === 201 && withPassage.data.added === 1, withPassage.data);
+  const passageList = await request("GET", "/questions", { token: adminToken });
+  const passageQ = (passageList.data.questions ?? []).find((q) => q.originalSentence?.startsWith("Editors ______"));
+  check("读取返回 passageText", passageQ?.passageText?.includes("Editors correct every page") === true, passageQ?.passageText);
+  check("passageText 不影响 fingerprint/查重", passageQ?.originalSentence !== undefined);
+
+  // 更新：改原文、再清空（显式 null 表示清除）
+  const patchPassage = await request("PUT", `/questions/${passageQ.id}`, {
+    token: adminToken,
+    body: { passageText: "改过的完整原文。" },
+  });
+  check("PUT 可改完整原文", patchPassage.status === 200, patchPassage.data);
+  const listAfterPatch = await request("GET", "/questions", { token: adminToken });
+  const patched = (listAfterPatch.data.questions ?? []).find((q) => q.id === passageQ.id);
+  check("改后的原文读得回来", patched?.passageText === "改过的完整原文。", patched?.passageText);
+  const clearPassage = await request("PUT", `/questions/${passageQ.id}`, {
+    token: adminToken,
+    body: { passageText: null },
+  });
+  check("PUT 传 null 可清除原文", clearPassage.status === 200, clearPassage.data);
+  const listAfterClear = await request("GET", "/questions", { token: adminToken });
+  const cleared = (listAfterClear.data.questions ?? []).find((q) => q.id === passageQ.id);
+  check("清除后读回 null（不是空串）", cleared?.passageText === null, cleared?.passageText);
+
+  // 超长原文要被拒（不静默截断——截断会让学生看到半篇文章）
+  const tooLong = await request("PUT", `/questions/${passageQ.id}`, {
+    token: adminToken,
+    body: { passageText: "x".repeat(5001) },
+  });
+  check("原文超过 5000 字 -> 400", tooLong.status === 400, tooLong.data);
 
   // 缺 id 时由服务端生成，AI 导入不再要求 AI 输出编号
   const noId = await request("POST", "/questions", {

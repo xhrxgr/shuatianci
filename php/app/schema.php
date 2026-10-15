@@ -103,6 +103,9 @@ function migrate_question_columns()
         // 直接走列（有类型亲和性），不再写 json_array_length(blanks_json) ——
         // 那是个计算表达式，既不能走索引，还得让 SQLite 逐行解析 JSON。
         'blank_count' => 'ALTER TABLE questions ADD COLUMN blank_count INTEGER',
+        // 未挖空的完整原文：一道大题（一篇阅读挖多个空）录成一道题时，
+        // 用它给学生做上下文对照。可空，老题没有也不影响任何既有路径
+        'passage_text' => 'ALTER TABLE questions ADD COLUMN passage_text TEXT',
     ];
 
     $changed = false;

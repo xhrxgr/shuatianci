@@ -63,6 +63,20 @@ $adminTabs = [
           ></textarea>
           <p class="mt-1.5 text-xs text-faint" id="admin-blank-count">输入或粘贴原句后，这里会自动拆出各个空位</p>
 
+          <label class="mb-1.5 mt-4 block text-sm font-medium text-ink" for="admin-passage">
+            完整原文 <span class="text-faint">（选填）</span>
+          </label>
+          <textarea
+            id="admin-passage"
+            rows="4"
+            placeholder="这道大题如果是「一篇阅读挖多个空」，把未挖空的原文粘在这里，学生做题时可以展开对照。单句题留空即可。"
+            class="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm leading-6 outline-none transition focus:border-primary"
+          ></textarea>
+          <p class="mt-1.5 text-xs text-faint">
+            代词指代、时态呼应、篇章逻辑这类空，只看挖出来的那句判断不了 —— 有原文才有上下文。
+            只做展示对照，不参与查重。
+          </p>
+
           <label class="mb-1.5 mt-4 block text-sm font-medium text-ink" for="admin-source">试卷来源</label>
           <input
             id="admin-source"
@@ -614,6 +628,22 @@ $adminTabs = [
           class="blank-slot w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition focus:border-primary"
         ></textarea>
         <p class="mt-1 text-xs text-faint">改动原句时空格数量必须与下方空的个数一致。</p>
+      </div>
+
+      <div>
+        <label class="mb-1.5 block text-sm font-medium text-ink" for="edit-question-passage">
+          完整原文 <span class="text-faint">（选填）</span>
+        </label>
+        <textarea
+          id="edit-question-passage"
+          rows="4"
+          placeholder="把这篇阅读未挖空的原文粘在这里。学生做题时可以展开对照——代词指代、时态呼应、篇章逻辑这些空，只看挖出来的那句是判断不了的。"
+          class="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm leading-6 outline-none transition focus:border-primary"
+        ></textarea>
+        <p class="mt-1 text-xs text-faint">
+          一道大题（一篇阅读挖多个空）录成一道题时填这份全文；单句题留空即可。
+          只做展示对照，不参与查重与指纹。
+        </p>
       </div>
 
       <div>

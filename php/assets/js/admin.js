@@ -263,6 +263,8 @@ function buildQuestion(id) {
       trapAnalysis: blank.trapAnalysis.trim(),
     })),
     source: draft.source.trim() || "手动录入",
+    // 完整原文可空：没填就不给上下文对照
+    passageText: (document.getElementById("admin-passage")?.value ?? "").trim() || null,
     schemaVersion: boot.schemaVersion ?? 1,
     status: "unmastered",
     wrongCount: 0,

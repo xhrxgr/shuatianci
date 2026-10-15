@@ -1,4 +1,8 @@
 <?php
+
+// normalize_passage_text 会抛 http_error，确保 errors.php 在场
+// （require_once 幂等，重复加载无副作用）
+require_once __DIR__ . '/errors.php';
 /**
  * 服务端题目校验。
  *
@@ -49,6 +53,14 @@ function validate_question_data($question)
     if (!is_string($sentence) || trim($sentence) === '') {
         $errors[] = "{$label}：originalSentence 不能为空";
         return $errors;
+    }
+
+    // 完整原文（未挖空）可空：填了就做长度与类型校验，不填完全不影响
+    if (isset($question['passageText'])) {
+        $passage = normalize_passage_text($question['passageText']);
+        if ($passage === null && is_string($question['passageText']) && trim((string) $question['passageText']) !== '') {
+            $errors[] = "{$label}：passageText 不合法（需为字符串且不超过 5000 字）";
+        }
     }
 
     $blanks = isset($question['blanks']) && is_array($question['blanks']) ? $question['blanks'] : [];
@@ -137,4 +149,35 @@ function validate_batch(array $questions)
         }
     }
     return ['valid' => $valid, 'errors' => $errors];
+}
+
+/**
+ * 规范化「完整原文」（passageText）。
+ *
+ * 用途：短文填空一道大题是一篇阅读挖多个空，answers 常依赖上下文
+ * （代词指代 / 时态呼应 / 篇章逻辑）。存一份未挖空的原文，做题时给学生对照。
+ *
+ * 规则：
+ * - 没传 / 空串 / 全是空白 → null（表示「没有原文」，与「原文为空」区分）
+ * - 非字符串 → null（宽松处理：忽略而不是报错，避免老数据升级时卡住）
+ * - 超过 5000 字 → 抛 400。**不静默截断**：截断会让学生看到半篇文章，
+ *   比没有原文更糟
+ *
+ * 注意：这一列**不参与** fingerprint 与 content_hash —— 那是题目身份的依据，
+ * 加了它会让所有存量题的哈希变化，查重与「内容是否变了」的结论全部翻转。
+ * 原文只是附属的展示数据，改它不改变「这是哪道题」。
+ */
+function normalize_passage_text($value)
+{
+    if ($value === null || !is_string($value)) {
+        return null;
+    }
+    $text = trim($value);
+    if ($text === '') {
+        return null;
+    }
+    if (function_exists('mb_strlen') ? mb_strlen($text, 'UTF-8') > 5000 : strlen($text) > 5000) {
+        throw http_error(400, '完整原文过长：上限 5000 字（当前 ' . (function_exists('mb_strlen') ? mb_strlen($text, 'UTF-8') : strlen($text)) . ' 字）');
+    }
+    return $text;
 }

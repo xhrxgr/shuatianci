@@ -57,7 +57,10 @@ CREATE INDEX IF NOT EXISTS idx_papers_date ON papers(exam_date);
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS questions (
   id               TEXT PRIMARY KEY,           -- 如 q_0001
-  original_sentence TEXT NOT NULL,            -- 原句，空格用 ______ 表示
+  original_sentence TEXT NOT NULL,            -- 原句（挖空后的全文），空格用 ______ 表示
+  passage_text     TEXT,                      -- 未挖空的完整原文，可空。短文填空的答案常依赖上下文
+                                              --（代词指代/时态呼应/篇章逻辑），只存挖空句等于让学生做单句填空，
+                                              -- 与卷面形态不符。同一大题（一篇阅读多个空）录成一道题时填这份全文
   blanks_json      TEXT NOT NULL,             -- JSON 数组：各空配置
   source           TEXT NOT NULL DEFAULT '手动录入',
   paper_id         TEXT,                      -- 所属试卷，可空（未归卷的题）

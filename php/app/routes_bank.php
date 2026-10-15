@@ -30,6 +30,11 @@ function map_question(array $row)
     return [
         'id' => (string) ($row['id'] ?? ''),
         'originalSentence' => (string) ($row['original_sentence'] ?? ''),
+        // 未挖空的完整原文：老题没有这一列时给 null（不是空串），
+        // 前端据此区分「没有原文」与「原文是空的」
+        'passageText' => isset($row['passage_text']) && trim((string) $row['passage_text']) !== ''
+            ? (string) $row['passage_text']
+            : null,
         'blanks' => is_array($blanks) ? $blanks : [],
         'source' => (string) ($row['source'] ?? ''),
         'paperId' => !empty($row['paper_id']) ? (string) $row['paper_id'] : null,
@@ -225,7 +230,9 @@ function route_questions_list()
     $orderKey = isset($_GET['order']) ? (string) $_GET['order'] : 'created_at';
     $orderSql = $orderMap[$orderKey] ?? $orderMap['created_at'];
 
-    $columns = 'id, original_sentence, blanks_json, source, paper_id, schema_version,
+    // passage_text 也要选出来：完整原文是题目的一部分，列表页（题库总览）
+    // 与详情都要能读到。不选的话 map_question 里那一列永远是 null
+    $columns = 'id, original_sentence, passage_text, blanks_json, source, paper_id, schema_version,
                 fingerprint, publish_status, owner_id, created_at, updated_at';
 
     // ---- 分页：不传 page 时返回全部（老调用方行为不变）----
@@ -499,15 +506,18 @@ function route_questions_create()
             $blanks = isset($question['blanks']) && is_array($question['blanks']) ? $question['blanks'] : [];
             $paperId = ensure_paper_by_name($source);
             $createdAt = to_sql_date(isset($question['createdAt']) ? $question['createdAt'] : null);
+            // 完整原文可空：没填就不给上下文对照，老题与单句题都是这个形态
+            $passage = normalize_passage_text(isset($question['passageText']) ? $question['passageText'] : null);
 
             execute(
                 'INSERT INTO questions
-                   (id, original_sentence, blanks_json, source, paper_id, schema_version,
+                   (id, original_sentence, passage_text, blanks_json, source, paper_id, schema_version,
                     fingerprint, content_hash, owner_id, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 [
                     $id,
                     $sentence,
+                    $passage,
                     json_encode($blanks, JSON_UNESCAPED_UNICODE),
                     $source,
                     $paperId,
@@ -567,6 +577,11 @@ function route_questions_update($id)
         $fields[] = 'original_sentence = ?';
         $values[] = (string) $patch['originalSentence'];
     }
+    // 完整原文：显式传 null 表示清除（老题补录后想删掉）
+    if (array_key_exists('passageText', $patch)) {
+        $fields[] = 'passage_text = ?';
+        $values[] = normalize_passage_text($patch['passageText']);
+    }
 
     // 显式指定所属试卷（null 表示移出该卷）
     if (array_key_exists('paperId', $patch)) {
@@ -596,7 +611,7 @@ function route_questions_update($id)
 
     // 与新增走同一套校验：未提及的字段取库里的现值一起校验，
     // 否则「只改 blanks 不改原句」会让空格数量与 blanks 数量对不上
-    $rows = query('SELECT id, original_sentence, blanks_json, source, paper_id FROM questions WHERE id = ?', [$id]);
+    $rows = query('SELECT id, original_sentence, passage_text, blanks_json, source, paper_id FROM questions WHERE id = ?', [$id]);
     if (count($rows) === 0) {
         throw http_error(404, '题目不存在或已删除');
     }
@@ -607,6 +622,9 @@ function route_questions_update($id)
         'originalSentence' => array_key_exists('originalSentence', $patch)
             ? $patch['originalSentence']
             : $row['original_sentence'],
+        'passageText' => array_key_exists('passageText', $patch)
+            ? $patch['passageText']
+            : ($row['passage_text'] ?? null),
         'blanks' => array_key_exists('blanks', $patch)
             ? $patch['blanks']
             : json_decode((string) $row['blanks_json'], true),

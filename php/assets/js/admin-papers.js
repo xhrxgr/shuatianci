@@ -307,6 +307,7 @@ export function setupPaperAndQuestionPanels(context) {
     };
 
     document.getElementById("edit-question-sentence").value = question.originalSentence;
+    document.getElementById("edit-question-passage").value = question.passageText ?? "";
     document.getElementById("edit-question-source").value = question.source;
     const paperSelect = document.getElementById("edit-question-paper");
     if (paperSelect) paperSelect.value = question.paperId ?? "__none__";
@@ -379,6 +380,11 @@ export function setupPaperAndQuestionPanels(context) {
               ${hintTypes.map((type) => `<option value="${escape(type)}"${type === blank.hintType ? " selected" : ""}>${escape(type)}</option>`).join("")}
             </select>
           </div>
+          <div>
+            <label class="mb-1.5 block text-xs font-medium text-muted">提示词</label>
+            <input type="text" data-edit-hint-word="${index}" value="${escape(blank.hintWord ?? "")}" placeholder="如 sit"${blank.hintType === "无提示词" ? " disabled" : ""} class="blank-slot w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition focus:border-primary disabled:opacity-40">
+            <p class="mt-1 text-xs text-faint">选了「无提示词」就不需要填。</p>
+          </div>
         </div>
 
         <div class="mt-3">
@@ -407,6 +413,10 @@ export function setupPaperAndQuestionPanels(context) {
       const index = Number(select.dataset.editHint);
       if (editing.blanks[index]) editing.blanks[index].hintType = select.value;
     });
+    document.querySelectorAll("[data-edit-hint-word]").forEach((input) => {
+      const index = Number(input.dataset.editHintWord);
+      if (editing.blanks[index]) editing.blanks[index].hintWord = input.value;
+    });
     document.querySelectorAll("[data-edit-trap]").forEach((area) => {
       const index = Number(area.dataset.editTrap);
       if (editing.blanks[index]) editing.blanks[index].trapAnalysis = area.value;
@@ -415,8 +425,9 @@ export function setupPaperAndQuestionPanels(context) {
     return editing.blanks.slice(0, count).map((blank, index) => ({
       blankIndex: index + 1,
       answer: splitAnswers(blank.answer),
-      // 原样保留原题的提示词（见 openEditQuestion 里的说明）
-      hintWord: blank.hintWord ?? null,
+      // 提示词与类型联动：选了「无提示词」就归一成 null ——
+      // 服务端校验「无提示词时 hintWord 必须为 null」，留着旧词会被拒
+      hintWord: blank.hintType === "无提示词" ? null : (blank.hintWord ?? "").trim() || null,
       hintType: blank.hintType,
       tagIds: blank.tagIds,
       trapAnalysis: blank.trapAnalysis.trim(),
@@ -458,6 +469,7 @@ export function setupPaperAndQuestionPanels(context) {
     try {
       await api.updateQuestion(editing.id, {
         originalSentence: sentence,
+        passageText: document.getElementById("edit-question-passage").value,
         source,
         // 同时给 source 与 paperId：paperId 是用户的明确选择，优先于按名归卷
         paperId: paperValue === "__none__" ? null : paperValue,
@@ -525,6 +537,23 @@ export function setupPaperAndQuestionPanels(context) {
   document
     .getElementById("question-bulk-delete")
     ?.addEventListener("click", () => void handleBulkDelete());
+
+  // 提示词类型改「无提示词」时，把提示词输入框禁用并清空 ——
+  // 服务端要求「无提示词时 hintWord 必须为 null」，不禁用的话用户填了也被丢掉，
+  // 看起来像「填了没保存」的 bug
+  document.getElementById("edit-question-blanks")?.addEventListener("change", (event) => {
+    const select = event.target.closest("[data-edit-hint]");
+    if (!select) return;
+    const index = Number(select.dataset.editHint);
+    const word = document.querySelector(`[data-edit-hint-word="${index}"]`);
+    if (!word) return;
+    const off = select.value === "无提示词";
+    word.disabled = off;
+    word.value = off ? "" : word.value;
+    if (editing.blanks[index]) {
+      editing.blanks[index].hintWord = off ? "" : word.value;
+    }
+  });
 
   // 逐空配置区：事件委托，因为每次重绘都会换掉 DOM
   document.getElementById("edit-question-blanks")?.addEventListener("click", (event) => {

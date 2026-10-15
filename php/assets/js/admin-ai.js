@@ -187,7 +187,10 @@ interface Blank {
 Question（一道题，即一个句子）：
 
 interface Question {
-  originalSentence: string;   // 该句原文，空格用 6 个下划线 ______ 表示
+  originalSentence: string;   // 挖空后的句子（含做出本题所必需的上下文句子）
+  passage?: string;           // 这道题所属**整篇阅读的未挖空原文**；一篇阅读挖多个空时，
+                              // 同一篇下所有 Question 填同一份 passage（一字不差）。
+                              // 单句题可以省略这个字段
   blanks: Blank[];
 }
 
@@ -199,6 +202,17 @@ interface Question {
 ## 可用标签清单（tagIds 只能从中选择）
 
 ${activeTags.map((tag) => `- ${tag.id} ${tag.name}`).join("\n")}
+
+## 完整原文（passage）：一篇阅读挖多个空时必须给
+
+如果这是「一篇阅读 / 一个大题挖多个空」的题型（高考短文填空就是这个形态）：
+
+- 把**整篇未挖掉的原文**放进 passage 字段，同一篇下的所有 Question 填**同一份**，一字不差
+- 为什么必须给：代词指代、时态呼应、篇章逻辑这类空，只看挖出来的那一句判断不了，
+  学生要能随时展开全文对照
+- originalSentence 仍然只放「挖空后的本题句子 + 做出本题必需的上下文」——
+  两者不重复也不矛盾：originalSentence 是考题，passage 是参照
+- 单句题（一空一句、无需上下文）可以省略 passage；图片里只有单个句子时也留空
 
 ## 核心要求：按句切分，但不能删掉答题依据
 
@@ -634,6 +648,16 @@ function findStrayQuestionNumbers(sentence) {
 /** 校验一道题目是否合法（迁移自原校验实现 的 validateQuestion） */
 function validateQuestion(question, tagDictionary) {
   const errors = [];
+  // 完整原文：选填，填了才校验（与服务端 normalize_passage_text 同一套口径）
+  if (question.passageText !== undefined && question.passageText !== null) {
+    if (typeof question.passageText !== "string") {
+      errors.push("passageText 必须是字符串");
+    } else if (question.passageText.trim() === "") {
+      errors.push("passageText 不能是空串（不想给原文就整个省略这个字段）");
+    } else if (question.passageText.length > 5000) {
+      errors.push(`passageText 过长：上限 5000 字（当前 ${question.passageText.length} 字）`);
+    }
+  }
   const sentence = typeof question.originalSentence === "string" ? question.originalSentence : "";
 
   // 1. 原句至少有一个空格
@@ -1197,6 +1221,14 @@ function renderPreviewItem(item, verdict, index) {
   }
   body.appendChild(blankBox);
 
+  // 完整原文：这道题有全文时才显示，让学生/老师导入前就能核对
+  if (item.passageText) {
+    const passageBox = el("div", "rounded border border-line bg-surface-alt p-2.5");
+    passageBox.appendChild(el("p", "mb-1 text-[11px] font-medium text-faint", "完整原文（未挖空，供对照）"));
+    passageBox.appendChild(el("p", "whitespace-pre-wrap break-words text-xs leading-5 text-muted", item.passageText));
+    body.appendChild(passageBox);
+  }
+
   // 查重的具体差异说明
   if (verdict?.hint) {
     body.appendChild(el("p", "text-xs leading-5 text-warning", verdict.hint));
@@ -1320,6 +1352,14 @@ function renderPreviewEditor(item, index) {
     counter.className = mismatch ? "text-[11px] text-danger" : "text-[11px] text-faint";
   };
   sentence.addEventListener("input", syncCounter);
+
+  // ---- 完整原文 ----
+  box.appendChild(el("label", "mb-1 block text-xs font-medium text-muted", "完整原文（未挖空，选填；学生做题时可展开对照）"));
+  const passage = el("textarea", "w-full rounded-lg border border-line bg-surface-alt px-3 py-2 text-xs leading-5 outline-none transition focus:border-primary");
+  passage.rows = 4;
+  passage.value = item.passageText ?? "";
+  passage.placeholder = "一篇阅读挖多个空时，把整篇未挖掉的原文粘在这里；单句题留空即可。";
+  box.appendChild(passage);
 
   // ---- 每个空 ----
   const blankBox = el("div", "space-y-2");
@@ -1483,7 +1523,8 @@ function renderPreviewEditor(item, index) {
       });
     }
 
-    const updated = { ...item, originalSentence: sentence.value, blanks: collected };
+    const passageText = passage.value.trim();
+    const updated = { ...item, originalSentence: sentence.value, passageText: passageText === "" ? null : passageText, blanks: collected };
 
     // 复用同一套校验：空格数、题号残留、blankIndex、答案、提示词、解析全查
     const { allErrors } = validateQuestions([updated], dictionary);
@@ -1683,6 +1724,13 @@ async function buildPreviewInner(raw) {
   list.forEach((question) => {
     if (question && typeof question.originalSentence === "string") {
       question.originalSentence = normalizeSentence(question.originalSentence);
+    }
+    // 完整原文：AI 那边字段名叫 passage，题库与接口统一叫 passageText，
+    // 这里归一一次，后面（预览、就地编辑、导入）就只用同一个名字。
+    // 空串 / 全是空白 → null，表示「这道题没有原文」
+    if (question) {
+      const raw = question.passage ?? question.passageText ?? null;
+      question.passageText = typeof raw === "string" && raw.trim() !== "" ? raw.trim() : null;
     }
   });
 
