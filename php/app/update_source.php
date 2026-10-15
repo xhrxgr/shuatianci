@@ -106,10 +106,16 @@ function update_source_read()
     // 逐项校验：文件可能被手工改坏，坏的值不能直接拿去拼 git 命令
     $remote = update_source_normalize_remote((string) ($data['remote'] ?? ''));
     $proxy = update_source_normalize_proxy((string) ($data['proxy'] ?? ''));
+    $preset = (string) ($data['preset'] ?? 'direct');
+    // 读取时同样以 preset 为准：配置文件被手工改坏过（preset=direct 却带着 proxy），
+    // 在这里就归一，界面与实际行为不会各说各话
+    if ($preset === 'direct') {
+        $proxy = '';
+    }
     return [
         'remote' => $remote !== '' ? $remote : $defaults['remote'],
         'proxy' => $proxy,
-        'preset' => (string) ($data['preset'] ?? 'direct'),
+        'preset' => $preset,
     ];
 }
 
@@ -198,6 +204,15 @@ function update_source_save(array $input)
     }
     $preset = (string) ($input['preset'] ?? 'direct');
 
+    // preset 是唯一权威：选了「直连」就一定不挂加速地址。
+    // 否则会出现「界面显示直连 GitHub，实际访问 gh-proxy.com」这种自相矛盾的状态
+    // ——成因是 proxy 字段与 preset 不同步（比如切回直连时前端仍提交了上次的 proxy，
+    //   或配置文件被手工改过）。这里在落盘前就归一，脏数据不留。
+    if ($preset === 'direct') {
+        $proxy = '';
+        $rawProxy = '';
+    }
+
     $data = ['remote' => $remote, 'proxy' => $proxy, 'preset' => $preset];
     $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     if ($json === false) {
@@ -235,6 +250,12 @@ function update_source_save(array $input)
 function update_source_git_args()
 {
     $config = update_source_read();
+    // preset 说走直连就一定不加 insteadOf —— 即使配置文件里还留着 proxy。
+    // 「界面显示直连、实际访问加速地址」是最难排查的一类问题，
+    // 在这里堵住，比在界面上解释得清楚
+    if ($config['preset'] === 'direct') {
+        return [];
+    }
     $proxy = $config['proxy'];
     if ($proxy === '') {
         return [];

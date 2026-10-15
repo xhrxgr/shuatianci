@@ -46,9 +46,9 @@ function asset_url($path)
  *
  * @param string $view  views/ 下的模板名（不含扩展名）
  * @param array  $data  传给模板的变量
- * @param string $title 页面标题
+ * @param string $title 浏览器标签标题（英文；页面内容与导航仍是中文）
  */
-function render_page($view, array $data = [], $title = '高考英语短文填空穷举题库')
+function render_page($view, array $data = [], $title = 'English Cloze Question Bank')
 {
     $user = current_user();
     $viewFile = dirname(__DIR__) . '/views/' . $view . '.php';

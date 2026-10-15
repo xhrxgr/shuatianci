@@ -814,6 +814,42 @@ async function main() {
   const userSystemForbidden = await request("GET", "/system/version", { token: userToken });
   check("普通用户访问系统接口 -> 403", userSystemForbidden.status === 403, userSystemForbidden.data);
 
+  /* ---------------- 更新源：直连就是直连 ---------------- */
+  // 曾经出过「界面显示直连 GitHub，实际访问 gh-proxy.com」——
+  // 成因是 preset 与 proxy 两个字段不同步，生效逻辑只看后者
+  const REMOTE = "https://github.com/xhrxgr/shuatianci.git";
+  const GH_PROXY = "https://gh-proxy.com/https://github.com/";
+  const directSource = await request("PUT", "/system/update-source", {
+    token: adminToken,
+    body: { remote: REMOTE, proxy: GH_PROXY, preset: "direct" },
+  });
+  check(
+    "选「直连」时忽略一并传入的加速地址",
+    directSource.status === 200 && directSource.data?.config?.proxy === "",
+    directSource.data?.config
+  );
+  check(
+    "选「直连」时实际访问地址就是仓库地址本身",
+    directSource.data?.effective?.actual === REMOTE,
+    directSource.data?.effective
+  );
+
+  const proxySource = await request("PUT", "/system/update-source", {
+    token: adminToken,
+    body: { remote: REMOTE, proxy: GH_PROXY, preset: "gh-proxy" },
+  });
+  check(
+    "选加速通道时确实带上代理",
+    proxySource.status === 200 && proxySource.data?.effective?.actual === `${GH_PROXY}xhrxgr/shuatianci.git`,
+    proxySource.data?.effective
+  );
+
+  // 还原成直连，别把后面的测试留在带代理的状态
+  await request("PUT", "/system/update-source", {
+    token: adminToken,
+    body: { remote: REMOTE, proxy: "", preset: "direct" },
+  });
+
   /* ---------------- 清理：删除测试用户 ---------------- */
   const delUser = await request("DELETE", `/admin/users/${newUserId}`, { token: adminToken });
   check("删除用户成功", delUser.status === 200 && delUser.data.ok === true, delUser.data);

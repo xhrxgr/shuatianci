@@ -227,7 +227,7 @@ async function main() {
 
   /* ---------------- 首页 / 登录页基础渲染 ---------------- */
   await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
-  check("首页标题正确", (await page.title()) === "高考英语短文填空穷举题库");
+  check("首页标题正确（英文）", (await page.title()) === "English Cloze Question Bank");
   check("首页有统计卡片", (await page.locator("section.grid > div").count()) === 4);
   check("导航含「刷题」", (await page.locator('header nav a[href="/practice"]').count()) >= 1);
 

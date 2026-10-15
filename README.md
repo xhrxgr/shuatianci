@@ -1,7 +1,7 @@
 # 高考英语短文填空穷举题库
 
 服务端题库 + 刷题 + 错题本，支持多设备、多用户。
-当前版本 **3.6.0**（更新记录见 [CHANGELOG.md](CHANGELOG.md)）。
+当前版本 **3.6.1**（更新记录见 [CHANGELOG.md](CHANGELOG.md)）。
 
 ## 快速导航
 
@@ -9,7 +9,6 @@
 |---|---|
 | 本地跑起来 | [快速开始](#快速开始本地开发) |
 | 部署到服务器 | [部署到服务器](#部署到服务器) |
-| 从旧版本升级 | [从 2.x / 1.x 升级](#从旧版本升级) |
 | 按蓝图组卷 | [功能 · 组卷蓝图](#功能) |
 | 题库重构的设计与分期 | [docs/BANK_REFACTOR_DESIGN.md](docs/BANK_REFACTOR_DESIGN.md) |
 | 查重指纹规则 | [docs/FINGERPRINT_SPEC.md](docs/FINGERPRINT_SPEC.md) |
@@ -97,8 +96,6 @@
 
 > **整站运行时不需要 Node，也没有任何构建步骤**：
 > 改 PHP 或 JS 保存即生效，只改样式时直接编辑 `php/assets/app.css` 也能用。
-
-> 与 2.x（Node 后端 + React 前端）相比，本项目现在只有一套实现：PHP。
 
 ## 环境要求
 
@@ -348,51 +345,6 @@ curl -s http://127.0.0.1:2027/api/health      # 应返回 {"ok":true,"time":"...
 | `CSP_POLICY` | 否 | 内置策略 | 设为 `off` 可关闭 CSP |
 | `SEED_ON_EMPTY` | 否 | `1` | 首次且库为空时是否导入示例题与标签 |
 | `SEED_DIR` | 否 | `php/seed/` | 种子数据目录（内置示例题与标签） |
-
-### 从旧版本升级
-
-#### 从 2.x（Node 后端 + React 前端）升级到 3.0.0
-
-3.0.0 把前端也改成了 PHP 渲染，**部署形态变了**：站点根从 `dist/` 换成 `php/`。
-
-```bash
-cd 你的项目目录
-
-# 1. 拉取新代码。提交历史重写过，必须用 reset 而不是 pull
-git config --global --add safe.directory "$(pwd)"   # 只有报 dubious ownership 时才需要
-git fetch origin && git reset --hard origin/master
-
-# 2. 迁移旧数据（之前跑起来过才会有 server/data/）
-mkdir -p php/data
-cp server/data/english_quiz.db php/data/english_quiz.db 2>/dev/null || echo "没有旧库，跳过"
-chmod -R 755 php/data
-
-# 3. 改 nginx：站点根改成 php/（配置见上面「部署到服务器」一节）
-#    改完执行：nginx -t && nginx -s reload
-```
-
-验证：`curl -s http://127.0.0.1:2027/api/health` 返回 `{"ok":true,...}`。
-
-**顺带可以清掉旧进程**：3.0.0 起运行时不需要 Node，也不用 pm2：
-
-```bash
-pm2 delete english-quiz-api 2>/dev/null || true
-rm -rf server deploy.sh scripts
-```
-
-#### 从 1.x（Node 后端）升级
-
-同样两步，区别是旧数据与配置在 `server/` 下：
-
-```bash
-git fetch origin && git reset --hard origin/master
-mkdir -p php/data
-cp server/data/english_quiz.db php/data/english_quiz.db
-cp server/.env php/.env 2>/dev/null        # 改过配置才有这个文件
-rm -rf server deploy.sh scripts
-```
-
-账号密码、题库、做题记录全部保留，不需要重置或转换。
 
 ## 更新与维护
 

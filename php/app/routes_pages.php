@@ -68,7 +68,7 @@ function dispatch_page($method, $path)
 
     if ($handler === null) {
         http_response_code(404);
-        render_page('404', [], '页面不存在');
+        render_page('404', [], 'Page Not Found');
     }
     call_user_func_array($handler, $params);
 }
