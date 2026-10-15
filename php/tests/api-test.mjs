@@ -806,7 +806,9 @@ async function main() {
   check(
     "GET /system/update-status 字段完整",
     status.status === 200 &&
-      Object.keys(status.data).sort().join(",") === "error,finished,finishedAt,log,ok,running,stage,startedAt",
+      // stale 是 v3.6.6 加的：后台进程卡死时前端据此停止轮询
+    Object.keys(status.data).sort().join(",")
+      === "error,finished,finishedAt,log,ok,running,stage,stale,startedAt",
     Object.keys(status.data)
   );
   record("update-status", status.status, status.data);
