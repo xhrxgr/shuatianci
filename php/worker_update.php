@@ -41,6 +41,14 @@ try {
     update_state_start();
     update_state_log("开始更新，当前分支 {$branch}，提交 " . substr($rollbackCommit, 0, 7));
 
+    // ---- 0. 本地改动检查（第二道闸）----
+    // 接口那边已经拦过一次，但从「点按钮」到「这里真正动手」之间可能又有人改了文件
+    // （比如编辑器刚保存），而且这一步是真正会被覆盖的地方，必须再看一次。
+    $dirty = git_tracked_changes();
+    if (!empty($dirty)) {
+        throw new RuntimeException(git_dirty_message($dirty));
+    }
+
     // ---- 1. 拉取代码 ----
     update_state_write(['stage' => '拉取代码']);
     update_state_log('git fetch origin');

@@ -339,6 +339,61 @@ function git_repo_problem()
 }
 
 /**
+ * 工作区里**会被 reset --hard 覆盖**的本地改动。
+ *
+ * 只算已跟踪文件的改动：未跟踪文件（??）不在 git 的对象管理里，
+ * `reset --hard` 不会动它们，把它们算作"危险"会拦住大量正常场景
+ * （比如用户只是在项目目录里放了个备份文件）。
+ *
+ * @return array|null 改动的文件列表（相对路径）；查不出来返回 null
+ */
+function git_tracked_changes()
+{
+    $result = git_cmd(['status', '--porcelain'], 20);
+    if ($result['code'] !== 0) {
+        // 查不出来就不拦：不能因为探测失败而永远禁止更新
+        return null;
+    }
+    $files = [];
+    foreach (explode("\n", (string) $result['out']) as $line) {
+        // 只能用 rtrim：porcelain 每行开头是「两个状态字符 + 一个空格」，
+        // 第一个状态字符常常是空格（如 " M README.md"）。用 trim 会把这个空格
+        // 也去掉，后面 substr(3) 就会多切掉路径的第一个字符（实测出过 "EADME.md"）
+        $line = rtrim($line);
+        if ($line === '') {
+            continue;
+        }
+        // 未跟踪文件：reset --hard 不会动它们，不算危险
+        if (strpos($line, '??') === 0) {
+            continue;
+        }
+        // 不能用固定偏移 substr(3)：run_command 会对整个输出做 trim()，
+        // 第一行的行首空格（状态位的一部分）被吃掉，固定偏移就多切一个字符
+        // （实测出现过 "hp/app/routes_system.php" 这种缺字母的路径）。
+        // 去掉两个状态字符后再 ltrim，两种行都正确
+        $files[] = ltrim(substr($line, 2));
+    }
+    return $files;
+}
+
+/**
+ * 把「有本地改动」这件事说清楚，并给出下一步。
+ *
+ * @param array $files git_tracked_changes() 的结果
+ * @return string
+ */
+function git_dirty_message(array $files)
+{
+    $count = count($files);
+    $list = implode('、', array_slice($files, 0, 5));
+    $more = $count > 5 ? " 等 {$count} 个" : "";
+    return "检测到 {$count} 个已跟踪文件有本地改动（{$list}{$more}），"
+        . '更新会用 git reset --hard 覆盖它们且无法恢复，因此已取消。'
+        . '请先处理这些改动：需要保留就 git stash 或提交，不需要就 git checkout -- <文件>，'
+        . '或直接改用 bash update.sh（同样会覆盖，但你会先看到提示）。';
+}
+
+/**
  * 检查 git 能否往仓库里写东西（.git/objects 不可写时 fetch 必然失败）。
  *
  * 为什么必须实测而不是看属主：
@@ -515,6 +570,18 @@ function route_system_update()
     $problem = git_repo_problem();
     if ($problem !== null) {
         json_response(['ok' => false, 'error' => $problem], 500);
+    }
+
+    // 本地改动会被 reset --hard 抹掉且无法恢复，必须在动手之前挡住。
+    // 光在「检查更新」里提示不够——用户可以直接点更新按钮。
+    $dirty = git_tracked_changes();
+    if (!empty($dirty)) {
+        json_response([
+            'ok' => false,
+            'error' => git_dirty_message($dirty),
+            'details' => array_slice($dirty, 0, 20),
+            'dirtyCount' => count($dirty),
+        ], 409);
     }
 
     // 先占位，防止并发触发两次更新

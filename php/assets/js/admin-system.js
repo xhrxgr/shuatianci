@@ -333,7 +333,14 @@ if (root) {
 
   /** 开始更新 */
   async function handleUpdate() {
-    if (!window.confirm("确定要更新到最新版本吗？\n\n更新完成后页面会自动刷新；更新过程中站点可能短暂无响应，属正常现象。")) {
+    // 有本地改动时把话说在前面：更新用 git reset --hard，会覆盖且无法恢复。
+    // 后端也会拦（返回 409 并列出文件），这里提前警告，免得用户白点一次
+    let tip = "确定要更新到最新版本吗？\n\n更新完成后页面会自动刷新；更新过程中站点可能短暂无响应，属正常现象。";
+    if (check?.dirty) {
+      tip += "\n\n注意：检测到工作区有未提交的改动，更新会用 reset --hard 覆盖它们，"
+        + "且无法恢复。这些改动要保留的话，请先取消并备份。";
+    }
+    if (!window.confirm(tip)) {
       return;
     }
 
@@ -353,7 +360,11 @@ if (root) {
       updating = false;
       showMessage("error", error, {
         retry: () => void handleUpdate(),
-        details: error?.details ? [error.details] : [],
+        // 后端拒绝更新时会把改动的文件列表放在 details 里，直接铺开给用户看
+        details: Array.isArray(error?.details)
+          ? error.details
+          : error?.details ? [error.details] : [],
+        sticky: true,
       });
       renderUpdateActions();
       renderCheckResult();
