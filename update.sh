@@ -54,8 +54,14 @@ detect_php_user() {
 
     # 1) php-fpm 进程的实际运行用户（最准）
     if command -v ps >/dev/null 2>&1; then
+        # ⚠️ 必须排除 master：php-fpm 的 master 进程由 root 启动（要绑定特权端口），
+        # 真正执行 PHP 代码的是 pool worker（www）。不排除的话 head -n1 很容易抓到
+        # master，于是脚本以为"PHP 用户是 root"，让 git 以 root 跑——
+        # 写进 .git/objects 的对象就归了 root，之后 www 再也写不进去，
+        # 在线更新报 insufficient permission for adding an object。
+        # 这个坑踩过：探测显示「PHP 运行用户：root」，实际是 www。
         user="$(ps -eo user,args 2>/dev/null \
-               | grep -E 'php-fpm' | grep -v grep \
+               | grep -E 'php-fpm' | grep -v grep | grep -viE 'master' \
                | awk '{print $1}' | head -n1 || true)"
     fi
 
@@ -106,6 +112,27 @@ fi
 
 echo "当前用户：root"
 echo "PHP 运行用户：${PHP_USER:-未探测到}"
+
+# ---- 属主自检（root 跑过 git 会留下 root 属主的对象）--------------------------------
+# 现象：在线更新报 insufficient permission for adding an object，
+#      而只读命令（rev-parse、log）一切正常，极难联想到是权限问题。
+# 成因：之前用 root 跑过 git（手工 reset、或探测失误让脚本以 root 跑），
+#      .git/objects 里混进 root 属主的文件，PHP 用户再也写不进去。
+# 处理：探测不到 PHP 用户、或它确实是 root 时不动；否则试写一次，不行就自动修。
+if [ -n "$PHP_USER" ] && [ "$PHP_USER" != "root" ]; then
+    if command -v runuser >/dev/null 2>&1; then
+        if ! runuser -u "$PHP_USER" -- test -w "$PROJECT_DIR/.git/objects" 2>/dev/null; then
+            echo "⚠️ 检测到 .git/objects 对 $PHP_USER 不可写（多半是之前用 root 跑过 git）。" >&2
+            echo "  在线更新会因此失败。正在自动修复属主…" >&2
+            if chown -R "$PHP_USER":"$PHP_USER" "$PROJECT_DIR/.git" 2>/dev/null; then
+                echo "  ✓ 已修复：.git 现已归 $PHP_USER 所有。" >&2
+            else
+                echo "  ✗ 自动修复失败，请手动执行：" >&2
+                echo "    chown -R $PHP_USER:$PHP_USER $PROJECT_DIR/.git" >&2
+            fi
+        fi
+    fi
+fi
 
 # ---- 以 PHP 用户身份执行 git --------------------------------------------------
 # 依次尝试 runuser / su，两者都是 util-linux 自带的，**不需要 sudo、不需要

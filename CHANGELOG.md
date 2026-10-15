@@ -11,6 +11,38 @@
 当前版本写在根目录的 `VERSION` 文件里，与 `package.json` 的 `version`、git 标签 `v{VERSION}`
 三处保持一致；发版流程见 README「发版」一节。
 
+## 3.6.9（2026-10-15）—— 修 root 属主污染 .git 的两个源头
+
+用户实测：网页「检查更新」报网络连接失败，真实原因是
+`insufficient permission for adding an object to repository database .git/objects`。
+
+### 源头一：update.sh 把 PHP 用户探测成了 root
+
+`detect_php_user` 用 `ps | grep php-fpm | head -n1` 取第一个 php-fpm 进程的用户——
+抓到的是 **master 进程**（root 启动，只为绑端口），真正执行 PHP 的是 pool worker（www）。
+于是脚本以为"PHP 用户是 root"，让 git 以 root 跑，写进 `.git/objects` 的对象归了 root，
+之后 www 再也写不进去，在线更新必坏。
+
+现在排除 master 再取（`grep -viE 'master'`）。
+
+### 源头二：坏掉之后没人自动修
+
+- `update.sh` 现在会在跑 git 前自检：以 PHP 用户试写 `.git/objects`，
+  写不进去就**自动 chown 修好**并在输出里说明，不需要用户记命令
+- PHP 侧补一个更准的检查：原先的写探针只验证「目录可写」，
+  而目录可写但**里面已有 root 属主的对象**时，git fetch 照样会在写 pack 时报权限错
+  （只读命令却一切正常，所以极难联想）。新增 `git_objects_foreign_owner()`：
+  直接查 objects 里有没有不属于当前用户的文件，报错时连文件路径、属主 uid、
+  PHP 以谁在跑一起给出
+
+### 已中招的站点怎么恢复
+
+```bash
+cd /项目目录
+chown -R www:www .git        # www 换成 PHP 的真实运行用户
+bash update.sh               # 升级后脚本会自检，不会再犯
+```
+
 ## 3.6.8（2026-10-15）—— 管理后台页签：手机上不再折成七行，命名改专业
 
 ### 布局：手机上横排 + 横滚

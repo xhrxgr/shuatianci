@@ -394,6 +394,45 @@ function git_dirty_message(array $files)
 }
 
 /**
+ * 检查 .git/objects 里有没有不属于当前用户的文件。
+ *
+ * 与写探针互补：探针只验证「目录可写」，而目录可写但里面已有 root 属主的对象时，
+ * git fetch 照样会在写 pack 时报 insufficient permission（只读命令却一切正常）。
+ * 典型成因是用 root 跑过一次 git（手工 reset、或脚本探测失误）。
+ *
+ * @return string|null 有问题返回可执行的中文说明，没问题返回 null
+ */
+function git_objects_foreign_owner()
+{
+    if (PHP_OS_FAMILY === 'Windows' || !function_exists('posix_geteuid')) {
+        return null; // 本地开发不涉及属主问题；posix 扩展被禁用时跳过
+    }
+    $uid = posix_geteuid();
+    // 只看两级：objects/xx/yyyy... 是 git 的真实布局，再深就是 pack 目录
+    $result = run_command(
+        'find .git/objects -mindepth 1 -maxdepth 2 ! -uid ' . $uid . ' -print -quit 2>/dev/null',
+        APP_DIR,
+        15
+    );
+    $foreign = trim($result['out']);
+    if ($foreign === '') {
+        return null;
+    }
+
+    // 说清是谁的文件、PHP 以谁在跑，一次把话说全
+    $owner = trim(run_command('ls -ln ' . escapeshellarg($foreign) . ' 2>/dev/null | awk "{print \$3}"', APP_DIR, 10)['out']);
+    $who = function_exists('posix_getpwuid') ? (posix_getpwuid($uid)['name'] ?? (string) $uid) : (string) $uid;
+    $ownerName = $owner !== '' ? "uid {$owner}" : '其他人';
+
+    return '仓库里混进了不属于当前用户的文件（' . $foreign . '，属主 ' . $ownerName . '），'
+        . '而 PHP 以 ' . $who . ' 身份运行，在线更新会在写入时报 '
+        . '"insufficient permission for adding an object"。'
+        . '成因几乎总是：有人用 root 跑过 git（手工 reset，或更新脚本探测失误）。'
+        . '解决办法：在项目目录执行 bash update.sh——它会先自动修好属主再更新；'
+        . '也可以手动执行 chown -R ' . $who . ':' . $who . ' .git';
+}
+
+/**
  * 检查 git 能否往仓库里写东西（.git/objects 不可写时 fetch 必然失败）。
  *
  * 为什么必须实测而不是看属主：
@@ -417,6 +456,15 @@ function git_objects_not_writable()
     $written = @file_put_contents($probePath, 'probe');
     if ($written !== false) {
         @unlink($probePath);
+
+        // 探针能写，不代表能更新：目录可写但**里面已有别人属主的对象**时，
+        // git fetch 会在写 pack 时报 insufficient permission——而探针是新建文件，
+        // 发现不了这种情况（这正是「只读命令正常、一更新就报权限错」的成因）。
+        // 所以再查一次：objects 里有没有不属于当前用户的文件。
+        $foreign = git_objects_foreign_owner();
+        if ($foreign !== null) {
+            return $foreign;
+        }
         return null;
     }
     @unlink($probePath);
