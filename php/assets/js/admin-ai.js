@@ -820,6 +820,7 @@ let submitting = false;
  * 由 renderPreview 依据 checks 重新算出来，不是解析结果的直接副本。
  */
 let previewList = [];      // 解析 + 修复后的题目（全量，含未勾选的）
+let previewEditIndex = null; // 正在编辑的题号（同一时间只编辑一张卡片）
 let previewVerdicts = [];  // 每题查重结果
 let previewChecks = [];    // 每题是否勾选
 /** 预览对应的 textarea 内容，用于判断「粘贴后立刻点导入」时预览是否还是新的 */
@@ -1125,6 +1126,11 @@ function el(tag, className, text) {
  * 让用户在导入前就能判断 AI 有没有读错。
  */
 function renderPreviewItem(item, verdict, index) {
+  // 正在编辑这张卡片：整个卡片换成表单，保存/取消后再回到预览态
+  if (previewEditIndex === index) {
+    return renderPreviewEditor(item, index);
+  }
+
   const wrapper = el("label", "flex cursor-pointer gap-3 rounded-lg border border-line bg-surface p-3 transition hover:border-primary/40");
   const checked = previewChecks[index] !== false;
 
@@ -1141,6 +1147,11 @@ function renderPreviewItem(item, verdict, index) {
   head.appendChild(el("span", "text-xs font-medium text-faint", `第 ${index + 1} 题`));
   const style = VERDICT_STYLE[verdict?.state] ?? VERDICT_STYLE.new;
   head.appendChild(el("span", `rounded border px-1.5 py-0.5 text-[11px] ${style.cls}`, style.label));
+  // 人工改过的题要有痕迹：AI 给错答案/解析/文字时，改完要能一眼看出哪几题动过
+  if (item.__edited) {
+    head.appendChild(el("span", "rounded border border-success/40 bg-success-soft px-1.5 py-0.5 text-[11px] text-success", "已改"));
+  }
+  head.appendChild(previewItemActions(index));
   body.appendChild(head);
 
   // 原句：把 ______ 拆出来单独高亮
@@ -1200,6 +1211,330 @@ function renderPreviewItem(item, verdict, index) {
 
   wrapper.appendChild(body);
   return wrapper;
+}
+
+
+/* ------------------------------------------------------------------ */
+/* 预览区就地编辑：AI 给错答案 / 解析 / 甚至原句文字时，导入前就能改       */
+/* ------------------------------------------------------------------ */
+
+/** 卡片右上角的操作按钮（编辑 / 移除） */
+function previewItemActions(index) {
+  const box = el("div", "ml-auto flex shrink-0 gap-1.5");
+
+  const edit = el("button", "min-h-8 rounded-lg border border-line bg-surface px-2 py-1 text-[11px] text-muted transition hover:bg-surface-alt", "编辑");
+  edit.type = "button";
+  // 整张卡片是 <label>，点按钮会被浏览器转成「切换勾选」，
+  // 必须两个事件都拦住，否则一编辑就顺手把题取消勾选了
+  edit.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    previewEditIndex = index;
+    renderPreview();
+  });
+
+  const remove = el("button", "min-h-8 rounded-lg border border-line bg-surface px-2 py-1 text-[11px] text-muted transition hover:text-danger", "移除");
+  remove.type = "button";
+  remove.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    removePreviewItem(index);
+  });
+
+  box.appendChild(edit);
+  box.appendChild(remove);
+  return box;
+}
+
+/** 移除一道题（AI 偶尔会混进不是题的条目，或用户临时不想要某一题） */
+function removePreviewItem(index) {
+  const item = previewList[index];
+  if (!item) return;
+  const head = String(item.originalSentence ?? "").slice(0, 24);
+  if (!window.confirm("移除第 " + (index + 1) + " 题？\n\n" + head + "…\n\n只是从本批预览里去掉，不会影响已入库的题。")) {
+    return;
+  }
+  previewList.splice(index, 1);
+  previewVerdicts.splice(index, 1);
+  previewChecks.splice(index, 1);
+  if (previewEditIndex !== null) {
+    // 被移除的正是正在编辑的那张：收起表单；在它后面的要相应前移
+    if (previewEditIndex === index) previewEditIndex = null;
+    else if (previewEditIndex > index) previewEditIndex -= 1;
+  }
+  syncLastBuild();
+  renderPreview();
+  renderPreviewSummary();
+}
+
+/**
+ * 编辑后把改动同步进 lastBuild 缓存。
+ *
+ * 不这么做的话：用户改完题，缓存里存的还是 AI 的原文，下一次 buildPreview
+ * 命中同一段文本就会把编辑覆盖掉（「改了却莫名丢了几处修改」的成因）。
+ */
+function syncLastBuild() {
+  if (lastBuild === null) return;
+  lastBuild.list = [...previewList];
+  lastBuild.verdicts = [...previewVerdicts];
+  lastBuild.checks = [...previewChecks];
+}
+
+/**
+ * 就地编辑表单：原句 + 每个空的答案/提示词/标签/解析，全可改。
+ *
+ * 做成「卡片原位变成表单」而不是弹窗：弹窗要处理定位、滚动、移动端键盘，
+ * 而用户此时正盯着这张卡片，原地改最直观。
+ */
+function renderPreviewEditor(item, index) {
+  const blanks = (item.blanks ?? []).map((blank) => ({
+    blankIndex: blank.blankIndex,
+    answer: [...(blank.answer ?? [])],
+    hintType: blank.hintType ?? "无提示词",
+    hintWord: blank.hintWord ?? null,
+    tagIds: [...(blank.tagIds ?? [])],
+    trapAnalysis: blank.trapAnalysis ?? "",
+  }));
+
+  const box = el("div", "space-y-3 rounded-lg border border-primary/50 bg-surface p-3");
+
+  const head = el("div", "flex flex-wrap items-center gap-2");
+  head.appendChild(el("span", "text-xs font-medium text-faint", "编辑第 " + (index + 1) + " 题"));
+  head.appendChild(el("span", "text-[11px] text-faint", "改完点「保存修改」，导入时会用改后的内容"));
+  box.appendChild(head);
+
+  // ---- 原句 ----
+  box.appendChild(el("label", "mb-1 block text-xs font-medium text-muted", "原句（空格用 ______ 表示，数量要与下面的空一致）"));
+  const sentence = el("textarea", "w-full rounded-lg border border-line bg-surface-alt px-3 py-2 text-sm leading-6 outline-none transition focus:border-primary");
+  sentence.rows = 3;
+  sentence.value = String(item.originalSentence ?? "");
+  box.appendChild(sentence);
+  const counter = el("p", "text-[11px] text-faint", "");
+  box.appendChild(counter);
+  const syncCounter = () => {
+    const inSentence = findPlaceholderPositions(sentence.value).length;
+    const mismatch = inSentence !== blanks.length;
+    counter.textContent = mismatch
+      ? "原句里有 " + inSentence + " 个空，下面配了 " + blanks.length + " 个空 —— 不一致会导致保存被拦下"
+      : "原句 " + inSentence + " 个空，配置 " + blanks.length + " 个空，一致";
+    counter.className = mismatch ? "text-[11px] text-danger" : "text-[11px] text-faint";
+  };
+  sentence.addEventListener("input", syncCounter);
+
+  // ---- 每个空 ----
+  const blankBox = el("div", "space-y-2");
+  box.appendChild(blankBox);
+
+  const renderBlank = (blank, blankIdx) => {
+    const card = el("div", "space-y-2 rounded-lg border border-line bg-surface-alt p-2.5");
+
+    const line1 = el("div", "flex flex-wrap items-end gap-2");
+    line1.appendChild(el("span", "shrink-0 pb-2 text-xs font-medium text-faint", "空 " + blank.blankIndex));
+
+    // 答案：多个可接受答案用 / 分隔（与判卷口径一致）
+    const answerWrap = el("div", "min-w-40 flex-1");
+    answerWrap.appendChild(el("label", "mb-1 block text-[11px] text-faint", "答案（多个用 / 分隔）"));
+    const answer = el("input", "w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-xs outline-none focus:border-primary");
+    answer.type = "text";
+    answer.value = (blank.answer ?? []).join(" / ");
+    answerWrap.appendChild(answer);
+    line1.appendChild(answerWrap);
+
+    // 提示词类型
+    const hintWrap = el("div", "w-32 shrink-0");
+    hintWrap.appendChild(el("label", "mb-1 block text-[11px] text-faint", "提示词类型"));
+    const hintType = el("select", "w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-xs outline-none focus:border-primary");
+    for (const type of HINT_TYPES) {
+      const option = document.createElement("option");
+      option.value = type;
+      option.textContent = type;
+      if (type === blank.hintType) option.selected = true;
+      hintType.appendChild(option);
+    }
+    hintWrap.appendChild(hintType);
+    line1.appendChild(hintWrap);
+
+    // 提示词（选了「无提示词」就禁用）
+    const wordWrap = el("div", "w-32 shrink-0");
+    wordWrap.appendChild(el("label", "mb-1 block text-[11px] text-faint", "提示词"));
+    const hintWord = el("input", "w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-xs outline-none focus:border-primary disabled:opacity-40");
+    hintWord.type = "text";
+    hintWord.value = blank.hintWord ?? "";
+    hintWord.disabled = blank.hintType === "无提示词";
+    hintWord.placeholder = blank.hintType === "无提示词" ? "（不需要）" : "如 sit";
+    wordWrap.appendChild(hintWord);
+    line1.appendChild(wordWrap);
+
+    hintType.addEventListener("change", () => {
+      hintWord.disabled = hintType.value === "无提示词";
+      hintWord.placeholder = hintWord.disabled ? "（不需要）" : "如 sit";
+    });
+
+    card.appendChild(line1);
+
+    // 标签：chips 点选，省得记 tagId
+    card.appendChild(el("label", "mb-1 block text-[11px] text-faint", "标签（点选，可多选）"));
+    const tagBox = el("div", "flex max-h-24 flex-wrap gap-1 overflow-y-auto rounded-lg border border-line bg-surface p-1.5");
+    const activeTags = (dictionary?.tags ?? []).filter((tag) => tag.isActive);
+    if (activeTags.length === 0) {
+      tagBox.appendChild(el("span", "text-[11px] text-faint", "标签库是空的，可先到「知识点标签」页签添加"));
+    }
+    for (const tag of activeTags) {
+      const on = blank.tagIds.includes(tag.id);
+      const chip = el("button", "min-h-7 rounded-full border px-2 py-0.5 text-[11px] transition "
+        + (on ? "border-primary bg-primary/10 text-primary" : "border-line bg-surface text-muted hover:bg-surface-alt"), tag.name);
+      chip.type = "button";
+      chip.addEventListener("click", () => {
+        const at = blank.tagIds.indexOf(tag.id);
+        if (at === -1) blank.tagIds.push(tag.id);
+        else blank.tagIds.splice(at, 1);
+        const now = blank.tagIds.includes(tag.id);
+        chip.className = "min-h-7 rounded-full border px-2 py-0.5 text-[11px] transition "
+          + (now ? "border-primary bg-primary/10 text-primary" : "border-line bg-surface text-muted hover:bg-surface-alt");
+      });
+      tagBox.appendChild(chip);
+    }
+    card.appendChild(tagBox);
+
+    // 解析
+    card.appendChild(el("label", "mb-1 block text-[11px] text-faint", "解析（命题意图与判断依据）"));
+    const trap = el("textarea", "w-full rounded-lg border border-line bg-surface px-2 py-1.5 text-xs leading-5 outline-none focus:border-primary");
+    trap.rows = 2;
+    trap.value = blank.trapAnalysis ?? "";
+    card.appendChild(trap);
+
+    // 删除这个空
+    const delBlank = el("button", "text-[11px] text-faint transition hover:text-danger", "删除这个空");
+    delBlank.type = "button";
+    delBlank.addEventListener("click", () => {
+      if (blanks.length <= 1) {
+        renderError("至少要留一个空；整题不想要可以用上面的「移除」。");
+        return;
+      }
+      blanks.splice(blankIdx, 1);
+      // blankIndex 必须从 1 连续递增，删了中间的要重排
+      blanks.forEach((b, i) => { b.blankIndex = i + 1; });
+      // 原句末尾对应的 ______ 也去掉一个，否则空格数对不上
+      sentence.value = sentence.value.replace(/\_\_\_\_\_\_\s*$/, "").trimEnd();
+      rerenderEditor();
+    });
+    card.appendChild(delBlank);
+
+    // 输入先落在 dataset 上，保存时统一收集（避免每次输入都动数据）。
+    // ⚠️ 必须先把**当前值**写进去：只监听 input/change 的话，用户没碰过的字段
+    // dataset 里是 undefined，保存时会当成空串——改一个答案却把解析冲掉了。
+    card.dataset.answer = answer.value;
+    card.dataset.hintType = hintType.value;
+    card.dataset.hintWord = hintWord.value;
+    card.dataset.trap = trap.value;
+    answer.addEventListener("input", () => { card.dataset.answer = answer.value; });
+    hintType.addEventListener("change", () => { card.dataset.hintType = hintType.value; });
+    hintWord.addEventListener("input", () => { card.dataset.hintWord = hintWord.value; });
+    trap.addEventListener("input", () => { card.dataset.trap = trap.value; });
+
+    blankBox.appendChild(card);
+  };
+
+  const rerenderEditor = () => {
+    blankBox.textContent = "";
+    blanks.forEach((blank, blankIdx) => renderBlank(blank, blankIdx));
+    syncCounter();
+  };
+  rerenderEditor();
+
+  // ---- 增加一个空 ----
+  const addBlank = el("button", "min-h-8 rounded-lg border border-line bg-surface px-2.5 py-1 text-[11px] text-muted transition hover:bg-surface-alt", "+ 增加一个空");
+  addBlank.type = "button";
+  addBlank.addEventListener("click", () => {
+    blanks.push({
+      blankIndex: blanks.length + 1,
+      answer: [""],
+      hintType: "无提示词",
+      hintWord: null,
+      tagIds: [],
+      trapAnalysis: "",
+    });
+    sentence.value = sentence.value.trimEnd() + " ______";
+    rerenderEditor();
+  });
+  box.appendChild(addBlank);
+
+  // ---- 保存 / 取消 ----
+  const footer = el("div", "flex flex-wrap gap-2 border-t border-line pt-3");
+
+  const save = el("button", "min-h-11 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-on-primary transition hover:bg-primary-hover", "保存修改");
+  save.type = "button";
+  save.addEventListener("click", () => {
+    // 从 DOM 收集每个空的最终输入
+    const collected = [];
+    const cards = blankBox.children;
+    for (let i = 0; i < cards.length; i += 1) {
+      const card = cards[i];
+      const answerText = card.dataset.answer ?? "";
+      const hintTypeValue = card.dataset.hintType ?? "无提示词";
+      const hintWordValue = card.dataset.hintWord ?? "";
+      const trapValue = card.dataset.trap ?? "";
+      collected.push({
+        ...blanks[i],
+        answer: answerText.split("/").map((a) => a.trim()).filter((a) => a !== ""),
+        hintType: hintTypeValue,
+        hintWord: hintTypeValue === "无提示词" ? null : (hintWordValue.trim() || null),
+        trapAnalysis: trapValue.trim(),
+      });
+    }
+
+    const updated = { ...item, originalSentence: sentence.value, blanks: collected };
+
+    // 复用同一套校验：空格数、题号残留、blankIndex、答案、提示词、解析全查
+    const { allErrors } = validateQuestions([updated], dictionary);
+    if (allErrors.length > 0) {
+      renderError("第 " + (index + 1) + " 题还没改好，共 " + allErrors.length + " 处问题：\n" + allErrors.join("\n"));
+      return;
+    }
+
+    updated.__edited = true;
+    previewList[index] = updated;
+    previewEditIndex = null;
+    syncLastBuild();
+    clearError();
+    renderPreview();
+    renderPreviewSummary();
+    // 内容变了，原来的查重结论可能不再成立，重查一次
+    void refreshPreviewVerdict(index);
+  });
+
+  const cancel = el("button", "min-h-11 rounded-lg border border-line px-4 py-2 text-xs text-muted transition hover:bg-surface-alt", "取消");
+  cancel.type = "button";
+  cancel.addEventListener("click", () => {
+    previewEditIndex = null;
+    renderPreview();
+  });
+
+  footer.appendChild(save);
+  footer.appendChild(cancel);
+  box.appendChild(footer);
+  return box;
+}
+
+/** 重新查一道题的重复情况（编辑后原结论可能失效） */
+async function refreshPreviewVerdict(index) {
+  const question = previewList[index];
+  if (!question) return;
+  try {
+    const res = await api.checkDuplicates([
+      { originalSentence: question.originalSentence, blanks: question.blanks ?? [] }
+    ]);
+    const verdict = res?.results?.[0];
+    if (!verdict) return;
+    previewVerdicts[index] = verdict;
+    // 勾选状态跟着结论走：改成「已存在」时自动取消勾选，
+    // 否则会导入一条与库里互相矛盾的题（默认规则本来就是「已存在不勾」）
+    previewChecks[index] = verdict.state === "new";
+    renderPreview();
+    renderPreviewSummary();
+  } catch {
+    // 查重失败不打扰用户：保持原结论，导入时服务端还会再判一次
+  }
 }
 
 /** 只刷新汇总行（勾选变化时用，避免重建整个列表导致滚动位置丢失） */
@@ -1407,6 +1742,7 @@ async function buildPreviewInner(raw) {
 /** 清空预览状态（textarea 被清空或 JSON 解析失败时） */
 function clearPreview() {
   previewList = [];
+  previewEditIndex = null;   // 收起可能开着的编辑表单，否则会残留一张空表单
   previewVerdicts = [];
   previewChecks = [];
   previewSourceText = null;
