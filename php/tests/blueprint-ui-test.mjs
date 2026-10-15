@@ -220,7 +220,7 @@ await page.waitForFunction(
 const noticeText = await page.locator("#admin-notice").innerText().catch(() => "");
 check("生成后页面刷新并给出提示", /已生成虚拟卷/.test(noticeText), noticeText.slice(0, 160));
 
-// 刷新后按 hash 自动停在试卷页签（用户不该被踢回「手动精录」）
+// 刷新后按 hash 自动停在试卷页签（用户不该被踢回「手动录入」）
 check("刷新后仍停在试卷页签", await page.locator('[data-admin-panel="papers"]').isVisible());
 const paperListText = await page.locator("#paper-manage-list").innerText();
 check("试卷列表出现虚拟卷", paperListText.includes("虚拟卷"), paperListText.slice(0, 200));

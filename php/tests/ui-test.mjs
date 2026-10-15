@@ -463,10 +463,11 @@ async function main() {
 
   /* ---------------- 题库管理 ---------------- */
   await page.goto(`${BASE}/admin`, { waitUntil: "networkidle" });
-  // v3.0.22 起为 6 个页签（「试卷」「题目列表」）；v3.6.0 加了「组卷蓝图」共 7 个
+  // v3.0.22 起为 6 个页签（「试卷管理」「题库总览」）；v3.6.0 加了「蓝图组卷」共 7 个
+  //（v3.6.8 起页签统一改成更专业的命名，显示文本变了、data-admin-tab 值没变）
   check("题库管理有 7 个页签", (await page.locator("[data-admin-tab]").count()) === 7);
-  check("含「组卷蓝图」页签", (await page.locator('[data-admin-tab="blueprints"]').count()) === 1);
-  check("默认停在手动精录", await page.locator('[data-admin-panel="manual"]').isVisible());
+  check("含「蓝图组卷」页签", (await page.locator('[data-admin-tab="blueprints"]').count()) === 1);
+  check("默认停在手动录入", await page.locator('[data-admin-panel="manual"]').isVisible());
   check("其它页签默认收起", !(await page.locator('[data-admin-panel="import"]').isVisible()));
 
   // 输入原句 -> 自动拆空 -> 预览
@@ -960,7 +961,7 @@ async function main() {
   await page.locator('[data-admin-tab="import"]').click();
   check("导入页签显示导出按钮", await page.locator("#admin-export").isVisible());
 
-  // ============ 试卷页签与题目列表（v3.0.22） ============
+  // ============ 试卷管理与题库总览（v3.0.22） ============
   const paperName = `界面测试卷${Date.now().toString(36)}`;
   await page.locator('[data-admin-tab="papers"]').click();
   check("试卷页签有新建表单", await page.locator("#paper-name").isVisible());
@@ -1096,16 +1097,16 @@ async function main() {
   const counter = scopedText.match(/共 \d+ 题，当前 (\d+) 题/);
   check("按卷筛选刷题：可见题数为该卷题数", counter?.[1] === "2", counter?.[0] ?? scopedText.slice(0, 160));
 
-  // 题目列表页签：筛选、勾选、编辑
+  // 题库总览页签：筛选、勾选、编辑
   await page.goto(`${BASE}/admin`, { waitUntil: "networkidle" });
   await page.waitForTimeout(500);
   await page.locator('[data-admin-tab="questions"]').click();
   await page.waitForSelector("#question-paper-filter", { state: "visible" });
-  check("题目列表页签有按卷筛选", await page.locator("#question-paper-filter").isVisible());
+  check("题库总览页签有按卷筛选", await page.locator("#question-paper-filter").isVisible());
   await page.locator("#question-paper-filter").selectOption(paperCreated.id);
   await page.waitForTimeout(400);
   check(
-    "题目列表按卷筛选生效",
+    "题库总览按卷筛选生效",
     (await page.locator("#question-manage-list [data-admin-question]:visible").count()) === 2
   );
 
@@ -1197,7 +1198,7 @@ async function main() {
   };
 
   // 删除题目（数量用接口取真实值——页面 DOM 可能是旧快照）
-  // 删题按钮在「题目列表」页签里
+  // 删题按钮在「题库总览」页签里
   await page.locator('[data-admin-tab="questions"]').click();
   await page.waitForTimeout(200);
   const totalBeforeDelete = await page.evaluate(async () => {
@@ -1213,7 +1214,7 @@ async function main() {
   });
   check("删除后题目数减少", totalAfterDelete === totalBeforeDelete - 1, { totalBeforeDelete, totalAfterDelete });
 
-  // 恢复内置示例（reload 后页面回到手动精录页签，需先切回导入页签）
+  // 恢复内置示例（reload 后页面回到手动录入页签，需先切回数据迁移页签）
   await page.locator('[data-admin-tab="import"]').click();
   await page.waitForTimeout(300);
   await clickReload(page.locator("#admin-restore-seed"));

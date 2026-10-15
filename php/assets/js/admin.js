@@ -1,9 +1,9 @@
 /**
- * 题库管理交互（AI 助手在 admin-ai.js，由本文件初始化）。
+ * 题库管理交互（AI 导入在 admin-ai.js，由本文件初始化）。
  *
  * 覆盖：
  * - 页签切换
- * - 手动精录：原句拆空、逐空配置（答案 / 提示词类型 / 标签 / 解析）、实时预览、校验、保存
+ * - 手动录入：原句拆空、逐空配置（答案 / 提示词类型 / 标签 / 解析）、实时预览、校验、保存
  * - 题库导入：导出、导入 JSON、浏览器题库上云、恢复内置示例、清空、题目列表操作
  * - 标签管理：改色、重命名、启用停用、删除、新增子标签
  *
@@ -13,7 +13,7 @@
 import { api } from "./api.js";
 import { setFlash, takeFlash } from "./flash.js";
 import { notify, notifyError, clearFeedback } from "./feedback.js";
-// AI 助手必须走 import 引入：此前靠 window.setupAdminAi 全局约定，
+// AI 导入必须走 import 引入：此前靠 window.setupAdminAi 全局约定，
 // 而 admin-ai.js 没有被任何 script 标签加载，导致整个 AI 面板（含"复制提示词"）
 // 从未绑定事件、点击无反应。import 由模块依赖图保证求值顺序，不依赖标签顺序。
 import { setupAiAssistant } from "./admin-ai.js";
@@ -94,7 +94,7 @@ function switchTab(tab) {
 }
 
 /* ================================================================== */
-/* 手动精录                                                            */
+/* 手动录入                                                            */
 /* ================================================================== */
 
 /**
@@ -502,7 +502,7 @@ function handleClearDraft() {
 }
 
 /* ================================================================== */
-/* 题库导入导出                                                        */
+/* 数据迁移                                                            */
 /* ================================================================== */
 
 function readLocalQuestions() {
@@ -762,7 +762,7 @@ async function applyTagName(tagId, name) {
   }
 }
 
-/** AI 助手：把解析出的题目增量入库（来源统一打上） */
+/** AI 导入：把解析出的题目增量入库（来源统一打上） */
 async function handleAiAppend(incoming, source) {
   const stamped = incoming.map((question) => ({
     ...question,
@@ -778,7 +778,7 @@ async function handleAiAppend(incoming, source) {
   renderAi(); // 标签字典可能变化时重刷预览
 }
 
-/** AI 助手：创建字典里没有的新标签，统一挂到第一个顶级分类下 */
+/** AI 导入：创建字典里没有的新标签，统一挂到第一个顶级分类下 */
 async function handleCreateTags(names) {
   const firstParent = tagDictionary.tags.find((tag) => tag.parentId === null);
   if (!firstParent) return;
@@ -852,7 +852,7 @@ if (root) {
       return;
     }
 
-    // 手动精录：标签选择
+    // 手动录入：标签选择
     const tagButton = event.target.closest("[data-pick-tag]");
     if (tagButton) {
       const index = Number(tagButton.dataset.blankIndex);
@@ -963,7 +963,7 @@ if (root) {
     }
   });
 
-  // 手动精录：输入同步（不重渲染，避免打断输入）
+  // 手动录入：输入同步（不重渲染，避免打断输入）
   root.addEventListener("input", (event) => {
     const sentence = event.target.closest("#admin-sentence");
     if (sentence) {
@@ -1100,7 +1100,7 @@ if (root) {
   if (clearAllButton) clearAllButton.addEventListener("click", () => void handleClearAll());
 }
 
-/** AI 面板可能已经渲染过预览（AI 模块自带），这里只在标签变化时重刷手动精录的标签选择器 */
+/** AI 面板可能已经渲染过预览（AI 模块自带），这里只在标签变化时重刷手动录入的标签选择器 */
 function renderAi() {
   renderBlanks();
 }
@@ -1125,10 +1125,10 @@ function init() {
     if (tabButton) tabButton.click();
   }
 
-  // 初始化 AI 助手（模块自带幂等，重复调用只更新字典与回调）
+  // 初始化 AI 导入（模块自带幂等，重复调用只更新字典与回调）
   setupAiAssistant({
     tagDictionary,
-    // 让 AI 助手知道库里已有哪些卷，粘贴后能提示「同名会归到那张卷」
+    // 让 AI 导入知道库里已有哪些卷，粘贴后能提示「同名会归到那张卷」
     papers: boot.papers ?? [],
     onAppend: handleAiAppend,
     onCreateTags: handleCreateTags,

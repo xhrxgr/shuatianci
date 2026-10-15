@@ -1,6 +1,6 @@
 <?php
 /**
- * 题库管理：手动精录、AI 助手（片段见 admin-ai.php）、试卷、题目列表、标签管理。
+ * 题库管理：手动录入、AI 导入（片段见 admin-ai.php）、试卷管理、蓝图组卷、题库总览、数据迁移、知识点标签。
  *
  * 六个页签的内容一次性渲染，非当前页签用 hidden 收起；
  * 页签切换、表单交互、预览都由 assets/js/admin.js 处理。
@@ -12,13 +12,13 @@
  * @var string     $currentPath
  */
 $adminTabs = [
-    ['id' => 'manual', 'label' => '手动精录'],
-    ['id' => 'ai', 'label' => 'AI 助手'],
-    ['id' => 'papers', 'label' => '试卷'],
-    ['id' => 'blueprints', 'label' => '组卷蓝图'],
-    ['id' => 'questions', 'label' => '题目列表'],
-    ['id' => 'import', 'label' => '导入导出'],
-    ['id' => 'tags', 'label' => '标签管理'],
+    ['id' => 'manual', 'label' => '手动录入'],
+    ['id' => 'ai', 'label' => 'AI 导入'],
+    ['id' => 'papers', 'label' => '试卷管理'],
+    ['id' => 'blueprints', 'label' => '蓝图组卷'],
+    ['id' => 'questions', 'label' => '题库总览'],
+    ['id' => 'import', 'label' => '数据迁移'],
+    ['id' => 'tags', 'label' => '知识点标签'],
 ];
 ?>
 <?php if (!empty($guard)): ?>
@@ -26,15 +26,21 @@ $adminTabs = [
   <?php return; ?>
 <?php endif; ?>
 <div class="space-y-5" id="admin-root">
-  <!-- 页签 -->
-  <div role="tablist" class="flex flex-wrap gap-1 rounded-xl border border-line bg-surface p-1">
+  <!-- 页签
+       手机上横着排、放不下就左右滑：7 个页签在一行里放不下，
+       用 flex-wrap 会折成 7 行、每行一个，看起来像菜单而不是页签。
+       按钮一律 shrink-0 + nowrap，不许被压扁或折行。 -->
+  <div
+    role="tablist"
+    class="flex gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+  >
     <?php foreach ($adminTabs as $index => $item): ?>
       <button
         type="button"
         role="tab"
         aria-selected="<?= $item['id'] === 'manual' ? 'true' : 'false' ?>"
         data-admin-tab="<?= e($item['id']) ?>"
-        class="min-h-11 flex-1 rounded-lg px-3 py-2 text-xs font-medium transition sm:flex-none <?= $item['id'] === 'manual' ? 'bg-ink text-surface' : 'text-muted hover:bg-surface-alt' ?>"
+        class="min-h-11 shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-medium transition sm:px-4 sm:text-sm <?= $item['id'] === 'manual' ? 'bg-ink text-surface' : 'text-muted hover:bg-surface-alt' ?>"
       ><?= e($item['label']) ?></button>
     <?php endforeach; ?>
   </div>
@@ -43,7 +49,7 @@ $adminTabs = [
        两种都用得到，所以容器是 div（塞 div 才合法） -->
   <div class="space-y-2" id="admin-notice" hidden></div>
 
-  <!-- ============ 手动精录 ============ -->
+  <!-- ============ 手动录入 ============ -->
   <div data-admin-panel="manual">
     <div class="grid gap-6 lg:grid-cols-2">
       <div class="space-y-4">
@@ -99,7 +105,7 @@ $adminTabs = [
     </div>
   </div>
 
-  <!-- ============ AI 助手 ============ -->
+  <!-- ============ AI 导入 ============ -->
   <div data-admin-panel="ai">
     <?php include __DIR__ . '/admin-ai.php'; ?>
   </div>
@@ -369,7 +375,7 @@ $adminTabs = [
         </div>
 
         <?php if (count($questions) === 0): ?>
-          <p class="py-8 text-center text-sm text-faint">题库为空，去「手动精录」添加第一道题。</p>
+          <p class="py-8 text-center text-sm text-faint">题库为空，去「手动录入」添加第一道题。</p>
         <?php else: ?>
           <ul class="mt-4 space-y-2" id="question-manage-list">
             <?php foreach ($questions as $question): ?>
@@ -416,7 +422,7 @@ $adminTabs = [
     </div>
   </div>
 
-  <!-- ============ 导入导出 ============ -->
+  <!-- ============ 数据迁移 ============ -->
   <div data-admin-panel="import" hidden>
     <div class="space-y-5">
       <section class="rounded-xl border border-line bg-surface p-5">

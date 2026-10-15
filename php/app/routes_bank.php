@@ -70,7 +70,7 @@ function is_list_array($value)
  * AI 导入时不采信 AI 返回的编号——外部 AI 无从得知题库现状，
  * 每次都会从 q_0001 重新数。因此缺 id、或 id 与库中已有冲突时，都在这里重新生成。
  *
- * 格式与前端 admin.js 的手动精录保持一致：q_{时间戳36进制}_{随机}。
+ * 格式与前端 admin.js 的手动录入保持一致：q_{时间戳36进制}_{随机}。
  *
  * @param int $attempt 重试次数（同一毫秒内批量生成时避免撞号）
  * @return string

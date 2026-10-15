@@ -1,6 +1,6 @@
 <?php
 /**
- * AI 助手标签页。
+ * AI 导入标签页。
  *
  * 本文件是「题库管理」的一个页签片段，被 php/views/admin.php 用 include 引入，
  * 因此这里只放两段内容结构，不写 <script>（脚本由 admin.php 统一以
@@ -127,7 +127,7 @@ foreach ($aiTags as $aiTag) {
         检测到当前标签字典里没有的标签：<span id="admin-ai-missing-list"></span>
       </p>
       <p class="mb-3 text-xs text-warning">
-        创建后会挂到第一个顶级分类下，之后可到「标签管理」里调整归属和颜色。
+        创建后会挂到第一个顶级分类下，之后可到「知识点标签」里调整归属和颜色。
       </p>
       <button
         type="button"

@@ -2,7 +2,7 @@
  * 组卷蓝图与虚拟卷成员编辑（题库重构第 2 期）。
  *
  * 两块界面：
- * 1. 「组卷蓝图」页签：蓝图列表 + 规则编辑器 + 试抽预览 + 生成虚拟卷
+ * 1. 「蓝图组卷」页签：蓝图列表 + 规则编辑器 + 试抽预览 + 生成虚拟卷
  * 2. 试卷页签里生成卷的「成员」按钮：编辑卷成员的弹窗（删题 / 调序 / 移篇 / 换题）
  *
  * 交互约定与 admin-papers.js 保持一致：
@@ -63,7 +63,7 @@ export function setupBlueprintPanels(context) {
    * 整页刷新，并让刷新后仍停在指定页签。
    *
    * 生成虚拟卷、保存成员这些操作会刷新页面，而刷新后页面默认回到
-   * 「手动精录」页签 —— 用户刚在蓝图页点了生成，一刷新就跳走了，
+   * 「手动录入」页签 —— 用户刚在蓝图页点了生成，一刷新就跳走了，
    * 还得自己切回来。带上 hash 让刷新后落在原处。
    */
   function reloadKeepingTab(tab) {
@@ -607,7 +607,7 @@ export function setupBlueprintPanels(context) {
 
     return `
       <div class="mt-2 max-h-56 space-y-3 overflow-y-auto rounded-lg border border-line bg-surface-alt p-3">
-        ${groups || `<p class="text-xs text-faint">标签库是空的，请先到「标签管理」页签添加标签。</p>`}
+        ${groups || `<p class="text-xs text-faint">标签库是空的，请先到「知识点标签」页签添加标签。</p>`}
       </div>
     `;
   }
@@ -1246,7 +1246,7 @@ export function setupBlueprintPanels(context) {
   });
 
   /* ------------------------------------------------------------------ */
-  /* 懒加载：首次切到「组卷蓝图」页签时才请求列表                            */
+  /* 懒加载：首次切到「蓝图组卷」页签时才请求列表                            */
   /* ------------------------------------------------------------------ */
 
   function ensureLoaded() {
