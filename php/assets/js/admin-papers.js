@@ -124,7 +124,97 @@ export function setupPaperAndQuestionPanels(context) {
     const panel = item.querySelector("[data-paper-edit]");
     if (!panel) return;
     panel.hidden = !panel.hidden;
-    if (!panel.hidden) panel.querySelector("input")?.focus();
+    if (!panel.hidden) {
+      panel.querySelector("input")?.focus();
+      renderPaperQuestions(item);
+    }
+  }
+
+  /**
+   * 渲染「该卷题目」列表（在试卷管理页就能看内容、跳编辑）。
+   *
+   * 数据用页面加载时那份 boot.questions，不额外发请求 —— 试卷与题目是一次性
+   * 直出的，展开时同步过滤即可。题目很多时也只是内存过滤，没有性能问题。
+   */
+  function renderPaperQuestions(item) {
+    const box = item?.querySelector("[data-paper-questions]");
+    if (!box) return;
+    const paperId = item.dataset.paperManage ?? "";
+    const list = allQuestions.filter((q) => (q.paperId ?? "") === paperId);
+    const counter = item.querySelector("[data-paper-q-count]");
+    if (counter) counter.textContent = String(list.length);
+
+    if (list.length === 0) {
+      box.innerHTML = `<li class="rounded-lg border border-dashed border-line p-3 text-xs text-faint">
+        这张卷还没有题目。可以到「题库总览」把题归到这张卷，或用 AI 导入时填这个卷名。
+      </li>`;
+      return;
+    }
+
+    box.innerHTML = list
+      .map((question, index) => {
+        const summary = String(question.originalSentence ?? "").replace(/\s+/g, " ").trim();
+        const short = summary.length > 70 ? summary.slice(0, 70) + "…" : summary;
+        return `<li class="rounded-lg border border-line bg-surface p-2.5" data-paper-q="${escape(question.id)}">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <p class="min-w-0 flex-1 text-xs leading-5 text-ink">${index + 1}. ${escape(short)}</p>
+          <div class="flex shrink-0 gap-1.5">
+            <button type="button" data-action="view-paper-question" data-id="${escape(question.id)}"
+              class="min-h-8 rounded-lg border border-line px-2.5 py-1 text-[11px] text-muted transition hover:bg-surface-alt">查看</button>
+            <button type="button" data-action="edit-paper-question" data-id="${escape(question.id)}"
+              class="min-h-8 rounded-lg border border-line px-2.5 py-1 text-[11px] text-muted transition hover:bg-surface-alt">编辑</button>
+          </div>
+        </div>
+        <div class="mt-2 space-y-2 border-t border-line pt-2" data-paper-q-detail hidden></div>
+      </li>`;
+      })
+      .join("");
+  }
+
+  /** 「查看」：内联展开这道题的完整内容（原句 / 各空 / 完整原文） */
+  function togglePaperQuestionDetail(questionId) {
+    const item = document.querySelector(`[data-paper-q="${CSS.escape(questionId)}"]`);
+    const detail = item?.querySelector("[data-paper-q-detail]");
+    if (!item || !detail) return;
+
+    if (!detail.hidden) {
+      detail.hidden = true;
+      return;
+    }
+
+    const question = findQuestion(questionId);
+    if (!question) return;
+    const blanks = question.blanks ?? [];
+    const tagMap = new Map((boot.tagDictionary?.tags ?? []).map((tag) => [tag.id, tag]));
+    const passage = typeof question.passageText === "string" ? question.passageText.trim() : "";
+
+    detail.innerHTML = `
+      <p class="whitespace-pre-wrap break-words text-xs leading-5 text-ink">${escape(question.originalSentence ?? "")}</p>
+      <div class="space-y-1.5">
+        ${blanks
+          .map((blank) => {
+            const tags = (blank.tagIds ?? [])
+              .map((id) => tagMap.get(id)?.name ?? id)
+              .filter(Boolean)
+              .map((name) => `<span class="rounded border border-line bg-surface px-1.5 py-0.5 text-[11px] text-muted">${escape(name)}</span>`)
+              .join(" ");
+            const hint = blank.hintType && blank.hintType !== "无提示词"
+              ? `${escape(blank.hintType)}${blank.hintWord ? ` · ${escape(blank.hintWord)}` : ""}`
+              : "无提示词";
+            return `<div class="rounded border border-line bg-surface-alt p-2 text-[11px] leading-5">
+              <p class="font-medium text-ink">空 ${escape(String(blank.blankIndex))}：${escape((blank.answer ?? []).join(" / "))}</p>
+              <p class="text-muted">${hint}${tags ? ` · ${tags}` : ""}</p>
+              <p class="mt-0.5 text-muted">${escape(blank.trapAnalysis ?? "")}</p>
+            </div>`;
+          })
+          .join("")}
+      </div>
+      ${passage ? `<div class="rounded border border-line bg-surface-alt p-2">
+        <p class="mb-1 text-[11px] font-medium text-faint">完整原文（未挖空）</p>
+        <p class="whitespace-pre-wrap break-words text-[11px] leading-5 text-muted">${escape(passage)}</p>
+      </div>` : ""}
+    `;
+    detail.hidden = false;
   }
 
   /** 保存试卷的改名 / 日期 / 备注 */
@@ -505,6 +595,12 @@ export function setupPaperAndQuestionPanels(context) {
         break;
       case "delete-paper":
         void handleDeletePaper(button.dataset.id, button.dataset.name);
+        break;
+      case "view-paper-question":
+        togglePaperQuestionDetail(button.dataset.id);
+        break;
+      case "edit-paper-question":
+        openEditQuestion(button.dataset.id);
         break;
       default:
         break;

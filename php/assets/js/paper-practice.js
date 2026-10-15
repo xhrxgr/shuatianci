@@ -357,6 +357,7 @@ function renderCard() {
       <h3 class="text-sm font-semibold text-ink">第 ${currentIndex + 1} 题</h3>
       <span class="text-xs text-faint">${blanks.length} 个空</span>
     </div>
+    ${passageBlock(question)}
     <div class="mt-4 text-base leading-9 text-ink sm:text-lg">${sentenceHtml}</div>
     ${submitBlock}
     ${resultBanner}
@@ -555,3 +556,21 @@ function init() {
 }
 
 init();
+
+/**
+ * 完整原文（未挖空）展示块：与刷题页同一套设计与理由。
+ * 默认展开，文章长了可点标题收起；没有原文的题什么都不渲染。
+ *
+ * @param {object} question
+ * @returns {string} HTML
+ */
+function passageBlock(question) {
+  const passage = typeof question.passageText === "string" ? question.passageText.trim() : "";
+  if (passage === "") return "";
+  return `<details class="mb-4 rounded-xl border border-line bg-surface-alt p-3 sm:p-4" data-passage-block open>
+    <summary class="cursor-pointer select-none text-xs font-medium text-muted">
+      完整原文（未挖空，供对照；文章长了可以点这里收起）
+    </summary>
+    <p class="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-ink">${escapeHtml(passage)}</p>
+  </details>`;
+}

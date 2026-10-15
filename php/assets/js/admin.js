@@ -60,15 +60,55 @@ export function escapeHtml(value) {
  * 传空串表示「清掉当前提示」——出错时用它先把上一条成功提示擦掉，
  * 免得两条提示同时挂在页面上。
  */
-function showNotice(message) {
+/**
+ * 顶部提示条。
+ *
+ * 两种用法：
+ * - 字符串：一行纯文本（保存成功、导出完成这类简单提示）
+ * - 对象：结构化成功卡片，用于「导入 N 道题」这种信息量大的场景 ——
+ *   把数量、来源、跳过数、自动修正分开排，长来源名能换行显示，
+ *   再给一个「去题库总览看看」的入口，不用用户自己找页签
+ */
+function showNotice(payload) {
   const box = document.getElementById("admin-notice");
   if (!box) return;
-  if (!message) {
-    box.textContent = "";
+  if (!payload) {
+    box.innerHTML = "";
     box.hidden = true;
     return;
   }
-  box.textContent = message;
+
+  if (typeof payload === "string") {
+    box.textContent = payload;
+    box.hidden = false;
+    return;
+  }
+
+  const count = Number(payload.count ?? 0);
+  const source = String(payload.source ?? "").trim();
+  const skipped = Number(payload.skipped ?? 0);
+  const repairs = Array.isArray(payload.repairs) ? payload.repairs : [];
+
+  const extras = [];
+  if (skipped > 0) extras.push(`跳过 ${skipped} 道（未勾选）`);
+  if (repairs.length > 0) extras.push(`已自动修正：${repairs.join("；")}`);
+
+  box.innerHTML = `<div class="rounded-xl border border-success/40 bg-success-soft p-4">
+    <div class="flex items-start gap-3">
+      <svg class="mt-0.5 h-5 w-5 shrink-0 text-success" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+        <path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm3.857-9.809a.75.75 0 0 0-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 1 0-1.06 1.061l2.5 2.5a.75.75 0 0 0 1.137-.089l4-5.5Z" clip-rule="evenodd" />
+      </svg>
+      <div class="min-w-0 flex-1">
+        <p class="text-sm font-medium text-success">成功导入 ${count} 道题目</p>
+        ${source ? `<p class="mt-1 text-xs leading-5 text-muted">来源：<span class="break-all">${escapeHtml(source)}</span></p>` : ""}
+        ${extras.length > 0 ? `<p class="mt-1 text-xs leading-5 text-muted">${escapeHtml(extras.join(" · "))}</p>` : ""}
+        <button type="button" data-action="notice-goto-questions"
+          class="mt-2 min-h-8 rounded-lg border border-success/40 px-2.5 py-1 text-[11px] font-medium text-success transition hover:bg-success-soft">
+          去题库总览看看
+        </button>
+      </div>
+    </div>
+  </div>`;
   box.hidden = false;
 }
 
@@ -98,6 +138,13 @@ function switchTab(tab) {
   const notice = document.getElementById("admin-notice");
   if (notice) notice.hidden = true;
 }
+
+// 导入成功卡片里的「去题库总览看看」：直接切页签，省得用户自己找
+document.getElementById("admin-notice")?.addEventListener("click", (event) => {
+  if (event.target.closest('[data-action="notice-goto-questions"]')) {
+    switchTab("questions");
+  }
+});
 
 /* ================================================================== */
 /* 手动录入                                                            */

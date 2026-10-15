@@ -270,6 +270,16 @@ $adminTabs = [
                       class="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition focus:border-primary"
                     >
                   </div>
+                  <!-- 该卷题目：在这里就能看内容、跳编辑，不用切到「题库总览」再筛。
+                       列表由 JS 在展开时填充（数据用页面加载时那份 boot.questions，不额外请求） -->
+                  <div class="border-t border-line pt-3">
+                    <p class="mb-2 text-xs font-medium text-ink">
+                      该卷题目（<span data-paper-q-count>0</span> 道）——
+                      点「查看」展开内容，点「编辑」改答案 / 提示词 / 标签 / 解析 / 完整原文
+                    </p>
+                    <ul class="space-y-1.5" data-paper-questions></ul>
+                  </div>
+
                   <div class="flex gap-2">
                     <button
                       type="button"

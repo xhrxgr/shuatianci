@@ -1973,12 +1973,16 @@ async function runImport(list, checks = null) {
   }
 
   // 提示里的来源取实际写库的值，便于当即核对 AI 有没有读对封面信息
+  // 来源取实际写库的值，便于当即核对 AI 有没有读对封面信息
   const displaySource = stamped.length > 0 ? String(stamped[0].source ?? "").trim() : "";
-  const repairText = pendingRepairs.length > 0 ? `（已自动修正：${pendingRepairs.join("；")}）` : "";
-  const skipText = skipped.length > 0 ? `，跳过 ${skipped.length} 道（未勾选）` : "";
-  hooks.onNotice(
-    `成功导入 ${stamped.length} 道题目${displaySource ? `，来源：${displaySource}` : ""}${skipText}${repairText}`
-  );
+  // 结构化传给 showNotice：数量、来源、跳过数、自动修正分开排成长卡片，
+  // 比挤成一行纯文本好读得多（长来源名也不会把整行撑爆）
+  hooks.onNotice({
+    count: stamped.length,
+    source: displaySource,
+    skipped: skipped.length,
+    repairs: pendingRepairs,
+  });
   // 把这批题目所属的卷登记进本地列表。
   // allPapers 是页面加载时的快照，不更新的话「库里已有同名卷」的提示
   // 在导入后就没用了——刚建的卷查不到。

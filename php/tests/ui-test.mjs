@@ -972,6 +972,24 @@ async function main() {
   await page.locator('[data-admin-tab="import"]').click();
   check("导入页签显示导出按钮", await page.locator("#admin-export").isVisible());
 
+  // v3.6.14：试卷管理页展开一张卷，应能看到该卷题目，并有查看/编辑入口
+  // （此前这里只有改名/日期/备注，看题目得切到「题库总览」再筛）
+  await page.locator('[data-admin-tab="papers"]').click();
+  const firstPaper = page.locator("[data-paper-manage]").first();
+  await firstPaper.locator('[data-action="edit-paper"]').click();
+  const paperQuestions = firstPaper.locator("[data-paper-questions]");
+  await paperQuestions.waitFor({ state: "visible", timeout: 15000 });
+  check("试卷管理展开后列出该卷题目", (await paperQuestions.locator("li").count()) >= 1);
+  check("每题有「编辑」入口（全能改）",
+    (await paperQuestions.locator('[data-action="edit-paper-question"]').count()) >= 1);
+  check("每题有「查看」入口", (await paperQuestions.locator('[data-action="view-paper-question"]').count()) >= 1);
+
+  // 点「查看」应展开这道题的完整内容（原句 / 各空 / 解析）
+  await paperQuestions.locator('[data-action="view-paper-question"]').first().click();
+  await page.waitForTimeout(400);
+  check("查看后展开题目明细",
+    (await paperQuestions.locator("[data-paper-q-detail]:not([hidden])").count()) >= 1);
+
   // ============ 试卷管理与题库总览（v3.0.22） ============
   const paperName = `界面测试卷${Date.now().toString(36)}`;
   await page.locator('[data-admin-tab="papers"]').click();

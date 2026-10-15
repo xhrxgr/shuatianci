@@ -549,6 +549,7 @@ function renderCard() {
       }">${question.status === "mastered" ? "已掌握" : "未掌握"}</span>
     </header>
     <div class="px-5 py-6 sm:px-7 sm:py-8">
+      ${passageBlock(question)}
       <p class="text-base leading-loose text-ink sm:text-lg">${sentenceHtml}</p>
       ${submitBlock}
       ${resultBanner}
@@ -938,3 +939,26 @@ async function init() {
 }
 
 void init();
+
+/**
+ * 完整原文（未挖空）展示块。
+ *
+ * 为什么要有：短文填空一道大题是一篇阅读挖多个空，代词指代、时态呼应、
+ * 篇章逻辑这类空，只看挖出来的那一句判断不了。默认展开——学生特意需要
+ * 上下文时才来找它，收起是例外；文章长了也可以点标题收起来。
+ *
+ * 没有原文的题（老题、单句题）什么都不渲染，不占地方。
+ *
+ * @param {object} question
+ * @returns {string} HTML
+ */
+function passageBlock(question) {
+  const passage = typeof question.passageText === "string" ? question.passageText.trim() : "";
+  if (passage === "") return "";
+  return `<details class="mb-5 rounded-xl border border-line bg-surface-alt p-3 sm:p-4" data-passage-block open>
+    <summary class="cursor-pointer select-none text-xs font-medium text-muted">
+      完整原文（未挖空，供对照；文章长了可以点这里收起）
+    </summary>
+    <p class="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-ink">${escapeHtml(passage)}</p>
+  </details>`;
+}
