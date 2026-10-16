@@ -106,7 +106,7 @@ $cards = [
   </section>
 
   <section class="rounded-xl border border-line bg-surface p-5">
-    <h3 class="mb-4 text-sm font-semibold text-ink">最近录入</h3>
+    <h3 class="mb-1 text-sm font-semibold text-ink">最近录入</h3>
     <?php if ($stats['total'] === 0): ?>
       <p class="py-8 text-center text-sm text-faint">题库还是空的，去「题库管理」录入第一道题。</p>
     <?php else: ?>

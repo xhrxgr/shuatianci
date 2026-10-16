@@ -136,7 +136,8 @@ check("改原句后保存成功", true);
 /* ---------------- 4) 增删空 ---------------- */
 await list.locator("> *").first().locator("button", { hasText: "编辑" }).click();
 const editor3 = list.locator("> *").first();
-await editor3.locator("button", { hasText: "+ 增加一个空" }).click();
+// 「+」已换成内联 SVG 图标，按文字定位时不要再带加号
+await editor3.locator("button", { hasText: "增加一个空" }).click();
 check("增加一个空后出现空 2", (await editor3.innerText()).includes("空 2"));
 const afterAdd = await editor3.locator("textarea").first().inputValue();
 check("原句自动补了一个 ______", afterAdd.split("______").length - 1 === 2, afterAdd);

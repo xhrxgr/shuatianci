@@ -24,7 +24,7 @@ $labelStyles = [
     <p class="mb-4 text-sm text-muted">登录后可以收藏试卷、标记重点题目。</p>
     <a
       href="/login"
-      class="inline-block min-h-11 rounded-lg bg-primary px-5 py-3 text-sm font-medium text-on-primary"
+      class="inline-block min-h-11 rounded-lg bg-primary px-6 py-3 text-sm font-medium text-on-primary"
     >去登录</a>
   </div>
 <?php else: ?>

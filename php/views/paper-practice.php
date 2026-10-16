@@ -81,7 +81,7 @@
 
   <!-- 本卷答题卡：一眼看到哪些题做过、对错如何 -->
   <section class="rounded-2xl border border-line bg-surface p-5" id="paper-sheet-wrap">
-    <h3 class="mb-3 text-sm font-semibold text-ink">答题卡</h3>
+    <h3 class="mb-1 text-sm font-semibold text-ink">答题卡</h3>
     <div id="paper-sheet" class="flex flex-wrap gap-2"></div>
   </section>
 
@@ -93,13 +93,13 @@
     <button
       type="button"
       id="paper-prev"
-      class="min-h-11 rounded-lg border border-line bg-surface px-5 py-2 text-sm text-ink transition hover:bg-surface-alt disabled:cursor-not-allowed disabled:opacity-40"
+      class="min-h-11 rounded-lg border border-line bg-surface px-4 py-2 text-xs text-ink transition hover:bg-surface-alt disabled:cursor-not-allowed disabled:opacity-40"
     >上一题</button>
     <span id="paper-counter" class="text-xs text-muted"></span>
     <button
       type="button"
       id="paper-next"
-      class="min-h-11 rounded-lg bg-primary px-6 py-2 text-sm font-medium text-on-primary transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
+      class="min-h-11 rounded-lg bg-primary px-6 py-3 text-sm font-medium text-on-primary transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-40"
     >下一题</button>
   </div>
 
@@ -111,15 +111,15 @@
       <button
         type="button"
         id="paper-restart"
-        class="min-h-11 rounded-xl border border-line px-5 py-2 text-sm text-muted transition hover:bg-surface-alt"
+        class="min-h-11 rounded-xl border border-line px-4 py-2 text-xs text-muted transition hover:bg-surface-alt"
       >重做本卷</button>
       <a
         href="/practice?paperId=<?= e(rawurlencode($paper['id'])) ?>"
-        class="min-h-11 rounded-xl bg-primary px-5 py-2 text-sm font-medium text-on-primary transition hover:bg-primary-hover"
+        class="min-h-11 rounded-xl bg-primary px-4 py-2 text-xs font-medium text-on-primary transition hover:bg-primary-hover"
       >只练做错的</a>
       <a
         href="/papers"
-        class="min-h-11 rounded-xl border border-line px-5 py-2 text-sm text-muted transition hover:bg-surface-alt"
+        class="min-h-11 rounded-xl border border-line px-4 py-2 text-xs text-muted transition hover:bg-surface-alt"
       >换一套卷</a>
     </div>
   </section>

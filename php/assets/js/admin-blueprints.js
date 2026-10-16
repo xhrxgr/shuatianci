@@ -16,6 +16,7 @@
 import { api } from "./api.js";
 import { notify, notifyError } from "./feedback.js";
 import { setFlash } from "./flash.js";
+import { iconPlus, iconTinyCross } from "./icons.js";
 
 /**
  * 由 admin.js 调用完成绑定。
@@ -308,8 +309,8 @@ export function setupBlueprintPanels(context) {
             <button
               type="button"
               data-bp-action="add-condition"
-              class="min-h-9 rounded-lg border border-dashed border-line px-3 py-1.5 text-xs text-muted transition hover:border-primary hover:text-primary"
-            >+ 添加条件</button>
+              class="min-h-11 rounded-lg border border-dashed border-line px-3 py-1.5 text-xs text-muted transition hover:border-primary hover:text-primary"
+            >${iconPlus("h-4 w-4 shrink-0")} 添加条件</button>
           </div>
           <div class="space-y-2" id="bp-conditions">
             ${
@@ -392,12 +393,12 @@ export function setupBlueprintPanels(context) {
           <button
             type="button"
             data-bp-action="save"
-            class="min-h-11 rounded-xl bg-primary px-6 py-2.5 text-sm font-medium text-on-primary transition hover:bg-primary-hover"
+            class="min-h-11 rounded-xl bg-primary px-6 py-3 text-sm font-medium text-on-primary transition hover:bg-primary-hover"
           >${editing.id ? "保存修改" : "保存蓝图"}</button>
           <button
             type="button"
             data-bp-action="generate"
-            class="min-h-11 rounded-xl border border-primary px-6 py-2.5 text-sm font-medium text-primary transition hover:bg-primary/5"
+            class="min-h-11 rounded-xl border border-primary px-6 py-3 text-sm font-medium text-primary transition hover:bg-primary/5"
           >${editing.id ? "生成新卷" : "保存并生成卷"}</button>
           ${
             editing.id
@@ -441,7 +442,7 @@ export function setupBlueprintPanels(context) {
                 (id) => `
                   <span class="inline-flex items-center gap-1 rounded-full border border-line bg-surface px-2 py-0.5 text-xs text-muted">
                     ${escape(tagName(id))}
-                    <button type="button" data-bp-action="remove-tag" data-cond="${index}" data-tag="${escape(id)}" class="text-faint hover:text-danger">×</button>
+                    <button type="button" data-bp-action="remove-tag" data-cond="${index}" data-tag="${escape(id)}" class="inline-flex min-h-8 w-8 shrink-0 items-center justify-center rounded text-faint transition hover:bg-danger-soft hover:text-danger">${iconTinyCross("h-4 w-4")}</button>
                   </span>`
               )
               .join("")
@@ -1097,8 +1098,8 @@ export function setupBlueprintPanels(context) {
         <button
           type="button"
           data-member-action="add-section"
-          class="min-h-10 w-full rounded-lg border border-dashed border-line py-2 text-xs text-muted transition hover:border-primary hover:text-primary"
-        >+ 增加一篇</button>
+          class="min-h-11 w-full rounded-lg border border-dashed border-line py-2 text-xs text-muted transition hover:border-primary hover:text-primary"
+        >${iconPlus("h-4 w-4 shrink-0")} 增加一篇</button>
       </div>
     `;
 

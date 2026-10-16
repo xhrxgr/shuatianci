@@ -8,6 +8,7 @@
  */
 
 import { notifyError, notifyWarn } from "./feedback.js";
+import { iconCheck, iconCross } from "./icons.js";
 import { api } from "./api.js";
 
 const BLANK_PLACEHOLDER = "______";
@@ -415,13 +416,10 @@ function renderPager() {
 
 /* ---------------- 渲染：题目卡片 ---------------- */
 
-function correctIcon() {
-  return `<svg viewBox="0 0 16 16" aria-hidden="true" class="h-4 w-4 shrink-0 text-success" fill="none"><path d="M3 8.5L6.5 12L13 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-}
-
-function wrongIcon() {
-  return `<svg viewBox="0 0 16 16" aria-hidden="true" class="h-4 w-4 shrink-0 text-danger" fill="none"><path d="M4 4L12 12M12 4L4 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
-}
+// 对勾与叉号统一走 icons.js：此前这两个文件里是**逐字节复制**的同一对函数，
+// 现在尺寸与画法全站只有一处定义
+const correctIcon = () => iconCheck("h-4 w-4 shrink-0 text-success");
+const wrongIcon = () => iconCross("h-4 w-4 shrink-0 text-danger");
 
 function renderCard() {
   const container = document.getElementById("practice-card");
@@ -519,8 +517,8 @@ function renderCard() {
   const resultBanner = results
     ? `<div class="${
         allCorrect
-          ? "mt-5 rounded-xl border border-success/40 bg-success-soft px-4 py-3 text-sm font-medium text-success"
-          : "mt-5 rounded-xl border border-danger/40 bg-danger-soft px-4 py-3 text-sm font-medium text-danger"
+          ? "mt-5 rounded-xl border border-success/40 bg-success-soft px-6 py-3 text-sm font-medium text-success"
+          : "mt-5 rounded-xl border border-danger/40 bg-danger-soft px-6 py-3 text-sm font-medium text-danger"
       }">${allCorrect ? "全部正确！" : `答错 ${wrongCount} 个，查看解析`}</div>`
     : "";
 
@@ -553,7 +551,7 @@ function renderCard() {
     }).join("");
 
     analysisHtml = `<section class="border-t border-line bg-surface-alt px-5 py-6 sm:px-7">
-      <h3 class="mb-4 text-sm font-semibold text-ink">出题人视角解析</h3>
+      <h3 class="mb-1 text-sm font-semibold text-ink">出题人视角解析</h3>
       <div class="space-y-4">${blanksHtml}</div>
       <p class="mt-4 text-xs text-faint">来源：${escapeHtml(question.source)}</p>
       <div class="mt-5 flex flex-col gap-3 sm:flex-row">

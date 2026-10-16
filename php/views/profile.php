@@ -60,7 +60,7 @@ $isGuest = $user === null;
     <div class="space-y-2" id="profile-notice" hidden></div>
 
     <section class="rounded-xl border border-line bg-surface p-5">
-      <h3 class="mb-4 text-sm font-semibold text-ink">总体统计</h3>
+      <h3 class="mb-1 text-sm font-semibold text-ink">总体统计</h3>
       <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div class="rounded-lg bg-surface-alt p-3">
           <p class="text-xs text-muted">总作答</p>
@@ -99,7 +99,7 @@ $isGuest = $user === null;
     </section>
 
     <section class="rounded-xl border border-line bg-surface p-5">
-      <h3 class="mb-3 text-sm font-semibold text-ink">修改密码</h3>
+      <h3 class="mb-1 text-sm font-semibold text-ink">修改密码</h3>
       <form id="profile-password-form" class="grid gap-3 sm:grid-cols-3">
         <input
           type="password"
@@ -118,7 +118,7 @@ $isGuest = $user === null;
         <button
           type="submit"
           id="profile-submit"
-          class="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+          class="min-h-11 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-on-primary transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
         >确认修改</button>
       </form>
       <button

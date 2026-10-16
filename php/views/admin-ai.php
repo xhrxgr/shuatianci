@@ -65,7 +65,7 @@ foreach ($aiTags as $aiTag) {
       <button
         type="button"
         id="admin-ai-manual-copy"
-        class="min-h-11 rounded-xl border border-line px-5 py-3 text-sm text-muted transition hover:bg-surface-alt"
+        class="min-h-11 rounded-xl border border-line px-6 py-3 text-sm text-muted transition hover:bg-surface-alt"
       >手动复制</button>
     </div>
   </section>

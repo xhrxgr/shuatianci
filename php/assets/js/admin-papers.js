@@ -160,9 +160,9 @@ export function setupPaperAndQuestionPanels(context) {
           <p class="min-w-0 flex-1 text-xs leading-5 text-ink">${index + 1}. ${escape(short)}</p>
           <div class="flex shrink-0 gap-1.5">
             <button type="button" data-action="view-paper-question" data-id="${escape(question.id)}"
-              class="min-h-8 rounded-lg border border-line px-2.5 py-1 text-[11px] text-muted transition hover:bg-surface-alt">查看</button>
+              class="min-h-11 shrink-0 rounded-lg border border-line px-2.5 py-1 text-[11px] text-muted transition hover:bg-surface-alt">查看</button>
             <button type="button" data-action="edit-paper-question" data-id="${escape(question.id)}"
-              class="min-h-8 rounded-lg border border-line px-2.5 py-1 text-[11px] text-muted transition hover:bg-surface-alt">编辑</button>
+              class="min-h-11 shrink-0 rounded-lg border border-line px-2.5 py-1 text-[11px] text-muted transition hover:bg-surface-alt">编辑</button>
           </div>
         </div>
         <div class="mt-2 space-y-2 border-t border-line pt-2" data-paper-q-detail hidden></div>
@@ -514,7 +514,7 @@ export function setupPaperAndQuestionPanels(context) {
           .join("");
 
         return `<div class="rounded-xl border border-line bg-surface-alt p-4">
-        <h4 class="mb-3 text-sm font-semibold text-ink">第 ${index + 1} 个空</h4>
+        <h4 class="mb-1 text-sm font-semibold text-ink">第 ${index + 1} 个空</h4>
 
         <div class="grid gap-3 sm:grid-cols-2">
           <div>

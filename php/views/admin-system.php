@@ -32,7 +32,7 @@
 
     <!-- 当前版本 -->
     <section class="rounded-xl border border-line bg-surface p-5">
-      <h2 class="mb-3 text-sm font-semibold text-ink">当前版本</h2>
+      <h2 class="mb-1 text-sm font-semibold text-ink">当前版本</h2>
       <div data-version-body></div>
     </section>
 
@@ -149,7 +149,7 @@
           <button
             type="button"
             id="us-save"
-            class="min-h-11 rounded-lg bg-primary px-5 py-2 text-xs font-medium text-on-primary transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+            class="min-h-11 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-on-primary transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
           >保存设置</button>
           <button
             type="button"

@@ -31,7 +31,7 @@
 
     <!-- 新建用户 -->
     <section class="rounded-xl border border-line bg-surface p-5">
-      <h3 class="mb-3 text-sm font-semibold text-ink">新建用户</h3>
+      <h3 class="mb-1 text-sm font-semibold text-ink">新建用户</h3>
       <div class="grid gap-3 sm:grid-cols-4">
         <input
           type="text"
@@ -58,14 +58,14 @@
         <button
           type="button"
           id="admin-create"
-          class="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary transition hover:bg-primary-hover"
+          class="min-h-11 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-on-primary transition hover:bg-primary-hover"
         >创建</button>
       </div>
     </section>
 
     <!-- 用户列表 -->
     <section class="rounded-xl border border-line bg-surface p-5">
-      <h3 class="mb-3 text-sm font-semibold text-ink">账号列表</h3>
+      <h3 class="mb-1 text-sm font-semibold text-ink">账号列表</h3>
       <?php if (count($users) === 0): ?>
         <p class="py-6 text-center text-sm text-muted">还没有账号。用上方的用户名和密码点「创建账号」建第一个。</p>
       <?php else: ?>

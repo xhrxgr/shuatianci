@@ -22,6 +22,7 @@ import { setupAiAssistant } from "./admin-ai.js";
 import { setupPaperAndQuestionPanels } from "./admin-papers.js";
 // 组卷蓝图与虚拟卷成员编辑（第 2 期）
 import { setupBlueprintPanels } from "./admin-blueprints.js";
+import { iconSuccess } from "./icons.js";
 
 const BLANK_PLACEHOLDER = "______";
 const HINT_TYPES = ["给动词", "给名词", "给形容词", "给副词", "无提示词"];
@@ -95,15 +96,13 @@ function showNotice(payload) {
 
   box.innerHTML = `<div class="rounded-xl border border-success/40 bg-success-soft p-4">
     <div class="flex items-start gap-3">
-      <svg class="mt-0.5 h-5 w-5 shrink-0 text-success" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-        <path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm3.857-9.809a.75.75 0 0 0-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 1 0-1.06 1.061l2.5 2.5a.75.75 0 0 0 1.137-.089l4-5.5Z" clip-rule="evenodd" />
-      </svg>
+      ${iconSuccess("mt-0.5 h-5 w-5 shrink-0 text-success")}
       <div class="min-w-0 flex-1">
         <p class="text-sm font-medium text-success">成功导入 ${count} 道题目</p>
         ${source ? `<p class="mt-1 text-xs leading-5 text-muted">来源：<span class="break-all">${escapeHtml(source)}</span></p>` : ""}
         ${extras.length > 0 ? `<p class="mt-1 text-xs leading-5 text-muted">${escapeHtml(extras.join(" · "))}</p>` : ""}
         <button type="button" data-action="notice-goto-questions"
-          class="mt-2 min-h-8 rounded-lg border border-success/40 px-2.5 py-1 text-[11px] font-medium text-success transition hover:bg-success-soft">
+          class="mt-2 min-h-11 rounded-lg border border-success/40 px-3 py-1.5 text-[11px] font-medium text-success transition hover:bg-success-soft">
           去题库总览看看
         </button>
       </div>
@@ -388,7 +387,7 @@ function renderPreview() {
       <p class="text-base leading-loose text-ink sm:text-lg">${sentenceHtml}</p>
     </div>
     <section class="border-t border-line bg-surface-alt px-5 py-6 sm:px-7">
-      <h3 class="mb-4 text-sm font-semibold text-ink">出题人视角解析</h3>
+      <h3 class="mb-1 text-sm font-semibold text-ink">出题人视角解析</h3>
       <div class="space-y-4">${analysis}</div>
     </section>
   </article>`;
@@ -907,8 +906,8 @@ function openAddTag(parentId) {
     </div>
     <p class="mb-2 text-xs text-danger" data-new-tag-error hidden></p>
     <div class="flex gap-2">
-      <button type="button" data-action="add-tag-confirm" class="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary transition hover:bg-primary-hover">添加</button>
-      <button type="button" data-action="add-tag-cancel" class="min-h-11 rounded-lg border border-line px-4 py-2 text-sm text-ink transition hover:bg-surface-alt">取消</button>
+      <button type="button" data-action="add-tag-confirm" class="min-h-11 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-on-primary transition hover:bg-primary-hover">添加</button>
+      <button type="button" data-action="add-tag-cancel" class="min-h-11 rounded-lg border border-line px-4 py-2 text-xs text-ink transition hover:bg-surface-alt">取消</button>
     </div>`;
   form.dataset.selectedColor = colorOptions[0] ?? "#EF4444";
   trigger.after(form);

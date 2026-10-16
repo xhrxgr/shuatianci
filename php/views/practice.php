@@ -76,12 +76,12 @@
       <button
         type="button"
         id="practice-prev"
-        class="min-h-11 rounded-lg border border-line bg-surface px-5 py-2 text-sm text-ink transition hover:bg-surface-alt disabled:cursor-not-allowed disabled:opacity-40"
+        class="min-h-11 rounded-lg border border-line bg-surface px-4 py-2 text-xs text-ink transition hover:bg-surface-alt disabled:cursor-not-allowed disabled:opacity-40"
       >上一题</button>
       <button
         type="button"
         id="practice-next"
-        class="min-h-11 rounded-lg border border-line bg-surface px-5 py-2 text-sm text-ink transition hover:bg-surface-alt disabled:cursor-not-allowed disabled:opacity-40"
+        class="min-h-11 rounded-lg border border-line bg-surface px-4 py-2 text-xs text-ink transition hover:bg-surface-alt disabled:cursor-not-allowed disabled:opacity-40"
       >下一题</button>
     </div>
   </div>

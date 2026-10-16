@@ -159,7 +159,7 @@ if (root) {
   type="button"
   data-action="check"
   ${disabled ? "disabled" : ""}
-  class="min-h-11 rounded-xl border border-line px-5 py-3 text-sm text-ink transition hover:bg-surface-alt disabled:cursor-not-allowed disabled:text-faint"
+  class="min-h-11 rounded-xl border border-line px-6 py-3 text-sm text-ink transition hover:bg-surface-alt disabled:cursor-not-allowed disabled:text-faint"
 >${checking ? "检查中..." : "检查更新"}</button>`;
   }
 

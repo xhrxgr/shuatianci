@@ -163,12 +163,12 @@ $adminTabs = [
         <button
           type="button"
           id="paper-create"
-          class="mt-4 min-h-11 rounded-xl bg-primary px-6 py-2 text-sm font-medium text-on-primary transition hover:bg-primary-hover"
+          class="mt-4 min-h-11 rounded-xl bg-primary px-6 py-3 text-sm font-medium text-on-primary transition hover:bg-primary-hover"
         >新建试卷</button>
       </section>
 
       <section class="rounded-xl border border-line bg-surface p-5">
-        <h3 class="mb-4 text-sm font-semibold text-ink">全部试卷（<?= e(count($papers)) ?> 套）</h3>
+        <h3 class="mb-1 text-sm font-semibold text-ink">全部试卷（<?= e(count($papers)) ?> 套）</h3>
         <?php if (count($papers) === 0): ?>
           <p class="py-8 text-center text-sm text-faint">
             还没有试卷。录题时填写试卷来源，题目会自动归卷；也可以在这里手动新建空卷。
@@ -285,12 +285,12 @@ $adminTabs = [
                       type="button"
                       data-action="save-paper"
                       data-id="<?= e($paper['id']) ?>"
-                      class="min-h-11 rounded-lg bg-primary px-5 py-2 text-xs font-medium text-on-primary transition hover:bg-primary-hover"
+                      class="min-h-11 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-on-primary transition hover:bg-primary-hover"
                     >保存</button>
                     <button
                       type="button"
                       data-action="cancel-edit-paper"
-                      class="min-h-11 rounded-lg border border-line px-5 py-2 text-xs text-muted transition hover:bg-surface-alt"
+                      class="min-h-11 rounded-lg border border-line px-4 py-2 text-xs text-muted transition hover:bg-surface-alt"
                     >取消</button>
                   </div>
                 </div>
@@ -601,12 +601,12 @@ $adminTabs = [
         <button
           type="button"
           data-action="close-paper-items"
-          class="min-h-11 rounded-lg border border-line px-5 py-2 text-sm text-muted transition hover:bg-surface-alt"
+          class="min-h-11 rounded-lg border border-line px-4 py-2 text-xs text-muted transition hover:bg-surface-alt"
         >取消</button>
         <button
           type="button"
           data-action="save-paper-items"
-          class="min-h-11 rounded-lg bg-primary px-6 py-2 text-sm font-medium text-on-primary transition hover:bg-primary-hover"
+          class="min-h-11 rounded-lg bg-primary px-6 py-3 text-sm font-medium text-on-primary transition hover:bg-primary-hover"
         >保存成员</button>
       </div>
     </div>
@@ -692,12 +692,12 @@ $adminTabs = [
       <button
         type="button"
         data-action="close-edit-question"
-        class="min-h-11 rounded-lg border border-line px-5 py-2 text-sm text-muted transition hover:bg-surface-alt"
+        class="min-h-11 rounded-lg border border-line px-4 py-2 text-xs text-muted transition hover:bg-surface-alt"
       >取消</button>
       <button
         type="button"
         id="edit-question-save"
-        class="min-h-11 rounded-lg bg-primary px-6 py-2 text-sm font-medium text-on-primary transition hover:bg-primary-hover"
+        class="min-h-11 rounded-lg bg-primary px-6 py-3 text-sm font-medium text-on-primary transition hover:bg-primary-hover"
       >保存修改</button>
     </div>
   </div>

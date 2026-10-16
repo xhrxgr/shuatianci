@@ -1,4 +1,5 @@
 /**
+import { iconSuccess, iconError, iconWarn, iconInfo } from "./icons.js";
  * 统一反馈组件：成功 / 失败 / 警告 / 提示的呈现方式。
  *
  * 为什么要有这个
@@ -36,25 +37,21 @@
 const TONES = {
   success: {
     box: "border-success/40 bg-success-soft text-success",
-    icon: "M4 10.5 8 14.5l8-9",
     label: "成功",
     autoDismiss: true,
   },
   error: {
     box: "border-danger/40 bg-danger-soft text-danger",
-    icon: "M10 6v5m0 3h.01M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16Z",
     label: "出错",
     autoDismiss: false,
   },
   warn: {
     box: "border-warning/40 bg-warning-soft text-warning",
-    icon: "M10 7v4m0 3h.01M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16Z",
     label: "注意",
     autoDismiss: false,
   },
   info: {
     box: "border-line bg-surface-alt text-muted",
-    icon: "M10 9v5m0-8h.01M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16Z",
     label: "提示",
     autoDismiss: true,
   },
@@ -99,22 +96,22 @@ function normalizeDetails(details) {
     .filter((item) => item !== "");
 }
 
-/** SVG 图标（24 视口的描边路径，跟现有内联图标同一套画法） */
-function icon(path, tone) {
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 20 20");
-  svg.setAttribute("fill", "none");
-  svg.setAttribute("stroke", "currentColor");
-  svg.setAttribute("stroke-width", "1.6");
-  svg.setAttribute("stroke-linecap", "round");
-  svg.setAttribute("stroke-linejoin", "round");
-  svg.setAttribute("aria-hidden", "true");
-  svg.classList.add("h-4", "w-4", "shrink-0", "mt-0.5");
-  svg.dataset.toneIcon = tone;
-  const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  p.setAttribute("d", path);
-  svg.appendChild(p);
-  return svg;
+/**
+ * 语气图标：统一走 icons.js。
+ *
+ * 此前这里是 20 视口 + 线宽 1.6 的第四套画法，与 practice.js 的 16 视口、
+ * layout.php 的 24 视口各不相同，同一个「对勾」在三个地方粗细都不一样。
+ * 现在全站图标只有 icons.js 一个来源。
+ */
+function icon(tone) {
+  const cls = "h-4 w-4 shrink-0 mt-0.5";
+  const map = {
+    success: () => iconSuccess(cls),
+    error: () => iconError(cls),
+    warn: () => iconWarn(cls),
+    info: () => iconInfo(cls),
+  };
+  return map[tone] ? map[tone]() : iconInfo(cls);
 }
 
 /* ---------------- 主入口 ---------------- */
@@ -151,7 +148,7 @@ export function notify(message, tone = "info", options = {}) {
   }
 
   const box = document.createElement("div");
-  box.className = `flex items-start gap-2 rounded-lg border px-4 py-3 text-sm ${config.box}`;
+  box.className = `flex items-start gap-2 rounded-lg border px-6 py-3 text-sm ${config.box}`;
   box.setAttribute("role", tone === "error" ? "alert" : "status");
   box.dataset.tone = tone;
 
@@ -196,7 +193,7 @@ export function notify(message, tone = "info", options = {}) {
     }
   }
 
-  box.appendChild(icon(config.icon, tone));
+  box.insertAdjacentHTML("beforeend", icon(tone));
   box.appendChild(body);
 
   // 尾部操作区

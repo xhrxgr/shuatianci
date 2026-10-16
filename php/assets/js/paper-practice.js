@@ -12,6 +12,7 @@
 
 import { api } from "./api.js";
 import { notifyWarn } from "./feedback.js";
+import { iconCheck, iconCross } from "./icons.js";
 
 /** 空格占位符字面量 */
 const BLANK_PLACEHOLDER = "______";
@@ -156,13 +157,10 @@ function inputWidth(blank) {
   return Math.min(MAX_INPUT_CH, Math.max(MIN_INPUT_CH, longest + 2));
 }
 
-function correctIcon() {
-  return `<svg viewBox="0 0 16 16" aria-hidden="true" class="h-4 w-4 shrink-0 text-success" fill="none"><path d="M3 8.5L6.5 12L13 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-}
-
-function wrongIcon() {
-  return `<svg viewBox="0 0 16 16" aria-hidden="true" class="h-4 w-4 shrink-0 text-danger" fill="none"><path d="M4 4L12 12M12 4L4 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
-}
+// 对勾与叉号统一走 icons.js：此前这两个文件里是**逐字节复制**的同一对函数，
+// 现在尺寸与画法全站只有一处定义
+const correctIcon = () => iconCheck("h-4 w-4 shrink-0 text-success");
+const wrongIcon = () => iconCross("h-4 w-4 shrink-0 text-danger");
 
 /* ------------------------------------------------------------------ */
 /* 渲染                                                                */
@@ -317,8 +315,8 @@ function renderCard() {
   const resultBanner = submitted
     ? `<div class="${
         state.correct
-          ? "mt-5 rounded-xl border border-success/40 bg-success-soft px-4 py-3 text-sm font-medium text-success"
-          : `mt-5 rounded-xl border border-danger/40 bg-danger-soft px-4 py-3 text-sm font-medium text-danger`
+          ? "mt-5 rounded-xl border border-success/40 bg-success-soft px-6 py-3 text-sm font-medium text-success"
+          : `mt-5 rounded-xl border border-danger/40 bg-danger-soft px-6 py-3 text-sm font-medium text-danger`
       }">${state.correct ? "全部正确！" : `答错 ${state.wrongCount} 个，查看解析`}</div>`
     : "";
 

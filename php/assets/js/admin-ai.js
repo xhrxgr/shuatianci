@@ -23,6 +23,7 @@
  */
 
 import { notifyError, clearFeedback } from "./feedback.js";
+import { iconPlus } from "./icons.js";
 // 查重要走服务端：指纹规则必须与入库时用的那份完全一致，
 // 前端自己算一旦与后端漂移，就会出现「预览说已存在、入库却变成新增」
 import { api } from "./api.js";
@@ -1261,7 +1262,7 @@ function renderPreviewItem(item, verdict, index) {
 function previewItemActions(index) {
   const box = el("div", "ml-auto flex shrink-0 gap-1.5");
 
-  const edit = el("button", "min-h-8 rounded-lg border border-line bg-surface px-2 py-1 text-[11px] text-muted transition hover:bg-surface-alt", "编辑");
+  const edit = el("button", "min-h-11 shrink-0 rounded-lg border border-line bg-surface px-2.5 py-1 text-[11px] text-muted transition hover:bg-surface-alt", "编辑");
   edit.type = "button";
   // 整张卡片是 <label>，点按钮会被浏览器转成「切换勾选」，
   // 必须两个事件都拦住，否则一编辑就顺手把题取消勾选了
@@ -1272,7 +1273,7 @@ function previewItemActions(index) {
     renderPreview();
   });
 
-  const remove = el("button", "min-h-8 rounded-lg border border-line bg-surface px-2 py-1 text-[11px] text-muted transition hover:text-danger", "移除");
+  const remove = el("button", "min-h-11 shrink-0 rounded-lg border border-line bg-surface px-2.5 py-1 text-[11px] text-muted transition hover:text-danger", "移除");
   remove.type = "button";
   remove.addEventListener("click", (event) => {
     event.preventDefault();
@@ -1578,7 +1579,8 @@ function renderPreviewEditor(item, index) {
   rerenderEditor();
 
   // ---- 增加一个空 ----
-  const addBlank = el("button", "min-h-8 rounded-lg border border-line bg-surface px-2.5 py-1 text-[11px] text-muted transition hover:bg-surface-alt", "+ 增加一个空");
+  const addBlank = el("button", "min-h-11 inline-flex items-center gap-1 rounded-lg border border-line bg-surface px-2.5 py-1 text-[11px] text-muted transition hover:bg-surface-alt");
+  addBlank.innerHTML = `${iconPlus("h-4 w-4 shrink-0")}增加一个空`;
   addBlank.type = "button";
   addBlank.addEventListener("click", () => {
     blanks.push({
