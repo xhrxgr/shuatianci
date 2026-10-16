@@ -403,6 +403,53 @@ async function main() {
   });
   check("挂不存在的篇章 -> 400", badPassage.status === 400, badPassage.data);
 
+  // 分页路径也要带 JOIN：列清单已经全带 q./p. 前缀了，漏掉 FROM 就报
+  // 「no such column: q.id」→ 所有带 page 参数的请求 500（v3.6.15 首版的回归）
+  const paged = await request("GET", "/questions?page=1&pageSize=3", { token: adminToken });
+  check(
+    "分页查询正常（曾漏 JOIN 导致 500）",
+    paged.status === 200 && Array.isArray(paged.data.questions) && paged.data.questions.length <= 3,
+    paged.data
+  );
+  // 分页 + 筛选组合：这里用 source 而不是 paperId —— 后者的局部变量在后面才声明，
+  // 提前引用会撞 TDZ（Cannot access before initialization）
+  const pagedFiltered = await request(
+    "GET",
+    `/questions?source=${encodeURIComponent("篇章共享自测卷")}&page=1&pageSize=5`,
+    { token: adminToken }
+  );
+  check(
+    "分页 + 筛选组合正常",
+    pagedFiltered.status === 200 && Array.isArray(pagedFiltered.data.questions),
+    pagedFiltered.data
+  );
+
+  // 多题共享一篇：这才是一道大题的真实形态（10 道小题共享一篇原文），
+  // 「改一处全篇生效」只挂一题是测不出共享的
+  const sharedIds = [];
+  for (const [i, answer] of ["editors", "they", "rarely", "check", "cover"].entries()) {
+    const created = await request("POST", "/questions", {
+      token: adminToken,
+      body: { question: {
+        originalSentence: `Shared passage blank ${i + 1} ______ (${answer}) sample sentence.`,
+        source: "篇章共享自测卷",
+        passageId,
+        blanks: [{ blankIndex: 1, answer: [answer], hintType: "给名词", hintWord: answer, trapAnalysis: `共享测试第 ${i + 1} 空。` }],
+      } },
+    });
+    if (created.status === 201) sharedIds.push(answer);
+  }
+  check("共享篇章：本批多题都能挂上", sharedIds.length === 5, sharedIds.length);
+
+  await request("PUT", `/passages/${passageId}`, { token: adminToken, body: { text: "五道题共用的原文。" } });
+  const sharedList = await request("GET", "/questions?source=" + encodeURIComponent("篇章共享自测卷"), { token: adminToken });
+  const sharedQs = (sharedList.data.questions ?? []).filter((q) => q.passageId === passageId);
+  check(
+    "改一处，5 道题全部跟着变",
+    sharedQs.length === 5 && sharedQs.every((q) => q.passageText === "五道题共用的原文。"),
+    { count: sharedQs.length, sample: sharedQs[0]?.passageText }
+  );
+
   // 删篇章：题目保留，只是不再有原文
   await request("DELETE", `/passages/${passageId}`, { token: adminToken });
   const listAfterDelete = await request("GET", "/questions", { token: adminToken });
@@ -765,7 +812,21 @@ async function main() {
 
   /* ---------------- 标签 ---------------- */
   const tagList = await request("GET", "/tags");
-  const dictionary = tagList.data.tagDictionary;
+  // 标签库有可能已经被前面的用例清空（用例之间共用一个库，会互相影响）。
+  // 空的话下面 brokenTags.tags[0] 会直接抛 TypeError，把**整份报告的汇总数字也吃掉**
+  // ——「跑完了却看不到通过几项」比某一条断言失败更难查。所以先补一份最小字典。
+  let dictionary = tagList.data.tagDictionary;
+  if (!dictionary?.tags?.length) {
+    // 要给**两个**顶级分类：后面的用例会「只保留 1 个」来验证减量保护，
+    // 只有一个的话 slice 之后数量没变，保护分支就不会触发
+    dictionary = { schemaVersion: 1, tags: [
+      { id: "t_g1", name: "自测分类一", parentId: null, color: "#64748B", isActive: true },
+      { id: "t_g2", name: "自测分类二", parentId: null, color: "#64748B", isActive: true },
+      { id: "t_c1", name: "自测标签", parentId: "t_g1", color: "#2563EB", isActive: true },
+    ] };
+    await request("PUT", "/tags", { token: adminToken, body: { tagDictionary: dictionary } });
+    dictionary = (await request("GET", "/tags", { token: adminToken })).data.tagDictionary;
+  }
   const saved = await request("PUT", "/tags", { token: adminToken, body: { tagDictionary: dictionary } });
   check("PUT /tags 保存标签成功并返回数量", saved.status === 200 && saved.data.count === dictionary.tags.length, saved.data);
   record("tags-save", saved.status, { ok: saved.data.ok, count: saved.data.count });

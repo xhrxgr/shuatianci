@@ -16,6 +16,10 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/util.php';
 require_once __DIR__ . '/errors.php';
+// normalize_passage_body() 调的 normalize_passage_text() 定义在 validate.php。
+// 现在能跑通只是因为 index.php 恰好先 require 了 routes_bank.php（它 require validate）——
+// 那是**巧合**，不是依赖声明。调整 require 顺序就会全线 Fatal error。
+require_once __DIR__ . '/validate.php';
 
 /** 篇章的序列化（与 map_question 的风格保持一致） */
 function map_passage(array $row)

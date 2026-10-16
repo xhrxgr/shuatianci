@@ -258,8 +258,12 @@ function route_questions_list()
     $offset = ($page - 1) * $pageSize;
     // LIMIT/OFFSET 用 intval 后的值内联：PDO 在部分驱动下会把绑定的数字当字符串，
     // SQLite 对 LIMIT '50' 是容忍的，但显式整数更保险
+    // ⚠️ 这里必须用 $fromClause，不能写 `FROM questions$whereSql`：
+    //    列清单已经换成带 q./p. 前缀的公共版本，而 where/order 也都带了 q. 前缀，
+    //    没有 JOIN 子句就会报 `no such column: q.id` → 所有带 page 参数的请求 500。
+    //    （v3.6.15 首版就是漏了这一处，审查时被抓出来）
     $rows = query(
-        "SELECT $columns FROM questions$whereSql ORDER BY $orderSql LIMIT " . (int) $pageSize . ' OFFSET ' . (int) $offset,
+        "SELECT $columns$fromClause$whereSql ORDER BY $orderSql LIMIT " . (int) $pageSize . ' OFFSET ' . (int) $offset,
         $params
     );
 

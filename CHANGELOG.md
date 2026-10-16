@@ -11,6 +11,62 @@
 当前版本写在根目录的 `VERSION` 文件里，与 `package.json` 的 `version`、git 标签 `v{VERSION}`
 三处保持一致；发版流程见 README「发版」一节。
 
+## 3.6.16（2026-10-16）—— 篇章模型的代码审查：抓出 5 个缺陷并修复
+
+v3.6.15 上线前做了一次完整代码审查（一个独立审查 agent 逐项核对，附实际运行验证）。
+结果：**1 个阻断级回归 + 2 个重要 + 2 个次要**，全部已修。
+
+### 阻断：分页查询漏改 JOIN，所有带 `page` 的请求 500
+
+列清单换成了带 `q.`/`p.` 前缀的公共版本、WHERE/ORDER BY/COUNT 也都改了前缀，
+**唯独分页那条查询还是旧的 `FROM questions$whereSql`** →
+`no such column: q.id` → 题库总览等走分页的入口全打不开。
+这是我自己的回归：改 FROM 的时候漏了改 LIMIT/OFFSET 那一条。
+
+### 重要 1：原文面板从来没显示过（主功能不可达）
+
+`renderPassagePanel()` 被我加到了 `removePreviewItem()` 里，而真正该调的
+`renderPreview()` 漏了 —— 面板初始是 `hidden` 的，只有 `renderPreview()` 会取消隐藏。
+结果是：**粘贴 JSON 后预览正常出题，但「本篇完整原文」输入框始终藏着**，
+用户根本看不到入口。已补上（面板显隐本就依赖 `previewList.length`，与预览同生共死）。
+
+### 重要 2：篇章引用会漏到下一批，还可能改错别的批次
+
+导入成功后只清了 `previewList` 等状态，**漏了 `previewPassageId`**。若下一批题
+文本与上一批完全相同，`buildPreview` 会命中 `lastBuild` 缓存直接返回
+（那条路径不经过 `buildPreviewInner`，不会重置）→ 面板显示「已套用到本批 N 道题」
+而实际一题都没挂；用户点「重新套用」会 `updatePassage` **改到别的批次的篇章上**。
+
+已修：导入成功时重置；`lastBuild` 快照纳入 `passageId` 与 `savedPassageTexts`，
+缓存命中时一并恢复；`clearPreview()` 也重置。
+
+### 次要 1：点「清除」会把 AI 给的原文弄丢
+
+套用篇章时会把各题自己的 `passageText` 清掉（为了「两处各说各话」），但点「清除」
+只还原 `passageId`，**原文不会回来** —— 而此时库里那篇篇章已成孤儿。
+现在套用时先备份，点「清除」还原。
+
+### 次要 2：缺 `require validate.php`
+
+`routes_passages.php` 用的 `normalize_passage_text()` 定义在 `validate.php`，
+但文件头没 require 它——能跑通纯属巧合（`index.php` 恰好先 require 了
+`routes_bank.php`，它 require 了 validate）。调整 require 顺序就会全线 Fatal。
+
+### 测试补强
+
+- **分页路径断言**（正是漏掉的那条，现在有回归保护）
+- **多题共享篇章**：此前只挂 1 道题就宣称「改一处全篇生效」——真正的价值主张
+  （10 道小题共享一篇）根本没被测到。现在建 5 道题挂同一篇，逐题断言
+- **标签库为空时自动补位**：此前被前面用例清空标签后，脚本会在
+  `brokenTags.tags[0]` 抛 TypeError，**把整份报告的汇总数字也吃掉**——
+  「跑完了却看不到通过几项」比某条断言失败更难查
+
+接口自测 **112/112**（干净库）。
+
+> 复盘：这批问题里最该早发现的是那个分页回归 —— 它让题库总览整个打不开，
+> 而我的 api-test 恰好没覆盖分页路径。以后凡是改 FROM 子句，
+> 列表 / 分页 / COUNT 三处必须一起改，且都要有断言。
+
 ## 3.6.15（2026-10-16）—— 篇章共享原文：一道大题填一次，改一处全篇生效
 
 用户指出 v3.6.13 的设计问题：「现在这样每题都要填一个原文？应该是一张卷子所有的

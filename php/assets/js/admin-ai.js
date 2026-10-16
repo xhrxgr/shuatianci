@@ -846,6 +846,7 @@ let submitting = false;
 let previewList = [];      // 解析 + 修复后的题目（全量，含未勾选的）
 let previewEditIndex = null; // 正在编辑的题号（同一时间只编辑一张卡片）
 let previewPassageId = null; // 本批共用的篇章 id（一道大题 10 道小题共享一篇原文）
+let savedPassageTexts = null; // 套用篇章前各题自带的 passageText，点「清除」时还原
 let previewVerdicts = [];  // 每题查重结果
 let previewChecks = [];    // 每题是否勾选
 /** 预览对应的 textarea 内容，用于判断「粘贴后立刻点导入」时预览是否还是新的 */
@@ -1354,7 +1355,11 @@ async function applyPassageToBatch() {
       if (!passageId) throw new Error("建篇章失败");
     }
     previewPassageId = passageId;
-    // 本批所有题统一指向这篇；各题自己的 passageText 清掉，避免两处各说各话
+    // 本批所有题统一指向这篇；各题自己的 passageText 先备份再清掉
+    // （清是为了「两处各说各话」，但必须能还原 —— 见 clearPassageFromBatch）
+    if (savedPassageTexts === null) {
+      savedPassageTexts = previewList.map((q) => q.passageText ?? null);
+    }
     previewList.forEach((question) => {
       question.passageId = passageId;
       question.passageText = null;
@@ -1374,9 +1379,14 @@ async function applyPassageToBatch() {
 function clearPassageFromBatch() {
   if (!previewPassageId) return;
   previewPassageId = null;
-  previewList.forEach((question) => {
+  // 还原套用前各题自带的原文：清空篇章不该顺手把 AI 给的原文也弄丢
+  previewList.forEach((question, index) => {
     question.passageId = null;
+    if (savedPassageTexts && index < savedPassageTexts.length) {
+      question.passageText = savedPassageTexts[index];
+    }
   });
+  savedPassageTexts = null;
   syncLastBuild();
   renderPassagePanel();
   renderPreview();
@@ -1393,6 +1403,8 @@ function syncLastBuild() {
   lastBuild.list = [...previewList];
   lastBuild.verdicts = [...previewVerdicts];
   lastBuild.checks = [...previewChecks];
+  lastBuild.passageId = previewPassageId;
+  lastBuild.savedPassageTexts = savedPassageTexts === null ? null : [...savedPassageTexts];
 }
 
 /**
@@ -1696,6 +1708,10 @@ function renderPreview() {
   previewList.forEach((item, index) => {
     els.previewList.appendChild(renderPreviewItem(item, previewVerdicts[index], index));
   });
+  // 原文面板跟着预览一起显隐。它初始是 hidden 的，只有这里会取消隐藏——
+  // 少了这一句，粘贴 JSON 后预览出来了、面板却还藏着，用户根本看不到入口
+  // （v3.6.15 首版就漏在这儿，审查时被抓出来）
+  renderPassagePanel();
 }
 
 /**
@@ -1724,6 +1740,8 @@ function buildPreview() {
     previewChecks = [...lastBuild.checks];
     pendingRepairs = [...lastBuild.repairs];
     missingTags = [...lastBuild.missingTags];
+    previewPassageId = lastBuild.passageId ?? null;
+    savedPassageTexts = lastBuild.savedPassageTexts ? [...lastBuild.savedPassageTexts] : null;
     previewSourceText = raw;
     renderMissing();
     renderPreview();
@@ -1744,6 +1762,10 @@ function buildPreview() {
         checks: [...previewChecks],
         repairs: [...pendingRepairs],
         missingTags: [...missingTags],
+        // 篇章引用也要进快照：命中缓存时如果不恢复，面板状态会与实际数据不一致
+        // （显示「已套用」而 previewPassageId 是 null，再点「重新套用」会改错篇章）
+        passageId: previewPassageId,
+        savedPassageTexts: savedPassageTexts === null ? null : [...savedPassageTexts],
       };
       return result;
     })
@@ -1876,6 +1898,8 @@ async function buildPreviewInner(raw) {
 function clearPreview() {
   previewList = [];
   previewEditIndex = null;   // 收起可能开着的编辑表单，否则会残留一张空表单
+  previewPassageId = null;   // 篇章引用也要清，否则上一批的引用会漏到下一批
+  savedPassageTexts = null;
   previewVerdicts = [];
   previewChecks = [];
   previewSourceText = null;
@@ -2077,6 +2101,14 @@ async function runImport(list, checks = null) {
   } else {
     knownPaper.questionCount = Number(knownPaper.questionCount ?? 0) + stamped.length;
   }
+
+  // 篇章引用必须一起清：否则下一批题如果**文本与这一批相同**，
+  // buildPreview 会命中 lastBuild 缓存直接返回（那条路径不经过 buildPreviewInner，
+  // 不会重置 passageId），面板就会显示「已套用到本批 N 道题」而实际一题都没挂。
+  // 更糟的是用户点「重新套用」会 updatePassage 改到**别的批次**的篇章上。
+  previewPassageId = null;
+  savedPassageTexts = null;
+  renderPassagePanel();
 
   els.textarea.value = "";
   if (els.paper) els.paper.hidden = false; // 保留卡片，方便连续录下一卷时直接改名字
