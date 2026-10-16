@@ -267,13 +267,40 @@ if (root) {
     renderUpdateActions();
   }
 
+  /**
+   * 给 Promise 加超时。超了就抛错，让上层的错误提示接管。
+   * 不设的话，任何一次网络挂起都会变成界面上的无限加载。
+   */
+  function withTimeout(promise, ms, message) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(message)), ms);
+      promise.then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (error) => {
+          clearTimeout(timer);
+          reject(error);
+        }
+      );
+    });
+  }
+
   /** 检查更新 */
   async function handleCheck() {
     checking = true;
     clearMessages();
     renderUpdateActions();
     try {
-      const result = await api.checkUpdate();
+      // 前端也设一道超时：检查更新会去连 GitHub，网络不通时可能等很久。
+      // 有了它，无论后端发生什么，按钮都不会永远停在「检查中…」——
+      // 用户最需要的是「告诉我怎么了 + 让我能重试」，而不是看着它转圈。
+      const result = await withTimeout(
+        api.checkUpdate(),
+        90000,
+        "检查更新超过 90 秒没有响应。可能是服务器连不上 GitHub，或更新流程被卡住了；请到服务器上看一下 git 进程。"
+      );
       check = result;
       if (!result.hasUpdate) showMessage("notice", "已是最新版本");
     } catch (error) {

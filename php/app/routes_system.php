@@ -85,9 +85,25 @@ function run_command($command, $cwd, $timeoutSec = 60)
             break;
         }
         if (time() > $deadline) {
-            proc_terminate($process);
-            $err .= "\n执行超时（{$timeoutSec}s），已终止";
-            break;
+            // ⚠️ 超时后**不能落到函数末尾的 proc_close()**：
+            // proc_terminate 只杀掉 shell 这一个直接子进程，而 git → git-remote-https
+            // 这些孙进程仍持有 stdout 管道。PHP 文档明确说 proc_close() 会
+            // 「等待进程结束并关闭所有管道」，于是它会一直等到孙进程自己结束 ——
+            // 那就是**无限挂起**：接口永不返回，前端按钮永远转圈，
+            // 用户只能登服务器 pkill 才能恢复（这次就是这么卡住的）。
+            //
+            // 所以超时分支：SIGKILL、直接关管道、立刻返回，**不碰 proc_close**。
+            proc_terminate($process, 9);
+            foreach ($pipes as $pipe) {
+                if (is_resource($pipe)) {
+                    @fclose($pipe);
+                }
+            }
+            return [
+                'out' => trim($out),
+                'err' => trim($err) . "\n执行超时（{$timeoutSec}s），已终止。",
+                'code' => -2,
+            ];
         }
         usleep(100000);
     }
