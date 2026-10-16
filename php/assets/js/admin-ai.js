@@ -1224,16 +1224,49 @@ function renderPreviewItem(item, verdict, index) {
   }
   body.appendChild(blankBox);
 
-  // 所属篇章：套用了共用原文时显示一句，让用户知道这题有全文对照
+  // 所属篇章：套用了共用原文时显示一句，让用户知道这题有全文对照。
+  // 做成可点的：点了直接滚到顶部「本篇完整原文」面板，省得手动翻。
   if (item.passageId) {
-    head.appendChild(el("span", "rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[11px] text-primary", "共用原文"));
+    const badge = el(
+      "button",
+      "rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-[11px] text-primary transition hover:bg-primary/20",
+      "共用原文"
+    );
+    badge.type = "button";
+    badge.addEventListener("click", () => {
+      const panel = els.passageBox;
+      if (panel && !panel.hidden) {
+        panel.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    });
+    head.appendChild(badge);
   }
 
-  // 完整原文：这道题有全文时才显示，让学生/老师导入前就能核对
-  if (item.passageText) {
-    const passageBox = el("div", "rounded border border-line bg-surface-alt p-2.5");
-    passageBox.appendChild(el("p", "mb-1 text-[11px] font-medium text-faint", "完整原文（未挖空，供对照）"));
-    passageBox.appendChild(el("p", "whitespace-pre-wrap break-words text-xs leading-5 text-muted", item.passageText));
+  // 完整原文
+  //
+  // 一道大题挖 10 个空就有 10 道小题，10 份一模一样的全文堆在预览里
+  // 是纯粹的累赘（一屏全被原文占满，真正要看的内容被挤到下面）。
+  // 所以分两种情况：
+  //   1. 已套用共用篇章 → 顶部「本篇完整原文」面板已经有一份，
+  //      这里只留一个「共用原文」徽标指过去，**不再重复渲染全文**；
+  //   2. 这道题自带一份独立原文（没套用篇章）→ 默认折叠，
+  //      标题写清字数，要核对时点开。
+  if (item.passageText && !item.passageId) {
+    const passageBox = el("details", "rounded border border-line bg-surface-alt");
+    passageBox.appendChild(
+      el(
+        "summary",
+        "cursor-pointer list-none px-2.5 py-2 text-[11px] font-medium text-faint transition hover:text-muted",
+        `完整原文（${item.passageText.length} 字，点击展开对照）`
+      )
+    );
+    passageBox.appendChild(
+      el(
+        "p",
+        "whitespace-pre-wrap break-words border-t border-line px-2.5 py-2 text-xs leading-5 text-muted",
+        item.passageText
+      )
+    );
     body.appendChild(passageBox);
   }
 
@@ -1450,12 +1483,25 @@ function renderPreviewEditor(item, index) {
   sentence.addEventListener("input", syncCounter);
 
   // ---- 完整原文 ----
-  box.appendChild(el("label", "mb-1 block text-xs font-medium text-muted", "完整原文（未挖空，选填；学生做题时可展开对照）"));
+  // 这题用了共用篇章时，它的 passageText 是空的（套用时被清掉了，避免两处各说各话）。
+  // 给一个空 textarea 只会让人以为「这题没原文」—— 改成指路到顶部面板。
   const passage = el("textarea", "w-full rounded-lg border border-line bg-surface-alt px-3 py-2 text-xs leading-5 outline-none transition focus:border-primary");
   passage.rows = 4;
   passage.value = item.passageText ?? "";
   passage.placeholder = "一篇阅读挖多个空时，把整篇未挖掉的原文粘在这里；单句题留空即可。";
-  box.appendChild(passage);
+
+  if (item.passageId) {
+    box.appendChild(
+      el(
+        "p",
+        "rounded-lg border border-primary/30 bg-primary-soft px-3 py-2 text-[11px] leading-5 text-primary",
+        "本题使用顶部「本篇完整原文」里的那份全文（同一批题共用，改一处全部生效）。要修改请到顶部面板改。"
+      )
+    );
+  } else {
+    box.appendChild(el("label", "mb-1 block text-xs font-medium text-muted", "完整原文（未挖空，选填；学生做题时可展开对照）"));
+    box.appendChild(passage);
+  }
 
   // ---- 每个空 ----
   const blankBox = el("div", "space-y-2");
