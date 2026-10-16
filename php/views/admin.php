@@ -185,7 +185,7 @@ $adminTabs = [
                         <span class="rounded-full border border-line bg-surface-alt px-2 py-0.5 text-xs font-normal text-muted">虚拟卷</span>
                       <?php endif; ?>
                     </p>
-                    <p class="mt-1 text-xs text-faint">
+                    <p class="mt-1.5 text-xs text-faint">
                       <?php if (!empty($paper['examDate'])): ?>
                         <?= e($paper['examDate']) ?> ·
                       <?php else: ?>
@@ -197,7 +197,7 @@ $adminTabs = [
                       <?php endif; ?>
                     </p>
                     <?php if (!empty($paper['note'])): ?>
-                      <p class="mt-1 text-xs text-muted"><?= e($paper['note']) ?></p>
+                      <p class="mt-1.5 text-xs text-faint"><?= e($paper['note']) ?></p>
                     <?php endif; ?>
                   </div>
                   <div class="flex flex-wrap gap-2">
@@ -350,7 +350,7 @@ $adminTabs = [
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 class="text-sm font-semibold text-ink">全部题目（<?= e(count($questions)) ?> 题）</h3>
-            <p class="mt-1 text-xs text-muted">
+            <p class="mt-1.5 text-xs text-faint">
               点「编辑」可改原句、答案、提示词、标签与解析；勾选多题后可批量改归属试卷或删除。
             </p>
           </div>
@@ -417,7 +417,7 @@ $adminTabs = [
                 >
                 <div class="min-w-0 flex-1">
                   <p class="text-sm text-ink"><?= e($question['originalSentence']) ?></p>
-                  <p class="mt-1 text-xs text-faint">
+                  <p class="mt-1.5 text-xs text-faint">
                     <?= e($question['source']) ?> · <?= e(count($question['blanks'])) ?> 个空
                     <?php if (!empty($question['paperId'])): ?>
                       · 已归卷
@@ -637,7 +637,7 @@ $adminTabs = [
           rows="3"
           class="blank-slot w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition focus:border-primary"
         ></textarea>
-        <p class="mt-1 text-xs text-faint">改动原句时空格数量必须与下方空的个数一致。</p>
+        <p class="mt-1.5 text-xs text-faint">改动原句时空格数量必须与下方空的个数一致。</p>
       </div>
 
       <div>
@@ -650,7 +650,7 @@ $adminTabs = [
           placeholder="把这篇阅读未挖空的原文粘在这里。学生做题时可以展开对照——代词指代、时态呼应、篇章逻辑这些空，只看挖出来的那句是判断不了的。"
           class="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm leading-6 outline-none transition focus:border-primary"
         ></textarea>
-        <p class="mt-1 text-xs text-faint">
+        <p class="mt-1.5 text-xs text-faint">
           一道大题（一篇阅读挖多个空）录成一道题时填这份全文；单句题留空即可。
           只做展示对照，不参与查重与指纹。
         </p>
@@ -663,7 +663,7 @@ $adminTabs = [
           type="text"
           class="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition focus:border-primary"
         >
-        <p class="mt-1 text-xs text-faint">改来源会按试卷名自动归卷：同名即归到同一张卷。</p>
+        <p class="mt-1.5 text-xs text-faint">改来源会按试卷名自动归卷：同名即归到同一张卷。</p>
       </div>
 
       <div>

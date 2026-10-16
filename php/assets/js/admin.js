@@ -275,7 +275,7 @@ function renderBlanks() {
           <div>
             <label class="mb-1.5 block text-xs font-medium text-muted">答案（多个用 / 分隔）</label>
             <input type="text" data-blank-answer="${index}" value="${escapeHtml(blank.answer)}" placeholder="written / was written" class="blank-slot w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition focus:border-primary">
-            <p class="mt-1 text-xs text-faint">解析为 [${escapeHtml(splitAnswers(blank.answer).join(", ") || "空")}]</p>
+            <p class="mt-1.5 text-xs text-faint">解析为 [${escapeHtml(splitAnswers(blank.answer).join(", ") || "空")}]</p>
           </div>
           <div>
             <label class="mb-1.5 block text-xs font-medium text-muted">提示词类型（需人工确认）</label>

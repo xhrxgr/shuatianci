@@ -21,7 +21,7 @@
   <div class="space-y-5" id="admin-users-root">
     <div>
       <h2 class="text-lg font-semibold text-ink">用户管理</h2>
-      <p class="mt-1 text-xs text-muted">
+      <p class="mt-1.5 text-xs text-faint">
         共 <?= e(count($users)) ?> 个账号。重置密码或修改角色后，该用户需重新登录。
       </p>
     </div>

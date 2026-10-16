@@ -16,7 +16,7 @@ $isGuest = $user === null;
   <div>
     <h2 class="text-lg font-semibold text-ink">我的记录</h2>
     <?php if (!$isGuest): ?>
-      <p class="mt-1 text-xs text-muted">
+      <p class="mt-1.5 text-xs text-faint">
         <?= e($user['username']) ?><?php if (!empty($user['display_name'])): ?> · <?= e($user['display_name']) ?><?php endif; ?> ·
         <?= $user['role'] === ROLE_ADMIN ? '管理员' : '普通用户' ?>
       </p>

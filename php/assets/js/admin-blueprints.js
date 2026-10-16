@@ -636,7 +636,7 @@ export function setupBlueprintPanels(context) {
             ? `<ul class="mt-2 space-y-1 text-xs text-danger">
                  ${notes.map((note) => `<li>· 已放宽：${escape(note)}</li>`).join("")}
                </ul>`
-            : `<p class="mt-1 text-xs text-faint">全部条件都满足，没有放宽。</p>`
+            : `<p class="mt-1.5 text-xs text-faint">全部条件都满足，没有放宽。</p>`
         }
         ${
           drawn < target

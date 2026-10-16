@@ -49,7 +49,7 @@
                   <span class="rounded-full border border-line bg-surface-alt px-2 py-0.5 text-xs font-normal text-muted">虚拟卷</span>
                 <?php endif; ?>
               </h3>
-              <p class="mt-1 text-xs text-muted">
+              <p class="mt-1.5 text-xs text-faint">
                 <?php if (!empty($paper['examDate'])): ?>
                   <span class="text-ink"><?= e($paper['examDate']) ?></span> ·
                 <?php else: ?>

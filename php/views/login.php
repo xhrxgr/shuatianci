@@ -11,7 +11,7 @@
 <div class="mx-auto max-w-sm py-10">
   <div class="rounded-2xl border border-line bg-surface p-6 shadow-sm sm:p-8">
     <h2 class="text-lg font-semibold text-ink" id="login-title">登录</h2>
-    <p class="mt-1 text-xs text-muted" id="login-desc">登录后可查看做题记录与正确率统计。</p>
+    <p class="mt-1.5 text-xs text-faint" id="login-desc">登录后可查看做题记录与正确率统计。</p>
 
     <form id="login-form" class="mt-6 space-y-4" method="post" action="#">
       <div>

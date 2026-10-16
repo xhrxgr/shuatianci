@@ -37,7 +37,7 @@
         }
         $sectionCount = count($sectionNos);
         ?>
-        <p class="mt-1 text-xs text-muted">
+        <p class="mt-1.5 text-xs text-faint">
           <?php if (!empty($paper['examDate'])): ?>
             <?= e($paper['examDate']) ?> ·
           <?php endif; ?>

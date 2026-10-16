@@ -68,7 +68,7 @@
             placeholder="https://github.com/xhrxgr/shuatianci.git"
             class="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition focus:border-primary"
           >
-          <p class="mt-1.5 text-xs text-muted">
+          <p class="mt-1.5 text-xs text-faint">
             官方仓库一般不用改。换自己的仓库才需要填。
           </p>
         </div>
@@ -79,7 +79,7 @@
             id="us-preset"
             class="min-h-11 w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition focus:border-primary"
           ></select>
-          <p class="mt-1.5 text-xs text-muted" data-preset-hint></p>
+          <p class="mt-1.5 text-xs text-faint" data-preset-hint></p>
         </div>
 
         <div data-custom-proxy hidden>
@@ -92,7 +92,7 @@
             placeholder="https://你的反代/https://github.com/"
             class="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition focus:border-primary"
           >
-          <p class="mt-1.5 text-xs text-muted">
+          <p class="mt-1.5 text-xs text-faint">
             规则：把仓库地址里 <span class="font-mono">https://github.com/</span> 这一段换成它。
             例如填 <span class="font-mono">https://gh-proxy.com/https://github.com/</span>，
             实际就会去访问 <span class="font-mono">https://gh-proxy.com/https://github.com/你的仓库</span>。

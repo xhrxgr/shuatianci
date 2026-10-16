@@ -114,7 +114,7 @@ $cards = [
         <?php foreach ($recent as $question): ?>
           <li class="rounded-lg bg-surface-alt p-3">
             <p class="text-sm text-ink"><?= e($question['originalSentence']) ?></p>
-            <p class="mt-1 text-xs text-faint">
+            <p class="mt-1.5 text-xs text-faint">
               <?= e($question['source']) ?> · <?= e(count($question['blanks'])) ?> 个空
             </p>
           </li>

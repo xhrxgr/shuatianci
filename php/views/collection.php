@@ -31,7 +31,7 @@ $labelStyles = [
   <div class="space-y-5" id="collection-root">
     <div>
       <h2 class="text-lg font-semibold text-ink">我的收藏</h2>
-      <p class="mt-1 text-xs text-muted">收藏试卷、标记重点题目。仅你本人可查看这些内容。</p>
+      <p class="mt-1.5 text-xs text-faint">收藏试卷、标记重点题目。仅你本人可查看这些内容。</p>
     </div>
 
     <div class="space-y-2" id="collection-error" hidden></div>
@@ -69,7 +69,7 @@ $labelStyles = [
             >
               <div class="min-w-0 flex-1">
                 <p class="text-sm font-medium text-ink"><?= e($item['source']) ?></p>
-                <p class="mt-1 text-xs text-faint">
+                <p class="mt-1.5 text-xs text-faint">
                   共 <?= e($item['questionCount']) ?> 道题
                   <?php if (!empty($item['note'])): ?><span class="ml-2 text-muted">备注：<?= e($item['note']) ?></span><?php endif; ?>
                 </p>
@@ -114,10 +114,10 @@ $labelStyles = [
                 </div>
                 <p class="text-sm leading-6 text-ink"><?= e($item['sentence'] ?? '（该题已被删除）') ?></p>
                 <?php if (!empty($item['note'])): ?>
-                  <p class="mt-1.5 text-xs text-muted">备注：<?= e($item['note']) ?></p>
+                  <p class="mt-1.5 text-xs text-faint">备注：<?= e($item['note']) ?></p>
                 <?php endif; ?>
                 <?php if (!empty($item['source'])): ?>
-                  <p class="mt-1 text-xs text-faint">来源：<?= e($item['source']) ?></p>
+                  <p class="mt-1.5 text-xs text-faint">来源：<?= e($item['source']) ?></p>
                 <?php endif; ?>
               </div>
               <button

@@ -520,7 +520,7 @@ export function setupPaperAndQuestionPanels(context) {
           <div>
             <label class="mb-1.5 block text-xs font-medium text-muted">答案（多个用 / 分隔）</label>
             <input type="text" data-edit-answer="${index}" value="${escape(blank.answer)}" placeholder="written / was written" class="blank-slot w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition focus:border-primary">
-            <p class="mt-1 text-xs text-faint">解析为 [${escape(splitAnswers(blank.answer).join(", ") || "空")}]</p>
+            <p class="mt-1.5 text-xs text-faint">解析为 [${escape(splitAnswers(blank.answer).join(", ") || "空")}]</p>
           </div>
           <div>
             <label class="mb-1.5 block text-xs font-medium text-muted">提示词类型</label>
@@ -531,7 +531,7 @@ export function setupPaperAndQuestionPanels(context) {
           <div>
             <label class="mb-1.5 block text-xs font-medium text-muted">提示词</label>
             <input type="text" data-edit-hint-word="${index}" value="${escape(blank.hintWord ?? "")}" placeholder="如 sit"${blank.hintType === "无提示词" ? " disabled" : ""} class="blank-slot w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition focus:border-primary disabled:opacity-40">
-            <p class="mt-1 text-xs text-faint">选了「无提示词」就不需要填。</p>
+            <p class="mt-1.5 text-xs text-faint">选了「无提示词」就不需要填。</p>
           </div>
         </div>
 
