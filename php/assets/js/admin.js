@@ -888,6 +888,11 @@ async function handleCreateTags(names) {
 function openAddTag(parentId) {
   const group = document.querySelector(`[data-tag-group="${CSS.escape(parentId)}"]`);
   if (!group) return;
+  // 分组默认是折叠的，不先展开的话新输入区会渲染在看不见的地方 ——
+  // 表现为「点了没反应」
+  if (typeof group.open === "boolean") {
+    group.open = true;
+  }
   const trigger = group.querySelector('[data-action="add-tag-open"]');
   if (!trigger || group.querySelector("[data-add-form]")) return;
 
@@ -1033,6 +1038,16 @@ if (root) {
       }
       case "add-tag-open":
         if (group) openAddTag(group.dataset.tagGroup);
+        break;
+      case "expand-all-tag-groups":
+        document.querySelectorAll("[data-tag-group]").forEach((item) => {
+          item.open = true;
+        });
+        break;
+      case "collapse-all-tag-groups":
+        document.querySelectorAll("[data-tag-group]").forEach((item) => {
+          item.open = false;
+        });
         break;
       case "add-tag-confirm": {
         const form = actionButton.closest("[data-add-form]");

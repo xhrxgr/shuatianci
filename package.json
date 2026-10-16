@@ -1,7 +1,7 @@
 {
   "name": "english-quiz",
   "private": true,
-  "version": "3.7.2",
+  "version": "3.7.3",
   "type": "module",
   "description": "English cloze question bank for exam practice (pure PHP backend + vanilla JS frontend, no Node at runtime)",
   "scripts": {
@@ -18,7 +18,8 @@
     "test:blueprint-ui": "node php/tests/blueprint-ui-test.mjs http://127.0.0.1:9002",
     "test:ai-preview-edit": "node php/tests/ai-preview-edit-test.mjs http://127.0.0.1:9002",
     "test:passage-entry": "node php/tests/passage-entry-test.mjs http://127.0.0.1:9002",
-    "test:update-state": "php php/tests/update-state-test.php"
+    "test:update-state": "php php/tests/update-state-test.php",
+    "test:tag-collapse": "node php/tests/tag-collapse-test.mjs http://127.0.0.1:9002"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3"

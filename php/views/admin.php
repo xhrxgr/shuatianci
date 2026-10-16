@@ -502,15 +502,38 @@ $adminTabs = [
 
   <!-- ============ 标签管理 ============ -->
   <div data-admin-panel="tags" hidden>
-    <div class="space-y-6" id="admin-tags-root">
+    <div class="space-y-4" id="admin-tags-root">
       <?php
       $parents = [];
+      $totalTags = 0;
       foreach ($tagDictionary['tags'] as $tag) {
           if ($tag['parentId'] === null) {
               $parents[] = $tag;
           }
       }
       ?>
+      <?php if (count($parents) > 0): ?>
+        <!-- 分类一多，整页就拉得很长。这里给一个显式的批量开关，
+             默认全部折叠（折叠态能看到每个分类下有哪些标签的概览）。 -->
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <p class="text-xs text-muted">
+            共 <?= e(count($parents)) ?> 个分类、<?= e(count($tagDictionary['tags'])) ?> 个标签。
+            点分类标题可展开编辑。
+          </p>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              data-action="expand-all-tag-groups"
+              class="min-h-11 rounded-lg border border-line bg-surface px-4 py-2 text-xs text-muted transition hover:bg-surface-alt"
+            >全部展开</button>
+            <button
+              type="button"
+              data-action="collapse-all-tag-groups"
+              class="min-h-11 rounded-lg border border-line bg-surface px-4 py-2 text-xs text-muted transition hover:bg-surface-alt"
+            >全部收起</button>
+          </div>
+        </div>
+      <?php endif; ?>
       <?php foreach ($parents as $parent): ?>
         <?php
         $children = [];
@@ -520,12 +543,26 @@ $adminTabs = [
             }
         }
         ?>
-        <div class="rounded-xl border border-line bg-surface p-4" data-tag-group="<?= e($parent['id']) ?>">
-          <div class="mb-3 flex items-center gap-2">
+        <!-- 默认折叠。用原生 details 而不是 JS 切换：没有 JS 也能展开收起，
+             而且键盘与读屏软件天然可用。 -->
+        <details class="rounded-xl border border-line bg-surface" data-tag-group="<?= e($parent['id']) ?>">
+          <summary class="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-2 px-4 py-3 transition hover:bg-surface-alt">
+            <svg class="h-4 w-4 shrink-0 text-faint transition" data-caret viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M9 6l6 6-6 6" />
+            </svg>
             <span class="rounded px-2 py-0.5 text-xs font-semibold text-white" style="background-color: <?= e($parent['color']) ?>"><?= e($parent['name']) ?></span>
             <span class="text-xs text-faint"><?= e(count($children)) ?> 个子标签</span>
-          </div>
+            <?php // 折叠态的概览：直接看到这一类下有哪些标签，不必先展开
+            $previewNames = array_slice(array_map(function ($t) { return $t['name']; }, $children), 0, 8);
+            ?>
+            <?php if (count($previewNames) > 0): ?>
+              <span class="min-w-0 flex-1 truncate text-xs text-muted"><?= e(implode('、', $previewNames)) ?><?= count($children) > 8 ? ' 等' : '' ?></span>
+            <?php else: ?>
+              <span class="min-w-0 flex-1 truncate text-xs text-faint">这一类下还没有标签</span>
+            <?php endif; ?>
+          </summary>
 
+          <div class="border-t border-line p-4">
           <ul class="space-y-2" data-tag-list>
             <?php foreach ($children as $tag): ?>
               <li class="flex flex-wrap items-center gap-2 rounded-lg bg-surface-alt px-3 py-2" data-tag="<?= e($tag['id']) ?>">
@@ -561,7 +598,8 @@ $adminTabs = [
             data-action="add-tag-open"
             class="mt-3 min-h-11 w-full rounded-lg border border-dashed border-line py-2 text-xs text-muted transition hover:border-primary hover:text-primary"
           >+ 在「<?= e($parent['name']) ?>」下新增子标签</button>
-        </div>
+          </div>
+        </details>
       <?php endforeach; ?>
 
       <p class="text-xs leading-5 text-faint">
