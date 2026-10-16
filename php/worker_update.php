@@ -34,8 +34,28 @@ function mark_reload()
 
 $version = read_version();
 $branch = $version !== null ? $version['branch'] : 'master';
+// 回滚锚点。worker 退出后就没人记得更新前是哪个 commit 了。
+//
+// 原来只取内存里的一个变量：这个 git_cmd 若超时/失败就是空串，
+// 于是回滚时执行 `git reset --hard ''` 直接失败，只留一行日志；
+// worker 一旦中途被杀，锚点彻底丢失，只能靠人去翻 git reflog。
+//
+// 现在三级兜底：rev-parse HEAD → ORIG_HEAD（git 自己在 reset 时写的）→
+// 并把结果写进状态文件，进程死掉也还在。
 $rollback = git_cmd(['rev-parse', 'HEAD'], 20);
-$rollbackCommit = $rollback['out'];
+$rollbackCommit = trim((string) $rollback['out']);
+if ($rollbackCommit === '') {
+    $orig = git_cmd(['rev-parse', 'ORIG_HEAD'], 15);
+    $rollbackCommit = trim((string) $orig['out']);
+    if ($rollbackCommit !== '') {
+        update_state_log('rev-parse HEAD 失败，改用 ORIG_HEAD 作为回滚锚点：'
+            . substr($rollbackCommit, 0, 7));
+    }
+}
+if ($rollbackCommit === '') {
+    update_state_log('⚠️ 拿不到回滚锚点，本次失败将无法自动回滚。'
+        . '可手动执行：git -C ' . APP_DIR . ' reset --hard $(git -C ' . APP_DIR . ' rev-parse ORIG_HEAD)');
+}
 
 // 兜底：进程若因致命错误提前死掉（require 失败、CLI 版本不兼容等），
 // 状态会永远停在 running——界面一直转圈，后续更新也被 409 挡住。
@@ -48,6 +68,8 @@ register_shutdown_function(function () {
 
 try {
     update_state_start();
+    // 锚点同时留在状态文件里：worker 被强杀时状态与 reflog 都能救回来
+    update_state_write(['rollbackCommit' => $rollbackCommit]);
     update_state_log("开始更新，当前分支 {$branch}，提交 " . substr($rollbackCommit, 0, 7));
 
     // ---- 0. 本地改动检查（第二道闸）----
@@ -125,6 +147,10 @@ try {
     update_state_log('前端为 PHP 渲染，无构建步骤；代码已生效');
     mark_reload();
     update_state_log('已刷新 PHP 缓存');
+    // 数据库结构迁移（ALTER TABLE / 建表）在**下一次请求**的 bootstrap 里跑，
+    // 不在这里。写清楚：万一迁移失败导致整站 500，用户知道该看哪里
+    update_state_log('数据库结构迁移将在刷新后的第一次请求时自动执行；'
+        . '若此时站点报错，多半是迁移失败，回滚代码即可（旧代码能兼容新的库结构）');
     define('EQ_UPDATE_DONE', true);
     update_state_finish(null);
 } catch (Throwable $e) {

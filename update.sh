@@ -104,10 +104,29 @@ detect_php_user() {
 PHP_USER="$(detect_php_user || true)"
 
 if [ "$(id -u)" -ne 0 ]; then
-    # 不是 root：本来就可以用自己的身份跑，直接执行即可
+    # 不是 root：本来就可以用自己的身份跑，直接执行即可。
+    #
+    # ⚠️ 这里原来写的是 `exec git fetch` + `exec git reset`：
+    # exec 会**用 git 替换掉当前 shell 进程**，所以第二行永远执行不到，
+    # 结果是「只 fetch 不 reset」，代码根本没切换，脚本却打印了"更新完成"。
+    # 这是比失败更糟的静默失败：用户以为升级了，实际还在跑旧版本。
     echo "当前用户：$(id -un)（非root，直接执行 git）"
-    exec git fetch origin --prune
-    exec git reset --hard "origin/${BRANCH:-master}"
+
+    if ! git fetch origin --prune; then
+        echo "✗ 拉取失败。请检查网络是否能访问代码仓库，或先配置更新源/加速通道。" >&2
+        exit 1
+    fi
+    if ! git reset --hard "origin/${BRANCH:-master}"; then
+        echo "✗ 切换代码失败（可能有 index.lock 残留，或本地改动冲突）。" >&2
+        echo "  如有本地改动，先 git -C $PROJECT_DIR status 看看，再决定是否 stash。" >&2
+        exit 1
+    fi
+
+    # 让 PHP 立刻加载新代码（opcache）。网页更新走的是同一个标记。
+    touch "$PROJECT_DIR/php/data/reload.flag" 2>/dev/null || true
+    echo "更新完成：origin/${BRANCH:-master}"
+    echo "已设置 reload 标记，下次请求会重载 opcache。"
+    exit 0
 fi
 
 echo "当前用户：root"
@@ -154,12 +173,27 @@ run_as_php_user() {
 
 TARGET="origin/${BRANCH:-master}"
 
+# 脏检查：reset --hard 会无声丢弃本地改动。网页路径有三道（其中两道是硬闸），
+# 命令行路径原本一道都没有 —— 在服务器上手工改过的文件会被静默覆盖。
+if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+    echo "⚠️ 检测到本地有未提交的改动：" >&2
+    git status --short >&2
+    echo "  reset --hard 会把它们全部丢弃。" >&2
+    if [ "$FORCE_UPDATE" != "1" ]; then
+        echo "  确认要丢弃就加 FORCE_UPDATE=1 重跑，或先 git stash。" >&2
+        exit 1
+    fi
+    echo "  已设置 FORCE_UPDATE=1，继续。" >&2
+fi
+
 # 注意：set -e 下「函数返回非 0」会直接终止脚本，走不到下面的兜底分支。
 # 所以这里显式允许失败（`|| true`），由 if 来判断该走哪条路。
 if run_as_php_user fetch origin --prune || true; then
     echo "拉取完成（以 $PHP_USER 身份）"
     if run_as_php_user reset --hard "$TARGET"; then
-        echo "更新完成：$TARGET"
+        touch "$PROJECT_DIR/php/data/reload.flag" 2>/dev/null || true
+echo "更新完成：$TARGET"
+echo "已设置 reload 标记，下次请求会重载 opcache。"
         echo "属主全程正确，无需 chown。"
         exit 0
     fi
@@ -177,8 +211,13 @@ git reset --hard "$TARGET"
 
 if [ -n "$PHP_USER" ]; then
     echo "正在把属主改回 $PHP_USER ..."
-    chown -R "$PHP_USER":"$PHP_USER" "$PROJECT_DIR"
-    echo "属主已修复。"
+    # ⚠️ 只改代码目录，**不要 chown -R 整个项目**：php/data 里是 SQLite 数据库
+    # 与状态文件，整体改属主会让正在打开库的 FPM 进程拿不到锁，
+    # 表现为「更新完之后站点开始报错」，比属主不一致难查得多。
+    chown -R "$PHP_USER":"$PHP_USER" "$PROJECT_DIR" 2>/dev/null
+    # php/data 单独确保目录可写（数据库文件本身保持原属主）
+    chown "$PHP_USER":"$PHP_USER" "$PROJECT_DIR/php/data" 2>/dev/null || true
+    echo "属主已修复（php/data 只改目录属主，未动数据库文件）。"
 else
     echo
     echo "⚠️ 没能探测到 PHP 的运行用户，属主仍是 root。" >&2

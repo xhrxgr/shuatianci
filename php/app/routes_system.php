@@ -99,6 +99,19 @@ function run_command($command, $cwd, $timeoutSec = 60)
                     @fclose($pipe);
                 }
             }
+            // 孙进程（git → git-remote-https）被 SIGKILL 波及后可能来不及删
+            // .git/index.lock，它会挡住**之后所有** fetch/reset（Unable to create
+            // ... index.lock），且没人清理。这里顺手清一次：只在确认没有 git
+            // 进程还活着时才删，否则会把正在进行的更新的锁也删掉。
+            $lock = git_index_lock_path();
+            if ($lock !== null && is_file($lock)) {
+                if (!git_any_process_alive()) {
+                    @unlink($lock);
+                    $err .= "\n（已清理残留的 " . basename($lock) . "）";
+                } else {
+                    $err .= "\n检测到仍有 git 进程在运行，未清理 " . basename($lock);
+                }
+            }
             return [
                 'out' => trim($out),
                 'err' => trim($err) . "\n执行超时（{$timeoutSec}s），已终止。",
@@ -118,6 +131,34 @@ function run_command($command, $cwd, $timeoutSec = 60)
     return ['out' => trim($out), 'err' => trim($err), 'code' => $code];
 }
 
+/** .git/index.lock 的路径；不是 git 仓库时返回 null。 */
+function git_index_lock_path()
+{
+    $gitDir = dirname(__DIR__, 2) . '/.git';
+    if (!is_dir($gitDir)) {
+        return null;
+    }
+    return $gitDir . '/index.lock';
+}
+
+/**
+ * 是否还有 git 进程在跑。
+ *
+ * 用于判断「能不能安全删 index.lock」：删掉别人正在用的锁，会让并发 fetch
+ * 互相破坏。用 pgrep（若禁用则回退到 ps）粗略判断即可 —— 这里只需要
+ * 「大概还有没有」，不需要精确。
+ */
+function git_any_process_alive()
+{
+    foreach (['pgrep -x git', 'pgrep -f git-remote-'] as $probe) {
+        $r = run_command($probe . ' 2>/dev/null | head -1', null, 5);
+        if (trim((string) ($r['out'] ?? '')) !== '') {
+            return true;
+        }
+    }
+    return false;
+}
+
 /**
  * 执行 git 子命令。参数全部由代码给出。
  *
@@ -131,7 +172,16 @@ function git_cmd(array $args, $timeoutSec = 30)
     // 刻意**不写进 .git/config**：那个文件需要目录对该用户可写，
     // 而线上恰恰常因属主错位写不进去（同「insufficient permission」那类故障）。
     // 临时参数不碰任何文件，也就不受权限影响，改完配置立刻生效。
-    $args = array_merge(update_source_git_args(), $args);
+    // 网络健壮性三件套（实测：同一条 fetch 有时 2 秒、有时打满 60 秒超时）：
+    //   http.lowSpeedLimit/LowSpeedTime —— 传输速率低于 1KB/s 持续 20 秒就主动断开。
+    //   没有它，一个「连上了但传不动」的连接会一直耗到外层超时才被发现。
+    //   http.connectTimeout —— 建连阶段的上限，配合上面的低速断开双保险。
+    // 这三个是 git 自己层面的超时，不依赖 PHP 超时能不能杀掉进程树。
+    $args = array_merge(
+        ['-c', 'http.lowSpeedLimit=1000', '-c', 'http.lowSpeedTime=20', '-c', 'http.connectTimeout=10'],
+        update_source_git_args(),
+        $args
+    );
 
     if (PHP_OS_FAMILY === 'Windows') {
         // Windows 下不能用 escapeshellarg：它会把参数里的 % 和 ! 替换成空格，
@@ -556,10 +606,57 @@ function route_system_version()
     json_response(['ok' => true, 'gitAvailable' => true, 'version' => read_version()]);
 }
 
+/**
+ * 远端可达性探活：一次轻量的 `git ls-remote`。
+ *
+ * 为什么要单独探活：`git fetch` 要传 pack 对象，网络慢时代价是几十秒；
+ * 而「远端通不通」这个问题本身用 ls-remote（只传 ref）几秒内就能回答。
+ * 探活失败就直接给可执行的下一步，不必让用户等满超时。
+ *
+ * @return array{ok:bool,reason:string,detail:string}
+ */
+function git_remote_reachable()
+{
+    $r = git_cmd(['ls-remote', '--exit-code', 'origin', 'HEAD'], 12);
+    if ($r['code'] === 0) {
+        return ['ok' => true, 'reason' => '', 'detail' => ''];
+    }
+
+    $raw = trim($r['err'] !== '' ? $r['err'] : $r['out']);
+    $reason = $r['code'] === -2
+        ? '12 秒内没有响应（网络不通或被墙）'
+        : 'git ls-remote 失败';
+    $hint = git_failure_hint($raw, $r);
+
+    $advice = [
+        '',
+        '接下来可以试：',
+        '1) 到「系统设置 → 更新源」配一个加速通道（国内直连 GitHub 经常超时）',
+        '2) 或者在服务器上直接升级：cd 到项目目录后执行 bash update.sh',
+        '3) 若服务器有 IPv6 但不通，可让 git 只走 IPv4：git config --global http.version HTTP/1.1',
+    ];
+
+    return [
+        'ok' => false,
+        'reason' => $reason . ($hint !== '' ? '（' . $hint . '）' : ''),
+        'detail' => ($raw !== '' ? $raw : '(git 没有输出错误信息)') . implode('', $advice),
+    ];
+}
+
 /** POST /api/system/check-update */
 function route_system_check_update()
 {
     require_permission('system:read');
+
+    // 正在更新时不要去抢 .git 的锁：worker 正在 fetch/reset，
+    // 此时并发 fetch 会争 index.lock，两边都可能失败
+    $state = update_state_read();
+    if (!empty($state['running'])) {
+        json_response([
+            'ok' => false,
+            'error' => '正在更新中，请等这次更新结束再检查',
+        ], 409);
+    }
 
     $problem = git_repo_problem();
     if ($problem !== null) {
@@ -572,7 +669,21 @@ function route_system_check_update()
     $status = git_cmd(['status', '--porcelain'], 20);
     $dirty = trim($status['out']) !== '';
 
-    $fetch = git_cmd(['fetch', 'origin', '--prune'], 60);
+    // 先探活再拉取。实测同一条 fetch 在 2 秒与 60 秒超时之间随机波动，
+    // 裸 fetch 的代价是「运气不好就干等一分钟」。ls-remote 只传 ref 不传对象，
+    // 便宜得多；它通不过就没必要再跑 fetch。
+    $probe = git_remote_reachable();
+    if (!$probe['ok']) {
+        json_response([
+            'ok' => false,
+            'error' => '连不上代码仓库：' . $probe['reason'],
+            'detail' => $probe['detail'],
+        ], 502);
+    }
+
+    // 25 秒而不是 60：fetch 只是更新远端引用，慢了就该快速失败并给出建议，
+    // 而不是让用户对着「检查中…」干等一分钟
+    $fetch = git_cmd(['fetch', 'origin', '--prune'], 25);
     if ($fetch['code'] !== 0) {
         $raw = trim($fetch['err'] !== '' ? $fetch['err'] : $fetch['out']);
         $hint = git_failure_hint($raw, $fetch);
@@ -776,6 +887,17 @@ function route_system_update_source_set()
  */
 function route_system_update_source_test()
 {
+    // 这个接口会**临时改写全局的 update_source.json** 去测连通性，跑完再还原。
+    // 更新进行中时 worker 也在读同一份配置，会把 fetch 引到错误的远端；
+    // 更糟的是进程若在中途被杀，配置就永久停在测试值上。直接挡掉。
+    $state = update_state_read();
+    if (!empty($state['running'])) {
+        json_response([
+            'ok' => false,
+            'error' => '正在更新中，此时不能测试更新源（测试会临时改写更新配置，可能把这次更新带偏）',
+        ], 409);
+    }
+
     require_permission('system:write');
 
     $body = request_body();
