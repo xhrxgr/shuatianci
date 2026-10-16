@@ -1160,7 +1160,7 @@ function renderPreviewItem(item, verdict, index) {
   const wrapper = el("label", "flex cursor-pointer gap-3 rounded-lg border border-line bg-surface p-3 transition hover:border-primary/40");
   const checked = previewChecks[index] !== false;
 
-  const box = el("input", "mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-[var(--color-primary,#2563eb)]");
+  const box = el("input", "mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-primary");
   box.type = "checkbox";
   box.checked = checked;
   box.dataset.previewIndex = String(index);

@@ -317,8 +317,8 @@ function renderCard() {
   const resultBanner = submitted
     ? `<div class="${
         state.correct
-          ? "mt-5 rounded-xl border border-success/30 bg-success-soft px-4 py-3 text-sm font-medium text-success"
-          : `mt-5 rounded-xl border border-danger/30 bg-danger-soft px-4 py-3 text-sm font-medium text-danger`
+          ? "mt-5 rounded-xl border border-success/40 bg-success-soft px-4 py-3 text-sm font-medium text-success"
+          : `mt-5 rounded-xl border border-danger/40 bg-danger-soft px-4 py-3 text-sm font-medium text-danger`
       }">${state.correct ? "全部正确！" : `答错 ${state.wrongCount} 个，查看解析`}</div>`
     : "";
 

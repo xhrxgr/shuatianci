@@ -84,6 +84,9 @@ function nav_items($user)
     $items = [
         ['to' => '/', 'label' => '首页'],
         ['to' => '/practice', 'label' => '刷题'],
+        // 试卷页是「做一套卷」这件事的唯一集中入口，之前只能从首页那个
+        // 「全部试卷」链接摸过去，而题库为空时那个链接根本不渲染
+        ['to' => '/papers', 'label' => '试卷'],
     ];
     if ($user !== null) {
         $items[] = ['to' => '/profile', 'label' => '我的记录'];

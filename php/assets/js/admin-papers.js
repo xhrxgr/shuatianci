@@ -217,8 +217,14 @@ export function setupPaperAndQuestionPanels(context) {
     detail.hidden = false;
   }
 
+  // 保存进行中：reload() 不是立即发生的，这个窗口内再点一次会并发两个请求，
+  // 后到的覆盖先到的（题目编辑尤其危险：刚改完的答案可能被上一次的旧值盖掉）
+  let savingPaper = false;
+  let savingEdit = false;
+
   /** 保存试卷的改名 / 日期 / 备注 */
   async function handleSavePaper(item) {
+    if (savingPaper) return;
     const id = item.dataset.paperManage;
     const name = item.querySelector("[data-edit-paper-name]").value.trim();
     const date = item.querySelector("[data-edit-paper-date]").value;
@@ -230,12 +236,25 @@ export function setupPaperAndQuestionPanels(context) {
       return;
     }
 
+    savingPaper = true;
+    const saveButton = item.querySelector('[data-action="save-paper"]');
+    const originalLabel = saveButton?.textContent ?? "";
+    if (saveButton) {
+      saveButton.disabled = true;
+      saveButton.textContent = "保存中…";
+    }
     try {
       await api.updatePaper(id, { name, examDate: date || null, note });
       window.location.reload();
     } catch (error) {
       // 重试沿用同一行元素，用户改过的名字与日期都还在输入框里
       showFlash(error, "danger", { retry: () => void handleSavePaper(item) });
+    } finally {
+      savingPaper = false;
+      if (saveButton) {
+        saveButton.disabled = false;
+        saveButton.textContent = originalLabel;
+      }
     }
   }
 
@@ -259,6 +278,8 @@ export function setupPaperAndQuestionPanels(context) {
   }
 
   /* ---------------- 题目列表 ---------------- */
+
+  let bulkDeleting = false; // 批量删除进行中：防止连点重复删除
 
   /** 按试卷筛选题目列表 */
   function applyQuestionFilter() {
@@ -314,6 +335,19 @@ export function setupPaperAndQuestionPanels(context) {
     const ids = selectedQuestionIds();
     if (ids.length === 0) return;
 
+    // 移出试卷这一步要确认：它会让题目从卷子上消失，可逆但用户容易没看清下拉当前值
+    if (value === "__none__") {
+      if (
+        !window.confirm(
+          `确定把 ${ids.length} 道题移出试卷吗？
+
+题目本身会保留在题库中，只是不再归属任何试卷。`
+        )
+      ) {
+        return;
+      }
+    }
+
     try {
       await api.setQuestionsPaper(ids, value === "__none__" ? null : value);
       setFlash(`已将 ${ids.length} 道题移入指定试卷`);
@@ -325,18 +359,42 @@ export function setupPaperAndQuestionPanels(context) {
 
   /** 批量删除所选题目 */
   async function handleBulkDelete() {
+    if (bulkDeleting) return;
     const ids = selectedQuestionIds();
     if (ids.length === 0) return;
     if (!window.confirm(`确定删除选中的 ${ids.length} 道题吗？此操作不可撤销。`)) return;
 
+    bulkDeleting = true;
+    const button = document.getElementById("question-bulk-delete");
+    const originalLabel = button?.textContent ?? "";
+    let done = 0;
     try {
       for (const id of ids) {
+        // 进度可见：删 20 道要跑 20 个请求，不给进度用户会以为卡死而重复点
+        if (button) button.textContent = `删除中 ${done + 1}/${ids.length}`;
         await api.deleteQuestion(id);
+        done += 1;
       }
       setFlash(`已删除 ${ids.length} 道题`);
       window.location.reload();
     } catch (error) {
-      showFlash(error, "danger", { retry: () => void handleBulkDelete() });
+      // 半途失败要说清「已经删了几道」——否则用户以为一道没删。
+      // 且**不提供重试**：服务端删除不是幂等的，从头重跑会在已删的那个 id 上 404，
+      // 于是永远删不完剩下的（用户被卡死）。改成给一个「刷新看最新状态」的出口。
+      const remaining = ids.length - done;
+      showFlash(error, "danger", {
+        details: [
+          `已删除 ${done} 道${remaining > 0 ? `，剩余 ${remaining} 道没有删除` : ""}`,
+          "已删除的题目无法恢复；剩下的题请刷新页面后重新勾选再删",
+        ],
+        retry: () => window.location.reload(),
+      });
+    } finally {
+      bulkDeleting = false;
+      if (button) {
+        button.disabled = false;
+        button.textContent = originalLabel;
+      }
     }
   }
 
@@ -414,7 +472,7 @@ export function setupPaperAndQuestionPanels(context) {
 
     const count = editBlankCount();
     if (count === 0) {
-      container.innerHTML = `<p class="rounded-lg border border-danger/30 bg-danger-soft p-3 text-xs text-danger">
+      container.innerHTML = `<p class="rounded-lg border border-danger/40 bg-danger-soft p-3 text-xs text-danger">
         原句里没有识别到空格（需用 6 个下划线 ______ 表示一个空），无法配置答案与解析。
       </p>`;
       return;
@@ -526,6 +584,7 @@ export function setupPaperAndQuestionPanels(context) {
 
   /** 保存题目修改 */
   async function handleSaveEditQuestion() {
+    if (savingEdit) return;
     const sentence = document.getElementById("edit-question-sentence").value.trim();
     const source = document.getElementById("edit-question-source").value.trim();
     const paperValue = document.getElementById("edit-question-paper")?.value ?? "__none__";
@@ -556,6 +615,13 @@ export function setupPaperAndQuestionPanels(context) {
       return;
     }
 
+    savingEdit = true;
+    const saveButton = document.getElementById("edit-question-save");
+    const originalLabel = saveButton?.textContent ?? "";
+    if (saveButton) {
+      saveButton.disabled = true;
+      saveButton.textContent = "保存中…";
+    }
     try {
       await api.updateQuestion(editing.id, {
         originalSentence: sentence,
@@ -570,6 +636,12 @@ export function setupPaperAndQuestionPanels(context) {
       showEditErrors([error?.message ?? "保存失败"], {
         retry: () => void handleSaveEditQuestion(),
       });
+    } finally {
+      savingEdit = false;
+      if (saveButton) {
+        saveButton.disabled = false;
+        saveButton.textContent = originalLabel;
+      }
     }
   }
 

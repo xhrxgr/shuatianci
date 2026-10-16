@@ -182,7 +182,7 @@ $adminTabs = [
                     <p class="flex flex-wrap items-center gap-2 text-sm font-medium text-ink">
                       <span><?= e($paper['name']) ?></span>
                       <?php if (($paper['kind'] ?? 'original') === 'generated'): ?>
-                        <span class="rounded-full border border-line bg-surface px-2 py-0.5 text-xs text-muted">虚拟卷</span>
+                        <span class="rounded-full border border-line bg-surface-alt px-2 py-0.5 text-xs font-normal text-muted">虚拟卷</span>
                       <?php endif; ?>
                     </p>
                     <p class="mt-1 text-xs text-faint">
@@ -399,7 +399,7 @@ $adminTabs = [
         </div>
 
         <?php if (count($questions) === 0): ?>
-          <p class="py-8 text-center text-sm text-faint">题库为空，去「手动录入」添加第一道题。</p>
+          <p class="py-8 text-center text-sm text-faint">题库还是空的。批量录题最省事的办法是切到「AI 导入」，粘贴 AI 返回的 JSON；也可以到「手动录入」逐题添加。</p>
         <?php else: ?>
           <ul class="mt-4 space-y-2" id="question-manage-list">
             <?php foreach ($questions as $question): ?>
@@ -545,12 +545,12 @@ $adminTabs = [
                 <button
                   type="button"
                   data-action="toggle-tag"
-                  class="min-h-11 rounded-lg px-3 py-2 text-xs transition <?= $tag['isActive'] ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-surface-alt text-muted hover:bg-surface-alt' ?>"
+                  class="min-h-11 rounded-lg px-3 py-2 text-xs transition <?= $tag['isActive'] ? 'bg-success-soft text-success hover:bg-success-soft' : 'bg-surface-alt text-muted hover:bg-surface-alt' ?>"
                 ><?= $tag['isActive'] ? '使用中' : '已停用' ?></button>
                 <button
                   type="button"
                   data-action="delete-tag"
-                  class="min-h-11 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600 transition hover:bg-red-100"
+                  class="min-h-11 rounded-lg border border-danger/40 px-3 py-2 text-xs text-danger transition hover:bg-danger-soft"
                 >删除</button>
               </li>
             <?php endforeach; ?>

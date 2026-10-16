@@ -135,6 +135,15 @@ function switchTab(tab) {
     button.classList.toggle("hover:bg-surface-alt", !active);
   });
 
+  // 页签写回 URL：7 个平级页签的页签栏是**唯一的定位信号**，
+  // 不写 hash 的话浏览器后退 / 刷新都会跳回「手动录入」，
+  // 用户刚在题库总览改完东西一按后退就丢了位置。
+  // 用 replaceState 而不是直接赋值 location.hash：后者每切一次就往历史里塞一条，
+  // 后退键会退化成「逐个页签回退」，比现在更糟。
+  if (window.location.hash !== "#" + tab) {
+    history.replaceState(null, "", "#" + tab);
+  }
+
   const notice = document.getElementById("admin-notice");
   if (notice) notice.hidden = true;
 }
@@ -513,17 +522,32 @@ function validateQuestion(question) {
   return errors;
 }
 
+// 保存进行中：没有这个守卫时，用户点一下觉得慢再点一下，两次请求并发，
+// 会入库两道重复题，第二个回调回来还会把用户正在录入的下一道题草稿一起清空。
+let savingQuestion = false;
+
 async function handleSave() {
-  const id = `q_${Date.now().toString(36)}`;
-  const candidate = buildQuestion(id);
-  const errors = validateQuestion(candidate);
-  if (errors.length > 0) {
-    showErrors(errors);
+  if (savingQuestion) return;
+  const saveButton = document.getElementById("admin-save");
+  const errors0 = (() => {
+    const candidate = buildQuestion(`q_${Date.now().toString(36)}`);
+    return { candidate, errors: validateQuestion(candidate) };
+  })();
+  if (errors0.errors.length > 0) {
+    showErrors(errors0.errors);
     const notice = document.getElementById("admin-save-notice");
     if (notice) notice.hidden = true;
     return;
   }
 
+  savingQuestion = true;
+  if (saveButton) {
+    saveButton.disabled = true;
+    saveButton.textContent = "保存中…";
+  }
+  // 编号在 await 之后才落定：并发时两次不会共用同一个候选 id
+  const id = `q_${Date.now().toString(36)}`;
+  const candidate = { ...errors0.candidate, id };
   try {
     await api.pushQuestion(candidate);
     existingIds = [...existingIds, id];
@@ -541,6 +565,12 @@ async function handleSave() {
     }
   } catch (error) {
     showErrors([error?.message ?? "保存失败"]);
+  } finally {
+    savingQuestion = false;
+    if (saveButton) {
+      saveButton.disabled = false;
+      saveButton.textContent = "保存题目";
+    }
   }
 }
 
@@ -588,6 +618,7 @@ function clearLocalCache() {
 }
 
 function handleExport(currentQuestions) {
+  if (!Array.isArray(currentQuestions)) return;
   const payload = {
     questions: currentQuestions,
     tags: tagDictionary,
@@ -874,7 +905,7 @@ function openAddTag(parentId) {
         )
         .join("")}
     </div>
-    <p class="mb-2 text-xs text-red-600" data-new-tag-error hidden></p>
+    <p class="mb-2 text-xs text-danger" data-new-tag-error hidden></p>
     <div class="flex gap-2">
       <button type="button" data-action="add-tag-confirm" class="min-h-11 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-on-primary transition hover:bg-primary-hover">添加</button>
       <button type="button" data-action="add-tag-cancel" class="min-h-11 rounded-lg border border-line px-4 py-2 text-sm text-ink transition hover:bg-surface-alt">取消</button>
@@ -1126,11 +1157,16 @@ if (root) {
       document.querySelectorAll("[data-admin-question]").forEach((item) => {
         list.push({ id: item.dataset.adminQuestion });
       });
-      // 导出用完整数据：从服务端重新取一次，避免页面里只有渲染出的字段
-      api
-        .getQuestions()
-        .then((data) => handleExport(data.questions ?? []))
-        .catch((error) => notifyError(error, { retry: () => void handleExport() }));
+      // 导出用完整数据：从服务端重新取一次，避免页面里只有渲染出的字段。
+      // 重试回调必须是**同一个完整流程**：之前直接重试 handleExport() 而没传参，
+      // currentQuestions 是 undefined → 读 .length 抛错 → 用户点了「重试」没反应，
+      // 备份文件一个字节都没落盘，却以为导出成功了（数据保护操作的静默失败）
+      const runExport = () =>
+        api
+          .getQuestions()
+          .then((data) => handleExport(data.questions ?? []))
+          .catch((error) => notifyError(error, { retry: runExport }));
+      runExport();
     });
   }
 

@@ -7,7 +7,7 @@
  * 登录用户的记录与进度走服务端接口。
  */
 
-import { notifyError } from "./feedback.js";
+import { notifyError, notifyWarn } from "./feedback.js";
 import { api } from "./api.js";
 
 const BLANK_PLACEHOLDER = "______";
@@ -107,6 +107,15 @@ async function submitRecord(questionId, isCorrect, wrongCount, answers) {
       return;
     } catch (error) {
       console.error("[practice] 上报失败，已退回本地保存", error);
+      // 与 paper-practice.js 保持同一口径：没同步到账号这件事必须让用户知道，
+      // 否则他以为错题本已经更新，换设备后发现进度全没了
+      notifyWarn("作答记录暂存在本设备，没有同步到账号", {
+        details: [
+          "换设备或清除浏览器数据后，这批记录会丢失",
+          `失败原因：${error?.message ?? "未知"}`,
+        ],
+        retry: () => void submitRecord(questionId, isCorrect, wrongCount, answers),
+      });
     }
   }
   const records = readJson(LOCAL_RECORDS_KEY, []);
@@ -176,8 +185,15 @@ function blankList(question) {
 
 /* ---------------- 筛选与统计 ---------------- */
 
-function byTab() {
-  // 两级作用域：先按试卷收窄（从「自由刷这卷」进来时），再按页签筛选。
+/**
+ * 当前作用域内的题目（按卷 / 按来源收窄）。
+ *
+ * 抽成独立函数是因为它有两个消费者：byTab() 与 tabCounts()。
+ * 此前 tabCounts 直接对全量 questions 计数，于是从「自由刷这卷」进来时
+ * 页签上写着 500、下面却写「当前 3 题」——用户会以为筛选坏了。
+ */
+function scopedQuestions() {
+  // 两级作用域：先按试卷收窄（从「自由刷这卷」进来时），再按来源。
   // 试卷优先于 source——同一场考试的 source 文本可能因手改而略有出入，
   // paperId 才是可靠归属。
   let scoped = paperIdFilter
@@ -186,6 +202,11 @@ function byTab() {
   if (sourceFilter) {
     scoped = scoped.filter((question) => question.source === sourceFilter);
   }
+  return scoped;
+}
+
+function byTab() {
+  const scoped = scopedQuestions();
 
   if (tab === "wrong") return scoped.filter((question) => question.wrongCount > 0);
   if (tab === "mastered") return scoped.filter((question) => question.status === "mastered");
@@ -244,12 +265,15 @@ function ordered() {
 }
 
 function tabCounts() {
+  // 与 byTab 同口径：数字必须反映「当前范围内有多少题」，
+  // 而不是全库有多少题，否则页签上的角标和下面的「当前 N 题」自相矛盾
+  const scoped = scopedQuestions();
   return {
-    all: questions.length,
-    wrong: questions.filter((question) => question.wrongCount > 0).length,
-    mastered: questions.filter((question) => question.status === "mastered").length,
-    marked: questions.filter((question) => markedIds.has(question.id)).length,
-    favorites: questions.filter((question) => favoritedSources.has(question.source)).length,
+    all: scoped.length,
+    wrong: scoped.filter((question) => question.wrongCount > 0).length,
+    mastered: scoped.filter((question) => question.status === "mastered").length,
+    marked: scoped.filter((question) => markedIds.has(question.id)).length,
+    favorites: scoped.filter((question) => favoritedSources.has(question.source)).length,
   };
 }
 
@@ -276,7 +300,7 @@ function renderTabs() {
         class="min-h-11 rounded-lg px-4 py-2 text-xs font-medium transition ${
           active ? "bg-ink text-surface" : "text-ink hover:bg-surface-alt"
         }"
-      >${escapeHtml(item.label)}<span class="${active ? "ml-1.5 text-black/50" : "ml-1.5 text-faint"}">${counts[item.id]}</span></button>
+      >${escapeHtml(item.label)}<span class="${active ? "ml-1.5 text-surface opacity-60" : "ml-1.5 text-faint"}">${counts[item.id]}</span></button>
     `;
   }).join("");
 
@@ -344,7 +368,7 @@ function renderFilter() {
         ${count === 0 && !selected ? "disabled" : ""}
         class="min-h-11 rounded-lg px-3 py-2 text-xs transition ${cls}"
         ${style ? `style="${style}"` : ""}
-      >${escapeHtml(tag.name)}<span class="${selected ? "ml-1 text-black/50" : "ml-1 text-faint"}">${count}</span></button>`;
+      >${escapeHtml(tag.name)}<span class="${selected ? "ml-1 text-surface opacity-60" : "ml-1 text-faint"}">${count}</span></button>`;
     }).join("");
 
     return `<div class="flex flex-wrap items-center gap-2">
@@ -495,8 +519,8 @@ function renderCard() {
   const resultBanner = results
     ? `<div class="${
         allCorrect
-          ? "mt-5 rounded-xl border border-success/30 bg-success-soft px-4 py-3 text-sm font-medium text-success"
-          : "mt-5 rounded-xl border border-danger/30 bg-danger-soft px-4 py-3 text-sm font-medium text-danger"
+          ? "mt-5 rounded-xl border border-success/40 bg-success-soft px-4 py-3 text-sm font-medium text-success"
+          : "mt-5 rounded-xl border border-danger/40 bg-danger-soft px-4 py-3 text-sm font-medium text-danger"
       }">${allCorrect ? "全部正确！" : `答错 ${wrongCount} 个，查看解析`}</div>`
     : "";
 
@@ -558,8 +582,15 @@ function renderCard() {
   </article>`;
 
   if (wrongHint) {
-    wrongHint.hidden = false;
-    wrongHint.textContent = `本题做错了 ${question.wrongCount} 次`;
+    // 从没做错的题（绝大多数新题）不该显示「做错了 0 次」：
+    // 既是无意义信息，又让学生以为系统在没作答时就判定了结果
+    if (Number(question.wrongCount) > 0) {
+      wrongHint.hidden = false;
+      wrongHint.textContent = `本题做错了 ${question.wrongCount} 次`;
+    } else {
+      wrongHint.hidden = true;
+      wrongHint.textContent = "";
+    }
   }
 
   renderCollection(question);
@@ -689,14 +720,24 @@ function handleSubmit() {
   }
 }
 
-function handleMarkMastered() {
+async function handleMarkMastered() {
   const question = currentQuestion();
   if (!question) return;
 
   if (!authenticated) {
     setLocalProgressStatus(question.id, "mastered");
   } else {
-    void api.setProgress(question.id, "mastered");
+    // 失败必须告诉用户，而且**不要先改本地状态**：之前是无 catch 的 fire-and-forget，
+    // 界面稳稳显示「已掌握」，刷新后打回原形，用户整理错题的成果看起来白干
+    try {
+      await api.setProgress(question.id, "mastered");
+    } catch (error) {
+      notifyError(error, {
+        details: ["这道题的掌握状态没有被保存，刷新后会恢复原样"],
+        retry: () => void handleMarkMastered(),
+      });
+      return;
+    }
   }
   questions = questions.map((item) =>
     item.id === question.id ? { ...item, status: "mastered" } : item

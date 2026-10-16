@@ -67,7 +67,7 @@
     <section class="rounded-xl border border-line bg-surface p-5">
       <h3 class="mb-3 text-sm font-semibold text-ink">账号列表</h3>
       <?php if (count($users) === 0): ?>
-        <p class="py-6 text-center text-sm text-muted">暂无账号</p>
+        <p class="py-6 text-center text-sm text-muted">还没有账号。用上方的用户名和密码点「创建账号」建第一个。</p>
       <?php else: ?>
         <ul class="space-y-2">
           <?php foreach ($users as $item): ?>

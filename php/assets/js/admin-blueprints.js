@@ -898,12 +898,22 @@ export function setupBlueprintPanels(context) {
   }
 
   async function handleGenerate() {
+    // 防重入：抽 100 道题要数秒，期间用户以为卡死会连点；
+    // 服务端在 paperId 为空时走新建路径，连点会建出多张同名虚拟卷
+    if (generating) return;
     const draft = editing.draft;
     if (rulesFromDraft(draft).conditions.length === 0) {
       showFlash("至少添加一个条件再生成，否则抽取的是随机题", "danger", { retryable: false });
       return;
     }
 
+    generating = true;
+    const button = document.querySelector('[data-bp-action="generate"]');
+    const originalLabel = button?.textContent ?? "";
+    if (button) {
+      button.disabled = true;
+      button.textContent = "生成中…";
+    }
     try {
       // 先保存（新建的蓝图必须先有 id 才能生成；已有蓝图顺带保存最新改动）
       const blueprint = await saveCurrent();
@@ -926,6 +936,12 @@ export function setupBlueprintPanels(context) {
     } catch (error) {
       // 抽不到题时后端返回 400 且带 result：把可读的原因展示出来
       showFlash(error, "danger", { retry: () => void handleGenerate() });
+    } finally {
+      generating = false;
+      if (button) {
+        button.disabled = false;
+        button.textContent = originalLabel;
+      }
     }
   }
 
@@ -1262,3 +1278,6 @@ export function setupBlueprintPanels(context) {
     });
   });
 }
+
+// 蓝图生成进行中：防止连点建出多张同名虚拟卷
+let generating = false;

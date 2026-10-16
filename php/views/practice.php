@@ -20,18 +20,28 @@
  */
 ?>
 <div class="space-y-5" id="practice-root">
-  <!-- 当前范围：按卷筛选时说明正在刷哪一卷 -->
-  <?php if (!empty($paperIdFilter) && !empty($paperName)): ?>
+  <!-- 当前范围：按卷或按来源筛选时说明正在刷什么。
+       原来只判 paperIdFilter，从「我的收藏」点「刷这卷」走的是 source 分支，
+       于是页面没有任何提示，用户看到的是默认全库视图，得自己重新加筛选 -->
+  <?php
+  $scopeLabel = null;
+  if (!empty($paperIdFilter) && !empty($paperName)) {
+    $scopeLabel = '正在刷：' . $paperName;
+  } elseif (!empty($sourceFilter)) {
+    $longSource = mb_strlen($sourceFilter) > 40;
+    $scopeLabel = '正在刷来源：' . ($longSource ? mb_substr($sourceFilter, 0, 40) . '…' : $sourceFilter);
+  }
+  ?>
+  <?php if ($scopeLabel !== null): ?>
     <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary-soft px-4 py-3">
-      <p class="text-sm text-ink">
-        正在刷：<span class="font-medium"><?= e($paperName) ?></span>
+      <p class="text-sm text-ink"<?= !empty($sourceFilter) && empty($paperIdFilter) ? ' title="' . e($sourceFilter) . '"' : '' ?>>
+        <?= e($scopeLabel) ?>
       </p>
       <a href="/practice" class="min-h-11 rounded-lg border border-line bg-surface px-4 py-2 text-xs text-muted transition hover:bg-surface-alt">
         看全部题目
       </a>
     </div>
   <?php endif; ?>
-<div class="space-y-5" id="practice-root">
   <!-- 模式切换 -->
   <div class="flex flex-wrap items-center justify-between gap-3">
     <div
