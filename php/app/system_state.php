@@ -116,36 +116,73 @@ function update_state_write(array $patch)
  */
 function update_state_write_guarded(callable $mutator)
 {
-    $file = update_state_file();
-    $dir = dirname($file);
-    $fp = @fopen($file, 'c');
-    if ($fp === false) {
+    // 锁独立锁文件（见 update_state_lock_file 的说明）
+    $lock = update_state_lock_acquire();
+    if ($lock === null) {
         // 明确区分「目录不可写」与「已有更新在跑」：之前这两种都返回 false，
         // 接口一律回 409「已有更新正在进行中」，与真实原因毫无关系且无法自愈
         return false;
     }
-    @flock($fp, LOCK_EX);
 
-    $raw = stream_get_contents($fp);
-    $current = json_decode((string) $raw, true);
-    if (!is_array($current)) {
-        $current = update_state_blank();
+    try {
+        $next = $mutator(update_state_read_locked());
+        if (!is_array($next)) {
+            return false;
+        }
+        return update_state_put_atomically(
+            update_state_file(),
+            json_encode($next, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+        );
+    } finally {
+        update_state_lock_release($lock);
     }
-    $next = $mutator($current);
-    if (!is_array($next)) {
-        @flock($fp, LOCK_UN);
+}
+
+/**
+ * 独立锁文件的路径。
+ *
+ * 为什么不能锁状态文件本身：写盘用的是「同目录临时文件 + rename 原子替换」，
+ * 而 rename 替换的是**目录项**，锁却挂在旧 inode 上 —— rename 一完成，旧 inode
+ * 就被 unlink，锁随之失效。下一个写者 fopen 拿到的是新 inode，锁了一个完全无关的
+ * 对象。实测两个并发写者会互相整条覆盖（期望 {"log":["A","B"]}，实际 {"log":["B"]}），
+ * 两个并发 try_start 也会双双通过（10 轮里 4 轮）。
+ *
+ * 所以锁必须落在一个**永远不会被 rename 替换**的文件上。
+ */
+function update_state_lock_file()
+{
+    return dirname(update_state_file()) . '/update_state.lock';
+}
+
+/** 加独占锁。失败返回 null（调用方据此判定「目录不可写」）。 */
+function update_state_lock_acquire()
+{
+    $fp = @fopen(update_state_lock_file(), 'c');
+    if ($fp === false) {
+        return null;
+    }
+    if (!@flock($fp, LOCK_EX)) {
         fclose($fp);
-        return false;
+        return null;
     }
+    return $fp;
+}
 
-    $ok = update_state_put_atomically(
-        $file,
-        json_encode($next, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
-    );
+function update_state_lock_release($fp)
+{
+    if (is_resource($fp)) {
+        @flock($fp, LOCK_UN);
+        @fclose($fp);
+    }
+}
 
-    @flock($fp, LOCK_UN);
-    fclose($fp);
-    return $ok;
+/** 在排他区里读当前状态。 */
+function update_state_read_locked()
+{
+    $file = update_state_file();
+    $raw = is_file($file) ? @file_get_contents($file) : false;
+    $cur = $raw === false ? null : json_decode((string) $raw, true);
+    return is_array($cur) ? $cur : update_state_blank();
 }
 
 /** 原子写一个 JSON 文件：同目录临时文件 + rename。 */
@@ -169,12 +206,22 @@ function update_state_put_atomically($file, $payload)
  */
 function update_state_log($line)
 {
-    $state = update_state_read();
-    $state['log'][] = '[' . date('H:i:s') . '] ' . $line;
-    if (count($state['log']) > 200) {
-        $state['log'] = array_slice($state['log'], -200);
-    }
-    update_state_write(['log' => $state['log']]);
+    $entry = '[' . date('H:i:s') . '] ' . $line;
+
+    // ⚠️ 读-改-写必须**整段在锁里**。原来是 update_state_read()（无锁）
+    // → 改 → update_state_write()（有锁），两个并发进程会读到同样的旧状态、
+    // 各自 append 一条，然后后写的把先写的整条覆盖掉 ——
+    // 实测 5 个并发进程写 5 条日志，最后只剩 3 条。
+    // 日志恰恰是排查「到底发生了什么」的依据，丢行等于把线索扔了。
+    update_state_write_guarded(function ($current) use ($entry) {
+        $log = (array) ($current['log'] ?? []);
+        $log[] = $entry;
+        if (count($log) > 200) {
+            $log = array_slice($log, -200);
+        }
+        $current['log'] = $log;
+        return $current;
+    });
 }
 
 /** 重置状态，开始一次新的更新 */
@@ -202,51 +249,49 @@ function update_state_start()
  */
 function update_state_try_start()
 {
-    $fp = @fopen(update_state_file(), 'c');
-    if ($fp === false) {
-        return false;
-    }
-    @flock($fp, LOCK_EX);
-
-    $raw = stream_get_contents($fp);
-    $current = json_decode((string) $raw, true);
-    if (!is_array($current)) {
-        $current = update_state_blank();
-    }
-    // 自愈：状态说「在跑」，但已超时且后台进程确实不在了 → 直接放行。
-    // 原来 stale 判定只用于界面展示、从不解锁：worker 被 OOM 杀掉或机器重启后，
-    // running 永远为 true → **所有后续更新一律 409，只能手工删 JSON 才能恢复**。
-    if (!empty($current['running']) && !update_state_lock_is_releasable($current)) {
-        @flock($fp, LOCK_UN);
-        fclose($fp);
+    $lock = update_state_lock_acquire();
+    if ($lock === null) {
         return false;
     }
 
-    $log = (array) ($current['log'] ?? []);
-    if (!empty($current['running'])) {
-        $mins = (int) round((time() - (int) strtotime((string) ($current['startedAt'] ?? 'now'))) / 60);
-        array_unshift($log, '[自愈] 上一次更新已失去进程且状态超时（' . $mins . ' 分钟），自动解除占用');
+    try {
+        $current = update_state_read_locked();
+
+        // 自愈：状态说「在跑」，但已超时且后台进程确实不在了 → 直接放行。
+        // 原来 stale 判定只用于界面展示、从不解锁：worker 被 OOM 杀掉或机器重启后，
+        // running 永远为 true → **所有后续更新一律 409，只能手工删 JSON 才能恢复**。
+        if (!empty($current['running']) && !update_state_lock_is_releasable($current)) {
+            return false;
+        }
+
+        $log = (array) ($current['log'] ?? []);
+        if (!empty($current['running'])) {
+            $mins = (int) round((time() - (int) strtotime((string) ($current['startedAt'] ?? 'now'))) / 60);
+            array_unshift($log, '[自愈] 上一次更新已失去进程且状态超时（' . $mins . ' 分钟），自动解除占用');
+        }
+
+        $next = array_merge($current, [
+            'running' => true,
+            'stage' => '准备中',
+            'log' => $log,
+            'error' => null,
+            'finished' => false,
+            'startedAt' => now_iso(),
+            'finishedAt' => null,
+            // 这里是 FPM 池进程的 pid，**不是**更新 worker 的。
+            // 自愈判定「进程是否还活着」不能依赖它 —— 池 worker 是长驻的，
+            // 拿它去查永远查得到，running 就永远不解锁。
+            // worker_update.php 会自己写入真正的 pid（见那边的 update_state_write）。
+            'starterPid' => (int) getmypid(),
+        ]);
+
+        return update_state_put_atomically(
+            update_state_file(),
+            json_encode($next, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+        );
+    } finally {
+        update_state_lock_release($lock);
     }
-
-    $next = array_merge($current, [
-        'running' => true,
-        'stage' => '准备中',
-        'log' => $log,
-        'error' => null,
-        'finished' => false,
-        'startedAt' => now_iso(),
-        'finishedAt' => null,
-        'pid' => (int) getmypid(),
-    ]);
-    $ok = update_state_put_atomically(
-        update_state_file(),
-        json_encode($next, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
-    );
-
-    @flock($fp, LOCK_UN);
-    fclose($fp);
-
-    return (bool) $ok;
 }
 
 /**

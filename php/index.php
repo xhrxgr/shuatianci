@@ -12,6 +12,48 @@
  *   建表与种子改为「首次发现表不存在时才执行」，效果等价。
  */
 
+/*
+ * ---- 维护窗口检查（必须在加载任何业务代码之前）----
+ *
+ * 为什么必须前置：`git reset --hard` 是逐文件改写工作区的，切换那几秒里
+ * 并发请求可能 require 到**写了一半**的 PHP 文件，直接 ParseError 就 fatal 了。
+ * 检查若排在 require 之后，文件已经加载炸了，维护页根本没机会执行 ——
+ * 那正是这个机制要解决的故障本身。
+ *
+ * maintenance.php 只依赖 errors.php（纯类与函数定义，无执行逻辑），前置是安全的。
+ */
+require_once __DIR__ . '/app/maintenance.php';
+
+(function () {
+    $maint = maintenance_active();
+    if ($maint === false) {
+        return;
+    }
+    $path = (string) parse_url((string) ($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
+    http_response_code(503);
+    header('Retry-After: 3');
+    if (strpos($path, '/api') === 0) {
+        // API 必须回 JSON：前端拿到 HTML 会 JSON.parse 失败，最后只显示
+        // 「请求失败（503）」这种没有信息量的提示，还会继续傻等
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'ok' => false,
+            'error' => '正在更新，请稍候',
+            'detail' => (string) ($maint['reason'] ?? ''),
+            'retryAfter' => (int) ($maint['secondsLeft'] ?? 3),
+            'maintenance' => true,
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    header('Content-Type: text/html; charset=utf-8');
+    echo maintenance_page(
+        '正在更新，请稍候',
+        '服务器正在切换到新版本，通常几秒钟就好，页面会自动刷新。',
+        ''
+    );
+    exit;
+})();
+
 require_once __DIR__ . '/app/config.php';
 require_once __DIR__ . '/app/db.php';
 require_once __DIR__ . '/app/errors.php';
@@ -224,23 +266,6 @@ try {
 
     // 更新完成后自动生效：消费后台进程留下的「刷新 opcache」标记
     maybe_apply_reload_flag();
-
-    // ---- 维护窗口：worker 正在 git reset --hard ----
-    // reset 是逐文件改写工作区的，那几秒里并发请求会读到半新半旧的代码组合，
-    // 表现为整站 500 且原因难查。这里挡一道。标记有 TTL，worker 被强杀也不会
-    // 把站点永久锁在维护态。
-    $maint = maintenance_active();
-    if ($maint !== false) {
-        http_response_code(503);
-        header('Retry-After: 3');
-        header('Content-Type: text/html; charset=utf-8');
-        echo maintenance_page(
-            '正在更新，请稍候',
-            '服务器正在切换到新版本，通常几秒钟就好，页面会自动刷新。',
-            ''
-        );
-        exit;
-    }
 
     // CORS 默认关闭；开启时预检请求会在这里结束
     if (send_cors_headers()) {
