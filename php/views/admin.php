@@ -610,6 +610,43 @@ $adminTabs = [
   </div>
 </div>
 
+<!-- ============ 删除试卷确认弹窗 ============ -->
+<!--
+  两个按钮而不是一句「确定吗」：
+  - 「只删除试卷，保留题目」是默认行为（录重复卷、归错组时的正确选择）
+  - 「连题目一起删」是确实想整套清掉时才用的，红色 + 明确写清会连带删掉什么
+  window.confirm 放不下这两个选项，所以用 dialog（与项目里其他弹窗一致）。
+-->
+<dialog
+  id="delete-paper-dialog"
+  class="w-[min(30rem,calc(100vw-2rem))] rounded-2xl border border-line bg-surface p-0 text-ink backdrop:bg-black/40"
+>
+  <div class="p-5">
+    <h3 class="text-sm font-semibold text-ink">删除试卷</h3>
+    <p class="mt-2 text-sm text-muted" id="delete-paper-desc"></p>
+    <p class="mt-3 rounded-lg bg-surface-alt px-3 py-2 text-xs text-faint">
+      试卷只是题目的一种归类方式。题目本身还留在题库里，随时能重新归到别的卷。
+    </p>
+    <div class="mt-5 flex flex-col gap-2">
+      <button
+        type="button"
+        data-action="delete-paper-keep-questions"
+        class="min-h-11 rounded-xl border border-line bg-surface px-6 py-3 text-sm font-medium text-ink transition hover:bg-surface-alt"
+      >只删除试卷，保留题目</button>
+      <button
+        type="button"
+        data-action="delete-paper-with-questions"
+        class="min-h-11 rounded-xl border border-danger/40 px-6 py-3 text-sm font-medium text-danger transition hover:bg-danger-soft"
+      >删除试卷，并删除这些题目</button>
+      <button
+        type="button"
+        data-action="delete-paper-cancel"
+        class="min-h-11 rounded-xl px-6 py-3 text-sm text-muted transition hover:bg-surface-alt"
+      >取消</button>
+    </div>
+  </div>
+</dialog>
+
 <!-- ============ 虚拟卷成员编辑弹窗 ============ -->
 <dialog
   id="paper-items-dialog"

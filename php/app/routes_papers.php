@@ -351,23 +351,80 @@ function route_papers_delete($id)
     }
     $isGenerated = (string) ($row['kind'] ?? 'original') === 'generated';
 
+    // 是否连带删除该卷下的题目。
+    // 默认只解除归属 —— 录重复卷、归错组时删的是「这张卷」不是题目本身；
+    // 但确实存在「整套卷录错了想整体清掉」的场景，所以给一个显式开关。
+    $body = request_body();
+    $deleteQuestions = !empty($body['deleteQuestions']);
+
     // 把 UPDATE 的实际影响行数带出事务：
     // 原来直接写死 0，前端会据此提示「已解绑 0 道题」，与事实不符
-    $unlinked = db_transaction(function () use ($id, $isGenerated) {
+    $unlinked = db_transaction(function () use ($id, $isGenerated, $deleteQuestions) {
         $unlinked = 0;
+        $deleted = 0;
         if (!$isGenerated) {
-            $result = execute('UPDATE questions SET paper_id = NULL WHERE paper_id = ?', [$id]);
-            $unlinked = (int) $result['changes'];
+            if ($deleteQuestions) {
+                $deleted = delete_paper_questions($id);
+            } else {
+                $result = execute('UPDATE questions SET paper_id = NULL WHERE paper_id = ?', [$id]);
+                $unlinked = (int) $result['changes'];
+            }
         }
         // 生成记录随卷删除：它记的是「这张卷是哪次生成的」，卷没了记录就没意义
         execute('DELETE FROM blueprint_runs WHERE paper_id = ?', [$id]);
         execute('DELETE FROM papers WHERE id = ?', [$id]);
         // 成员投影一并清掉：卷都没了，留着这些行会让「按卷看题」查出已删的卷
         execute('DELETE FROM paper_items WHERE paper_id = ?', [$id]);
-        return $unlinked;
+        return [$unlinked, $deleted];
     });
 
-    json_response(['ok' => true, 'unlinkedQuestions' => $unlinked, 'wasGenerated' => $isGenerated]);
+    [$unlinked, $deleted] = $unlinked;
+    json_response([
+        'ok' => true,
+        'unlinkedQuestions' => $unlinked,
+        'deletedQuestions' => $deleted,
+        'wasGenerated' => $isGenerated,
+    ]);
+}
+
+/**
+ * 删除一张卷下的全部题目，连同所有按题关联的派生数据与用户数据。
+ *
+ * 必须一起清理的（否则会留下悬空引用）：
+ *   questions         题目本体
+ *   question_tags / question_hints  派生投影（不清理的话筛选与解析会查到已删的题）
+ *   paper_items       卷成员
+ *   user_progress     掌握状态（复合唯一键含 question_id）
+ *   practice_records  做题记录（错题本、统计都从它来）
+ *   user_marks        我的标记
+ *
+ * user_favorites 是按**来源文本**存的，不按题目，不受删题影响。
+ *
+ * @param string $paperId
+ * @return int 实际删除的题目数
+ */
+function delete_paper_questions($paperId)
+{
+    $ids = [];
+    foreach (query('SELECT id FROM questions WHERE paper_id = ?', [$paperId]) as $row) {
+        $ids[] = (string) $row['id'];
+    }
+    if ($ids === []) {
+        return 0;
+    }
+
+    // SQLite 的 IN 有变量数上限（默认 999），分批删，避免大批量时语法错
+    foreach (array_chunk($ids, 400) as $chunk) {
+        $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+        $params = array_values($chunk);
+        execute("DELETE FROM question_tags WHERE question_id IN ($placeholders)", $params);
+        execute("DELETE FROM question_hints WHERE question_id IN ($placeholders)", $params);
+        execute("DELETE FROM user_progress WHERE question_id IN ($placeholders)", $params);
+        execute("DELETE FROM practice_records WHERE question_id IN ($placeholders)", $params);
+        execute("DELETE FROM user_marks WHERE question_id IN ($placeholders)", $params);
+        execute("DELETE FROM questions WHERE id IN ($placeholders)", $params);
+    }
+    return count($ids);
 }
 
 /**

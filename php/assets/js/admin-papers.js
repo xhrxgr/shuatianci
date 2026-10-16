@@ -258,22 +258,58 @@ export function setupPaperAndQuestionPanels(context) {
     }
   }
 
-  /** 删除试卷（题目保留，只解除归属） */
-  async function handleDeletePaper(id, name) {
-    const count = allPapers.find((paper) => paper.id === id)?.questionCount ?? 0;
-    const message =
-      count > 0
-        ? `确定删除试卷「${name}」吗？\n\n该卷下的 ${count} 道题会保留在题库中，只是不再归属任何试卷。`
+  /** 打开「删除试卷」确认弹窗：题目留不留由用户在弹窗里选 */
+  function openDeletePaperDialog(paperId, name, count) {
+    const dialog = document.getElementById("delete-paper-dialog");
+    if (!dialog) return;
+    const desc = document.getElementById("delete-paper-desc");
+    if (desc) {
+      desc.textContent = count > 0
+        ? `确定删除试卷「${name}」吗？该卷下有 ${count} 道题。`
         : `确定删除试卷「${name}」吗？`;
-    if (!window.confirm(message)) return;
+    }
+    const withBtn = dialog.querySelector('[data-action="delete-paper-with-questions"]');
+    // 没有题目的卷就不必给「连题一起删」这个选项
+    if (withBtn) {
+      withBtn.hidden = count <= 0;
+    }
+    dialog.dataset.paperId = paperId;
+    dialog.showModal();
+  }
+
+  /** 真正执行删除。withQuestions 决定题目是保留还是一起删。 */
+  async function confirmDeletePaper(withQuestions) {
+    const dialog = document.getElementById("delete-paper-dialog");
+    if (!dialog) return;
+    const paperId = dialog.dataset.paperId;
+    const count = Number(dialog.dataset.questionCount || 0);
+
+    if (withQuestions && count > 0) {
+      const ok = window.confirm(
+        `最后确认：这会连同「${dialog.dataset.paperName || "该试卷"}」下的 ${count} 道题一起删除，\n\n` +
+          "题目的掌握状态、做题记录、标记会一并清掉，无法恢复。\n确定继续吗？"
+      );
+      if (!ok) return;
+    }
 
     try {
-      await api.deletePaper(id);
-      setFlash(count > 0 ? `已删除试卷，其下 ${count} 道题已移出该卷` : "已删除试卷");
+      const result = await api.deletePaper(paperId, { deleteQuestions: withQuestions });
+      dialog.close();
+      const deleted = Number(result?.deletedQuestions ?? 0);
+      if (deleted > 0) {
+        setFlash(`已删除试卷及其下 ${deleted} 道题`);
+      } else {
+        setFlash(count > 0 ? `已删除试卷，其下 ${count} 道题已移出该卷` : "已删除试卷");
+      }
       window.location.reload();
     } catch (error) {
-      // 删除会再弹一次确认框，这是有意的
-      showFlash(error, "danger", { retry: () => void handleDeletePaper(id, name) });
+      dialog.close();
+      showFlash(error, "danger", {
+        retry: () => {
+          if (withQuestions) void confirmDeletePaper(true);
+          else void confirmDeletePaper(false);
+        },
+      });
     }
   }
 
@@ -665,8 +701,28 @@ export function setupPaperAndQuestionPanels(context) {
       case "save-paper":
         void handleSavePaper(item);
         break;
-      case "delete-paper":
-        void handleDeletePaper(button.dataset.id, button.dataset.name);
+      case "delete-paper": {
+        // 打开确认弹窗：题目留不留由用户在弹窗里选
+        // 题目数从这一行已有的「共 N 道题」文字里取，不额外加 data 属性
+        // （加了在页面上就会出现两个数字）
+        const rowText = button.closest("[data-paper-manage]")?.innerText ?? "";
+        const count = Number((rowText.match(/共 ([0-9,]+) 道题/) ?? ["0", "0"])[1].replace(/,/g, ""));
+        const dialog = document.getElementById("delete-paper-dialog");
+        if (dialog) {
+          dialog.dataset.questionCount = String(count);
+          dialog.dataset.paperName = button.dataset.name ?? "";
+        }
+        openDeletePaperDialog(button.dataset.id, button.dataset.name ?? "", count);
+        break;
+      }
+      case "delete-paper-keep-questions":
+        void confirmDeletePaper(false);
+        break;
+      case "delete-paper-with-questions":
+        void confirmDeletePaper(true);
+        break;
+      case "delete-paper-cancel":
+        document.getElementById("delete-paper-dialog")?.close();
         break;
       case "view-paper-question":
         togglePaperQuestionDetail(button.dataset.id);

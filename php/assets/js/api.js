@@ -175,7 +175,12 @@ export const api = {
   getPaper: (id) => request(`/papers/${id}`),
   createPaper: (paper) => request("/papers", { method: "POST", body: paper }),
   updatePaper: (id, patch) => request(`/papers/${id}`, { method: "PUT", body: patch }),
-  deletePaper: (id) => request(`/papers/${id}`, { method: "DELETE" }),
+  // options.deleteQuestions：是否连带删除该卷下的题目（默认只解除归属）
+  deletePaper: (id, options = {}) =>
+    request(`/papers/${id}`, {
+      method: "DELETE",
+      body: options.deleteQuestions ? { deleteQuestions: true } : {},
+    }),
   /** 批量把题目移到某张卷；paperId 传 null 表示移出。仅原始卷可用 */
   setQuestionsPaper: (questionIds, paperId) =>
     request("/questions/paper", { method: "PUT", body: { questionIds, paperId } }),
