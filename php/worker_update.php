@@ -25,6 +25,7 @@ require_once __DIR__ . '/app/config.php';
 require_once __DIR__ . '/app/util.php';
 require_once __DIR__ . '/app/system_state.php';
 require_once __DIR__ . '/app/routes_system.php';
+require_once __DIR__ . '/app/maintenance.php';
 
 /** 标记需要刷新 opcache（由 update-status 接口消费） */
 function mark_reload()
@@ -127,12 +128,29 @@ try {
     }
 
     update_state_log("git reset --hard {$target}");
+
+    // 维护窗口：reset 是逐文件改写工作区的，那几秒里并发请求可能读到
+    // 半新半旧的代码组合（新 index.php + 旧 routes_*.php）→ 整站 500 且难查。
+    // 写标记让 bootstrap 挡一道。标记带 TTL，worker 中途被强杀也能自动失效。
+    maintenance_mark('正在切换到 ' . substr($remoteCommit, 0, 7));
+    update_state_log('已进入维护窗口（切换代码期间不处理请求，最多 180 秒自动恢复）');
+
     $reset = git_cmd(['reset', '--hard', $target], 60);
     if ($reset['code'] !== 0) {
+        maintenance_clear();
         throw new RuntimeException(trim($reset['err'] !== '' ? $reset['err'] : $reset['out']));
     }
 
     $new = git_cmd(['rev-parse', 'HEAD'], 20);
+
+    // 落地校验通过才退出维护态：这时 HEAD 已经是对的，代码是完整的
+    $headOk = $remoteCommit === '' || trim($new['out']) === $remoteCommit;
+    if ($headOk) {
+        maintenance_clear();
+    } else {
+        // 校验没过就先不放流量，但也别把标记留着锁死站点 —— TTL 会兜底
+        update_state_log('HEAD 与目标不一致，仍在维护窗口中，请检查仓库状态');
+    }
     update_state_log('代码已更新到 ' . substr($new['out'], 0, 7));
     // 落地校验：说了要更新到哪，就得真的在那，否则后面的「更新完成」是假的
     if ($remoteCommit !== '' && trim($new['out']) !== $remoteCommit) {
@@ -147,10 +165,12 @@ try {
     update_state_log('前端为 PHP 渲染，无构建步骤；代码已生效');
     mark_reload();
     update_state_log('已刷新 PHP 缓存');
-    // 数据库结构迁移（ALTER TABLE / 建表）在**下一次请求**的 bootstrap 里跑，
-    // 不在这里。写清楚：万一迁移失败导致整站 500，用户知道该看哪里
+    // 数据库结构迁移（ALTER TABLE / 建表）在**下一次请求**的 bootstrap 里跑。
+    // 写 pending_migration 标记：那个 bootstrap 会因此把「迁移失败」翻译成
+    // 一句说清怎么办的话，而不是让用户对着一个空白 500 发呆。
+    pending_migration_mark(trim((string) $new['out']));
     update_state_log('数据库结构迁移将在刷新后的第一次请求时自动执行；'
-        . '若此时站点报错，多半是迁移失败，回滚代码即可（旧代码能兼容新的库结构）');
+        . '若失败，页面会明确提示如何回滚');
     define('EQ_UPDATE_DONE', true);
     update_state_finish(null);
 } catch (Throwable $e) {
@@ -161,6 +181,9 @@ try {
     update_state_log('正在回滚到 ' . substr($rollbackCommit, 0, 7));
 
     $resetBack = git_cmd(['reset', '--hard', $rollbackCommit], 30);
+    // 回滚成功就立刻恢复服务，别让维护窗口白等 TTL
+    maintenance_clear();
+    pending_migration_clear();
     if ($resetBack['code'] === 0) {
         update_state_log('代码已回滚');
     } else {

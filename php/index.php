@@ -29,6 +29,7 @@ require_once __DIR__ . '/app/routes_blueprints.php';
 require_once __DIR__ . '/app/routes_admin.php';
 require_once __DIR__ . '/app/routes_system.php';
 require_once __DIR__ . '/app/routes_passages.php';
+require_once __DIR__ . '/app/maintenance.php';
 require_once __DIR__ . '/app/routes_pages.php';
 
 /**
@@ -224,12 +225,55 @@ try {
     // 更新完成后自动生效：消费后台进程留下的「刷新 opcache」标记
     maybe_apply_reload_flag();
 
+    // ---- 维护窗口：worker 正在 git reset --hard ----
+    // reset 是逐文件改写工作区的，那几秒里并发请求会读到半新半旧的代码组合，
+    // 表现为整站 500 且原因难查。这里挡一道。标记有 TTL，worker 被强杀也不会
+    // 把站点永久锁在维护态。
+    $maint = maintenance_active();
+    if ($maint !== false) {
+        http_response_code(503);
+        header('Retry-After: 3');
+        header('Content-Type: text/html; charset=utf-8');
+        echo maintenance_page(
+            '正在更新，请稍候',
+            '服务器正在切换到新版本，通常几秒钟就好，页面会自动刷新。',
+            ''
+        );
+        exit;
+    }
+
     // CORS 默认关闭；开启时预检请求会在这里结束
     if (send_cors_headers()) {
         exit;
     }
 
-    bootstrap();
+    // ---- 迁移守卫 ----
+    // 更新后第一次请求会在这里跑数据库迁移。若迁移抛错，原来是一片 500，
+    // 用户既不知道发生了什么，也不知道代码已经换过版本、能不能回滚。
+    // 有 pending_migration 标记时把错误变成一句说清怎么办的话。
+    $migrating = pending_migration_pending() > 0;
+    try {
+        bootstrap();
+    } catch (Throwable $bootErr) {
+        error_log('[bootstrap] ' . $bootErr->getMessage());
+        if ($migrating) {
+            http_response_code(503);
+            header('Content-Type: text/html; charset=utf-8');
+            echo maintenance_page(
+                '新版本的数据库结构没能初始化成功',
+                '代码已更新到最新版，但数据库结构升级失败：' . $bootErr->getMessage(),
+                '解决办法：在服务器上执行 git reset --hard HEAD~1 回到上一个版本，'
+                . '站点会立刻恢复。数据库结构的改动只做加法，旧代码可以继续用新库，'
+                . '所以回滚代码是安全的，不会丢数据。'
+            );
+            exit;
+        }
+        throw $bootErr;
+    }
+    if ($migrating) {
+        // 迁移成功（bootstrap 没抛）→ 清掉标记，别每次请求都多走一次判断
+        pending_migration_clear();
+    }
     attach_user();
 
     // 页面与接口共用同一个入口：/api/* 走 JSON，其余渲染 HTML 页面。

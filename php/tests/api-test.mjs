@@ -970,7 +970,9 @@ async function main() {
     status.status === 200 &&
       // stale 是 v3.6.6 加的：后台进程卡死时前端据此停止轮询
     Object.keys(status.data).sort().join(",")
-      === "error,finished,finishedAt,log,ok,running,stage,stale,startedAt",
+      // v3.7.1 补的可观测性字段：runningFor（已跑多久）/ pid / pidAlive（进程是否还活着）/
+      // selfHealed（能否自愈解锁）/ rollbackCommit（worker 被强杀时手动回滚用）/ logFile
+      === "error,finished,finishedAt,log,logFile,ok,pid,pidAlive,rollbackCommit,running,runningFor,selfHealed,stage,stale,startedAt",
     Object.keys(status.data)
   );
   record("update-status", status.status, status.data);

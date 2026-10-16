@@ -21,6 +21,9 @@ require_once __DIR__ . '/errors.php';
 require_once __DIR__ . '/system_state.php';
 require_once __DIR__ . '/update_source.php';
 
+/** 单条命令的输出上限（字节）：防 git 异常输出吃光内存 */
+define('EQ_MAX_COMMAND_OUTPUT', 1024 * 256);
+
 /**
  * 执行一条命令并取回输出。
  *
@@ -75,8 +78,16 @@ function run_command($command, $cwd, $timeoutSec = 60)
     $exitCode = null;
 
     while (true) {
-        $out .= (string) fread($pipes[1], 8192);
+            $out .= (string) fread($pipes[1], 8192);
         $err .= (string) fread($pipes[2], 8192);
+        // 输出上限：git 异常时可能刷出大量内容（进度条、巨大 diff），
+        // 不封顶会把这一个请求的内存吃光，进而拖垮整个 FPM 池
+        if (strlen($out) > EQ_MAX_COMMAND_OUTPUT) {
+            $out = substr($out, 0, EQ_MAX_COMMAND_OUTPUT) . "\n[输出过长，已截断]";
+        }
+        if (strlen($err) > EQ_MAX_COMMAND_OUTPUT) {
+            $err = substr($err, 0, EQ_MAX_COMMAND_OUTPUT) . "\n[错误输出过长，已截断]";
+        }
         $status = proc_get_status($process);
         if (!$status['running']) {
             if (isset($status['exitcode']) && (int) $status['exitcode'] >= 0) {
@@ -474,9 +485,17 @@ function git_objects_foreign_owner()
         return null; // 本地开发不涉及属主问题；posix 扩展被禁用时跳过
     }
     $uid = posix_geteuid();
-    // 只看两级：objects/xx/yyyy... 是 git 的真实布局，再深就是 pack 目录
+    // ⚠️ 原来**只探 .git/objects**，但：
+    //   fetch 还要写 .git/refs/remotes/origin/* 与 .git/packed-refs
+    //   reset --hard 还要写 .git/index 与 .git/logs/HEAD
+    // 属主错位恰好落在这几处时，探针一路报「正常」，直到真正 fetch/reset
+    // 才失败 —— 而报错信息（permission denied on .git/index）完全看不出
+    // 根因是「之前用 root 跑过 git」。所以顶层也要扫。
+    //
+    // objects 只看两级：objects/xx/yyyy... 是 git 的真实布局，再深就是 pack。
     $result = run_command(
-        'find .git/objects -mindepth 1 -maxdepth 2 ! -uid ' . $uid . ' -print -quit 2>/dev/null',
+        'find .git ! -uid ' . $uid . ' -print -quit 2>/dev/null; '
+        . 'find .git/objects -mindepth 1 -maxdepth 2 ! -uid ' . $uid . ' -print -quit 2>/dev/null',
         APP_DIR,
         15
     );
@@ -782,12 +801,20 @@ function route_system_update()
         @mkdir(PHP_DATA_DIR, 0755, true);
     }
 
+    // 日志轮转：更新出问题时，「上一次那次的现场」往往才是关键线索。
+    // 原来每次拉起都用 `>` 截断，失败现场被下一次更新直接抹掉。
+    if (is_file($logFile) && filesize($logFile) > 512 * 1024) {
+        @rename($logFile, PHP_DATA_DIR . '/update_worker.log.1');
+    }
+
     if (PHP_OS_FAMILY === 'Windows') {
         $command = 'start /B "" ' . escapeshellarg($phpBin) . ' ' . escapeshellarg($worker)
             . ' > ' . escapeshellarg($logFile) . ' 2>&1';
     } else {
+        // 用 >> 追加而不是 > 截断：上一次更新失败的现场是排查下一次的关键线索，
+        // 截断等于每次都把上一次的证据擦掉（配上面的轮转，最多留两份）
         $command = 'nohup ' . escapeshellarg($phpBin) . ' ' . escapeshellarg($worker)
-            . ' > ' . escapeshellarg($logFile) . ' 2>&1 &';
+            . ' >> ' . escapeshellarg($logFile) . ' 2>&1 &';
     }
     $result = run_command($command, APP_DIR, 10);
     if ($result['code'] !== 0 && $result['code'] !== -1) {
@@ -809,21 +836,51 @@ function route_system_update_status()
     maybe_apply_reload_flag();
 
     $state = update_state_read();
-    // 后台进程若异常退出（致命错误来不及写状态），界面会永远停在「更新中」，
-    // 且后续更新被 409 挡死。这里按耗时判定并如实告知，让用户可以重试
+    $running = !empty($state['running']);
     $stale = update_state_is_stale($state);
+
+    // 可观测性：让界面能回答「它还活着吗」「已经跑了多久」「卡住了怎么办」。
+    // 之前只有 running 与 stale 两个布尔量，用户看到「更新中」却无从判断
+    // 是正常在跑、还是早就死了只能干等。
+    $pid = (int) ($state['pid'] ?? 0);
+    $pidAlive = $pid > 0 ? update_state_pid_alive($pid) : null;
+    $startedAt = (string) ($state['startedAt'] ?? '');
+    $runningFor = 0;
+    if ($running && $startedAt !== '') {
+        $runningFor = max(0, time() - (int) strtotime($startedAt));
+    }
+
+    // 已经超时且进程确实不在了 → 明确告诉用户「下次发起更新会自动解除占用」
+    $selfHealed = $running && $stale && $pidAlive === false;
+    $error = $state['error'];
+    if ($running && $stale) {
+        $error = '更新进程超过 10 分钟没有进展。'
+            . ($pidAlive === false
+                ? '进程已经不在了（可能被系统回收或强杀）；下次发起更新时会自动解除占用。'
+                : '进程仍在运行，可能是网络很慢，可以再等等。')
+            . '现场日志见 php/data/update_worker.log。';
+    } elseif ($stale && $error === null) {
+        $error = '上一次更新进程已退出。';
+    }
+
     json_response([
         'ok' => true,
-        'running' => !empty($state['running']),
-        'stage' => $stale ? '更新进程已超时未响应' : (string) $state['stage'],
-        'log' => array_values((array) $state['log']),
-        'error' => $stale
-            ? '更新进程超过 10 分钟没有进展，多半已异常退出（详见 php/data/update_worker.log）。可重新发起更新。'
-            : $state['error'],
+        'running' => $running,
+        'stage' => $running && $stale ? '更新进程已超时未响应' : (string) ($state['stage'] ?? ''),
+        'log' => array_values((array) ($state['log'] ?? [])),
+        'error' => $error,
         'finished' => !empty($state['finished']),
         'stale' => $stale,
-        'startedAt' => $state['startedAt'],
+        'startedAt' => $startedAt,
         'finishedAt' => $state['finishedAt'],
+        // ---- 以下为可观测性补充 ----
+        'runningFor' => $runningFor,
+        'pid' => $pid > 0 ? $pid : null,
+        'pidAlive' => $pidAlive,
+        'selfHealed' => $selfHealed,
+        // 回滚锚点：worker 被强杀导致它来不及回滚时，管理员可以拿它手动回退
+        'rollbackCommit' => (string) ($state['rollbackCommit'] ?? ''),
+        'logFile' => 'php/data/update_worker.log',
     ]);
 }
 
