@@ -72,11 +72,17 @@ const fullTextOccurrences = await p.evaluate(
 );
 check("全文没有平铺在预览里（折叠状态下应为 0 处可见）", fullTextOccurrences === 0, fullTextOccurrences);
 
-const summaries = await p.locator('#admin-ai-preview-list details summary').count();
-check("每题都有一个「完整原文」的折叠入口", summaries === 3, summaries);
+// 3 道题带的是**同一份**原文（AI 提示词要求同一篇下所有题填同一份），
+// 所以只应有 1 个折叠入口，其余标「与第 N 题相同」
+const summaries = await p.locator("#admin-ai-preview-list details summary").count();
+check("同一份原文只渲染 1 个折叠入口（不是 3 个）", summaries === 1, summaries);
 
-const summaryText = summaries > 0 ? await p.locator('#admin-ai-preview-list details summary').first().innerText() : "";
-check("折叠标题写清了字数", /完整原文（\d+ 字/.test(summaryText), summaryText.slice(0, 40));
+const dedupNotes = await p.locator("#admin-ai-preview-list").innerText();
+check("重复的题标了「与第 N 题相同」", /与第 1 题相同/.test(dedupNotes), dedupNotes.slice(0, 120));
+check("唯一的入口写明本批几道题共用", /本批 3 道题共用/.test(dedupNotes), dedupNotes.slice(0, 160));
+
+const summaryText = summaries > 0 ? await p.locator("#admin-ai-preview-list details summary").first().innerText() : "";
+check("折叠标题写清了字数", /[0-9]+ 字/.test(summaryText), summaryText.slice(0, 60));
 
 // 折叠默认收起
 const openStates = await p.locator("#admin-ai-preview-list details").evaluateAll((els) => els.map((e) => e.open));

@@ -1152,6 +1152,35 @@ function el(tag, className, text) {
  * 按「真实刷题页」的样子呈现：原句（空位高亮）+ 每个空的答案/提示词/标签/解析，
  * 让用户在导入前就能判断 AI 有没有读错。
  */
+/**
+ * 这份原文在本批预览里是否已经出现过。
+ *
+ * 场景：AI 导入时，提示词里明确要求「同一篇下的所有 Question 填**同一份**原文，
+ * 一字不差」—— 所以刚粘贴完、还没点「套用到本批」时，N 道题各自都带着
+ * **一模一样的** passageText。哪怕每处都改成折叠，10 道题仍有 10 个内容相同的入口，
+ * 依然是重复信息。
+ *
+ * 所以：同一批里只有**第一次出现**的那道题渲染原文入口，其余的只标一句
+ * 「与第 N 题相同」，点不开也不占地方。
+ *
+ * @param {string} text 原文
+ * @param {number} currentIndex 当前题的序号
+ * @returns {number} 首次出现的序号（与 currentIndex 相同表示该题是首次出现）
+ */
+function passageFirstIndex(text, currentIndex) {
+  const target = String(text ?? "").trim();
+  if (target === "") {
+    return -1;
+  }
+  for (let i = 0; i < currentIndex; i += 1) {
+    const other = previewList[i];
+    if (other && String(other.passageText ?? "").trim() === target) {
+      return i;
+    }
+  }
+  return currentIndex;
+}
+
 function renderPreviewItem(item, verdict, index) {
   // 正在编辑这张卡片：整个卡片换成表单，保存/取消后再回到预览态
   if (previewEditIndex === index) {
@@ -1249,15 +1278,33 @@ function renderPreviewItem(item, verdict, index) {
   // 所以分两种情况：
   //   1. 已套用共用篇章 → 顶部「本篇完整原文」面板已经有一份，
   //      这里只留一个「共用原文」徽标指过去，**不再重复渲染全文**；
-  //   2. 这道题自带一份独立原文（没套用篇章）→ 默认折叠，
-  //      标题写清字数，要核对时点开。
-  if (item.passageText && !item.passageId) {
+  //   2. 这道题自带原文但本批前面已有一样的 → 只标一句「与第 N 题相同」；
+  //   3. 这道题的原文本批独有 → 默认折叠，标题写清字数与「本批几道题共用」。
+  const firstAt = item.passageId ? -1 : passageFirstIndex(item.passageText, index);
+
+  if (item.passageId) {
+    // 已套用共用篇章：全文在顶部面板，这里什么都不用渲染（徽标在上面）
+  } else if (firstAt >= 0 && firstAt !== index) {
+    // 本批里前面已有一样的原文：只标一句，指回第一次出现的那道题
+    body.appendChild(
+      el(
+        "p",
+        "text-[11px] text-faint",
+        `完整原文与第 ${firstAt + 1} 题相同（${String(item.passageText).length} 字）`
+      )
+    );
+  } else if (item.passageText) {
     const passageBox = el("details", "rounded border border-line bg-surface-alt");
+    const sameCount = previewList.filter(
+      (q) => String(q?.passageText ?? "").trim() === String(item.passageText).trim()
+    ).length;
     passageBox.appendChild(
       el(
         "summary",
         "cursor-pointer list-none px-2.5 py-2 text-[11px] font-medium text-faint transition hover:text-muted",
-        `完整原文（${item.passageText.length} 字，点击展开对照）`
+        sameCount > 1
+          ? `完整原文（本批 ${sameCount} 道题共用这一份，${String(item.passageText).length} 字，点击展开）`
+          : `完整原文（${String(item.passageText).length} 字，点击展开对照）`
       )
     );
     passageBox.appendChild(
