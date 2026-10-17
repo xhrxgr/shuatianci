@@ -8,7 +8,7 @@
  * 有错就整批不导，不做「能导几道导几道」——半批入库比不导入更难收拾。
  */
 
-import { BLANK_PLACEHOLDER, FUNCTION_WORDS, HINT_TYPES } from "./ai-constants.js";
+import { BLANK_PLACEHOLDER, HINT_TYPES } from "./ai-constants.js";
 import { allTagsUnder, findPlaceholderPositions } from "./ai-text.js";
 
 
@@ -141,21 +141,17 @@ function validateQuestion(question, tagDictionary) {
       }
     });
 
-    // 无提示词的空只能考功能词：高考语法填空把「答案唯一、可客观评分」
-    // 作为命题前提，实词太开放（换任何一个也说得通），无法评分。
+    // 无提示词的空：只校验**标签**，不再校验答案用词。
+    //
+    // 原来这里还会检查「答案必须是功能词」，已按用户要求去掉（2026-10-17）：
+    // 做题规则确实是无提示词只考功能词，但题库要能录真题 ——
+    // 有些卷子的空格虽然没有提示词、答案却是实词，机器判定容易误伤，
+    // 录题时有人工复核，所以不在程序里硬拦。
+    //
+    // 保留标签校验是有实际作用的：标签决定筛选与统计口径，
+    // 「无提示词」这个分类（t_004）挂错会让按知识点筛题的结果失真。
     if (blank.hintType === "无提示词") {
-      const notFunction = (blank.answer ?? []).filter(
-        (ans) => !FUNCTION_WORDS.has(String(ans).trim().toLowerCase())
-      );
-      if (notFunction.length > 0) {
-        errors.push(
-          `${label}：无提示词的空只能填功能词（冠词、介词、连词、代词、助动词、情态动词、关系副词等），` +
-            `而「${notFunction.join("、")}」是实词或分词。` +
-            `若这处空格确实只能靠语义猜测，它就不是合格的无提示词填空——请核对原卷该处是否本来就有提示词`
-        );
-      }
-
-      // 标签也必须挂在「无提示词」分类下，不能挂到需要词性转换的分类
+      // 标签必须挂在「无提示词」分类下，不能挂到需要词性转换的分类
       const parentMap = new Map(tagDictionary.tags.map((tag) => [tag.id, tag.parentId]));
       const noHintRoot = tagDictionary.tags.find((tag) => tag.name === "无提示词")?.id;
       if (noHintRoot && (blank.tagIds ?? []).length > 0 && !allTagsUnder(blank.tagIds, parentMap, noHintRoot)) {
