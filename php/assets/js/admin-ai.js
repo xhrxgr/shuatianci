@@ -204,16 +204,26 @@ interface Question {
 
 ${activeTags.map((tag) => `- ${tag.id} ${tag.name}`).join("\n")}
 
-## 完整原文（passage）：一篇阅读挖多个空时必须给
+## 完整原文（passage）：一篇阅读挖多个空时必须给，**但只给一次**
 
 如果这是「一篇阅读 / 一个大题挖多个空」的题型（高考短文填空就是这个形态）：
 
-- 把**整篇未挖掉的原文**放进 passage 字段，同一篇下的所有 Question 填**同一份**，一字不差
+- 把**整篇未挖掉的原文**放进 passage 字段
+- ⚠️ **只放在这一篇 questions 数组的第一道题里，其余每一道都省略 passage 字段。**
+  同一篇的 10 道题重复贴 10 遍全文，会让输出膨胀十倍以上（一篇 500 词的短文
+  能把 JSON 从 60 行撑到 600 行），既拖慢生成、又多花 token，还极易被长度限制截断。
+  **这是硬性要求，不是建议。**
 - 为什么必须给：代词指代、时态呼应、篇章逻辑这类空，只看挖出来的那一句判断不了，
   学生要能随时展开全文对照
 - originalSentence 仍然只放「挖空后的本题句子 + 做出本题必需的上下文」——
   两者不重复也不矛盾：originalSentence 是考题，passage 是参照
-- 单句题（一空一句、无需上下文）可以省略 passage；图片里只有单个句子时也留空
+- 单句题（一空一句、无需上下文）不要 passage；图片里只有单个句子时也留空
+
+**正确写法**（同一篇 3 道题，questions 数组）：
+
+    第 1 题：{ "passage": "整篇原文只在这里出现这一次……", "originalSentence": "第 1 题……", "blanks": [...] }
+    第 2 题：{ "originalSentence": "第 2 题……", "blanks": [...] }
+    第 3 题：{ "originalSentence": "第 3 题……", "blanks": [...] }
 
 ## 核心要求：按句切分，但不能删掉答题依据
 
@@ -1475,18 +1485,18 @@ async function sharePassageForBatch(text) {
 /**
  * 解析完 AI 结果后自动套用「本篇完整原文」。
  *
- * AI 的提示词里已经明确要求「一篇阅读挖多个空时，把整篇未挖掉的原文放进
- * passage 字段，同一篇下的所有 Question 填同一份，一字不差」——
- * 也就是说**原文本来就是 AI 填好的**，用户再手动点一次「套用到本批」
- * 只是重复劳动，还容易让人以为「是不是漏了一步没做」。
+ * AI 的提示词里已明确要求：**整篇原文只放在这一篇 questions 数组的第一道题里**，
+ * 其余每道省略 passage。理由很实在 —— 一篇 500 词的短文重复贴 10 遍，
+ * 会把 JSON 从 60 行撑到 600 行：生成更慢、更费 token，还极易被长度限制截断。
  *
- * 所以这里在解析完成后自动判断：
- *   - 本批**全部**题都带原文，且内容完全一致 → 直接建篇章并套用；
- *   - 只有一部分带、或内容不一致 → 不自动处理（那说明 AI 的输出不规整，
- *     自动猜反而可能把错的原文套上去），保持各题各自带原文，走折叠显示。
+ * 原文本来就是 AI 填好的，用户再手动点一次「套用到本批」是重复劳动，
+ * 还容易让人以为漏了一步没做，所以这里自动做掉。
  *
- * 失败**不阻断**：套用只是优化，失败就退回「各题带自己的原文」，
- * 导入照常进行。
+ * 判定很简单：**有且只有第一道题带 passage**，就按「这一篇就是这个原文」套用。
+ * 别的形态（多题各带一份、只有中间某题带）一律不自动处理 ——
+ * 说不清哪份才是这篇的原文，自动猜反而可能把错的套上去。
+ *
+ * 失败**不阻断**：套用只是优化，失败就保留 AI 给的原样，导入照常进行。
  */
 async function autoAdoptSharedPassage(list) {
   if (previewPassageId !== null) {
@@ -1495,20 +1505,17 @@ async function autoAdoptSharedPassage(list) {
   if (!Array.isArray(list) || list.length < 2) {
     return false;   // 只有一道题谈不上「共享」
   }
+
   const texts = list.map((q) => (typeof q?.passageText === "string" ? q.passageText.trim() : ""));
-  if (texts.some((t) => t === "")) {
-    return false;   // 有题没带原文，谈不上全批一致
+  if (texts[0] === "" || texts.slice(1).some((t) => t !== "")) {
+    return false;   // 不是「只有第一道题带」这个形态，不猜
   }
-  const first = texts[0];
-  if (!texts.every((t) => t === first)) {
-    return false;   // 内容不一致，让用户自己判断
-  }
+
   try {
-    await sharePassageForBatch(first);
+    await sharePassageForBatch(texts[0]);
     return true;
   } catch (error) {
-    // 自动套用失败不该拦住导入：退回各题各自带原文即可
-    console.warn("[admin-ai] 自动套用本篇原文失败，改为各题各自保留原文", error);
+    console.warn("[admin-ai] 自动套用本篇原文失败，保留原样继续导入", error);
     previewPassageId = null;
     return false;
   }

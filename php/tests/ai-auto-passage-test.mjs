@@ -26,11 +26,12 @@ await p.goto(`${BASE}/admin`, { waitUntil: "networkidle" });
 await p.locator('[data-admin-tab="ai"]').click();
 await p.waitForSelector("#admin-ai-json", { timeout: 15000 });
 
-// AI 返回 3 道题，都带同一份 passage（这正是提示词要求的形态）
+// 提示词现在要求：整篇原文只放在第一道题里，其余省略 —— 这才是要走的路径
 const same = [1, 2, 3].map((i) => ({
   originalSentence: `The museum opened a new wing blank ${i} ______ in the autumn for test.`,
   source: "自动套用自测",
-  passage: PASSAGE,
+  // 只有第 1 题带 passage，其余省略 —— 这正是提示词现在要求的写法
+  ...(i === 1 ? { passage: PASSAGE } : {}),
   blanks: [{ blankIndex: 1, answer: ["auto"], hintType: "给动词", hintWord: "auto", trapAnalysis: `第 ${i} 空的自测解析。` }],
 }));
 
@@ -53,7 +54,16 @@ check("预览里不再有逐题的原文折叠块", details === 0, details);
 const applyLabel = await p.locator("#admin-ai-passage-apply").innerText();
 check("按钮变成「重新套用」（说明已套用过）", /重新套用/.test(applyLabel), applyLabel);
 
-// 再看「内容不一致」的情况：不该自动套用
+// 明确不做兼容：每道题都带 passage（旧行为）不再自动套用，
+// 免得 AI 没听提示词时把内容判断的责任也揽过来
+const everyOne = [1, 2, 3].map((i) => ({ ...same[i - 1], passage: i === 2 ? PASSAGE + " Different." : PASSAGE }));
+await p.locator("#admin-ai-json").fill(JSON.stringify(everyOne));
+await p.locator("#admin-ai-json").dispatchEvent("input");
+await p.waitForTimeout(3000);
+const everyOnePanel = (await p.locator("#admin-ai-passage").innerText().catch(() => "")) || "";
+check("每题都带 passage 时不自动套用（不做兼容）", !/已套用到本批/.test(everyOnePanel), everyOnePanel.slice(0, 140));
+
+// 内容不一致的情况，同样不该自动套用
 const mixed = [
   { ...same[0] },
   { ...same[1], passage: "A completely different passage text for this particular question." },
