@@ -12,18 +12,9 @@
 import { api } from "./api.js";
 import { setFlash, takeFlash } from "./flash.js";
 import { notify, notifyError, clearFeedback } from "./feedback.js";
+import { escapeHtml } from "./escape-html.js";
 
 const root = document.getElementById("admin-users-root");
-
-/** HTML 转义：所有动态文本都要经过它 */
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 /**
  * 顶部提示条。

@@ -8,7 +8,11 @@
  */
 
 import { BLANK_PLACEHOLDER } from "./ai-constants.js";
-
+import { escapeHtml } from "./escape-html.js";
+// 下游模块（ai-render.js）一直是从这里 import escapeHtml 的，
+// 所以本文件要继续提供它。转出去的同时也import 一份，
+// 这样将来本文件要自己用时不用再改一遍。
+export { escapeHtml };
 
 /**
  * 某组标签是否都属于指定父分类（允许带上该分类自身）。
@@ -112,16 +116,6 @@ export function normalizeSentence(text) {
     .replace(/＿/g, "_")
     .replace(/[—–]{2,}/g, BLANK_PLACEHOLDER)
     .replace(/_{3,}/g, BLANK_PLACEHOLDER);
-}
-
-/** HTML 转义：所有动态文本都要经过它 */
-export function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }
 
 /**

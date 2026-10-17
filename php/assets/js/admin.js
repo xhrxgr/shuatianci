@@ -23,6 +23,12 @@ import { setupPaperAndQuestionPanels } from "./admin-papers.js";
 // 组卷蓝图与虚拟卷成员编辑（第 2 期）
 import { setupBlueprintPanels } from "./admin-blueprints.js";
 import { iconSuccess } from "./icons.js";
+import { escapeHtml } from "./escape-html.js";
+// 本模块既要用 escapeHtml，也要继续对外提供它（下游模块从这儿 import）。
+// 注意：只写 `export { escapeHtml } from "./escape-html.js"` **不够**——
+// re-export 只把符号转发给下游，不会在本模块建立本地绑定，
+// 本文件里的 escapeHtml(...) 调用会抛 ReferenceError。
+export { escapeHtml };
 
 const BLANK_PLACEHOLDER = "______";
 const HINT_TYPES = ["给动词", "给名词", "给形容词", "给副词", "无提示词"];
@@ -45,15 +51,6 @@ export const adminContext = {
   getTagDictionary: () => tagDictionary,
   hintTypes: HINT_TYPES,
 };
-
-export function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 /**
  * 顶部成功提示（沿用页面原有的 #admin-notice，位置样式不变）。

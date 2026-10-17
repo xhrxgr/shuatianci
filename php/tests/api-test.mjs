@@ -12,6 +12,7 @@
  */
 
 import { checkAuthCoverage } from "./auth-coverage-test.mjs";
+import { checkJsBindings } from "./js-binding-test.mjs";
 
 const BASE = process.argv[2] || "http://127.0.0.1:9001";
 
@@ -903,6 +904,71 @@ async function main() {
   const userRecords = await request("GET", `/admin/users/${newUserId}/records`, { token: adminToken });
   check("GET 用户做题明细返回 records 数组", userRecords.status === 200 && Array.isArray(userRecords.data.records), userRecords.data);
 
+  /* ---------------- 启用 / 禁用账号 ---------------- */
+  // role / reset-password / delete 三个端点都有「不能对自己动手」的校验，
+  // 但 status 端点此前完全没有接口级覆盖，只能靠 UI 隐式验证。
+  const selfDisable = await request("POST", `/admin/users/${login.data.user.id}/status`, {
+    token: adminToken,
+    body: { status: 0 },
+  });
+  check(
+    "不能禁用自己的账号 -> 400",
+    selfDisable.status === 400 && selfDisable.data.error === "不能禁用自己的账号",
+    selfDisable.data
+  );
+
+  const badStatus = await request("POST", `/admin/users/${newUserId}/status`, {
+    token: adminToken,
+    body: { status: 7 },
+  });
+  check("非法状态值 -> 400「状态值无效」", badStatus.status === 400 && badStatus.data.error === "状态值无效", badStatus.data);
+
+  // 禁用后应立即失效。两条路径都要验：
+  //  · 登录被拒（routes_auth.php 按 status 拦）
+  //  · 禁用前已签发的会话立即作废（change_status 调 destroy_user_sessions）
+  // 只验前者的话，「禁用后旧 token 还能继续用到过期」这个洞会漏过去。
+  const victimToken = await request("POST", "/auth/login", {
+    body: { username: TEST_USER, password: "654321" },
+  });
+  check(
+    "禁用前该账号可登录（拿到待作废的会话）",
+    victimToken.status === 200 && typeof victimToken.data.token === "string",
+    victimToken.data
+  );
+
+  const disable = await request("POST", `/admin/users/${newUserId}/status`, {
+    token: adminToken,
+    body: { status: 0 },
+  });
+  check("禁用其他账号成功", disable.status === 200 && disable.data.ok === true, disable.data);
+
+  const staleToken = await request("GET", "/auth/me", { token: victimToken.data.token });
+  check(
+    "被禁用后旧 token 立即作废（不必等会话自然过期）",
+    staleToken.status === 401,
+    staleToken.data
+  );
+
+  const afterDisableLogin = await request("POST", "/auth/login", {
+    body: { username: TEST_USER, password: "654321" },
+  });
+  check(
+    "被禁用账号无法登录 -> 403「账号已被禁用」",
+    afterDisableLogin.status === 403 && /已被禁用/.test(afterDisableLogin.data.error),
+    afterDisableLogin.data
+  );
+
+  const reEnable = await request("POST", `/admin/users/${newUserId}/status`, {
+    token: adminToken,
+    body: { status: 1 },
+  });
+  check("重新启用成功", reEnable.status === 200 && reEnable.data.ok === true, reEnable.data);
+
+  const reEnableLogin = await request("POST", "/auth/login", {
+    body: { username: TEST_USER, password: "654321" },
+  });
+  check("重新启用后可登录", reEnableLogin.status === 200 && typeof reEnableLogin.data.token === "string", reEnableLogin.data);
+
   /* ---------------- 注册 / 普通用户权限 ---------------- */
   const registered = await request("POST", "/auth/register", { body: { username: REG_USER, password: "123456" } });
   check("注册成功 -> 201", registered.status === 201 && registered.data.ok === true, registered.data);
@@ -1064,6 +1130,16 @@ async function main() {
   //   ① 静态扫描：所有需要鉴权的 handler 函数体里必须有鉴权调用
   //   ② 运行时抽查：匿名调几个敏感端点必须是 401
   await checkAuthCoverage(request, check);
+
+  /* ================================================================== */
+  /* JS 模块绑定自检                                                    */
+  /* ================================================================== */
+  // 收敛 escapeHtml 时踩过的坑：把本地定义换成
+  // `export { escapeHtml } from "..."`，以为这样就行。但 re-export 只把符号
+  // 转发给下游，**不给本模块建绑定**——admin.js 里 26 处escapeHtml(...)
+  // 全部抛 ReferenceError，而 node --check 语法检查是通过的。
+  // 这类错只有浏览器端到端测试才抓得到，所以给它加一道静态防线。
+  checkJsBindings(check);
 
   /* ---------------- 汇总 ---------------- */
   console.log(`\n通过 ${pass} 项，失败 ${failures.length} 项`);

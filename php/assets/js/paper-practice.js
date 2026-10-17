@@ -13,6 +13,7 @@
 import { api } from "./api.js";
 import { notifyWarn } from "./feedback.js";
 import { iconCheck, iconCross } from "./icons.js";
+import { escapeHtml } from "./escape-html.js";
 
 /** 空格占位符字面量 */
 const BLANK_PLACEHOLDER = "______";
@@ -138,15 +139,6 @@ function stateOf(questionId) {
 /* ------------------------------------------------------------------ */
 /* 纯函数                                                              */
 /* ------------------------------------------------------------------ */
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 function blankList(question) {
   return [...(question.blanks ?? [])].sort((a, b) => a.blankIndex - b.blankIndex);

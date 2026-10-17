@@ -482,6 +482,11 @@ function route_questions_create()
 
     // 整库覆盖 + 写入放进同一个事务，失败整体回滚
     $result = db_transaction(function () use ($valid, $replaceAll, $ownerId) {
+        // 同名卷只查一次库：这次导入里一整张卷的题共用一个 source，
+        // 不开缓存的话每道题都会 SELECT 一次 papers 表。
+        // 只在本请求内有效，事务结束后的请求不受影响。
+        paper_name_cache_reset();
+
         if ($replaceAll) {
             execute('DELETE FROM questions');
             // 投影表跟着清空：题目都没了，投影留着就是孤儿行，

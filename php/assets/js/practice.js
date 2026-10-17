@@ -10,6 +10,7 @@
 import { notifyError, notifyWarn } from "./feedback.js";
 import { iconCheck, iconCross } from "./icons.js";
 import { api } from "./api.js";
+import { escapeHtml } from "./escape-html.js";
 
 const BLANK_PLACEHOLDER = "______";
 const MIN_INPUT_CH = 5;
@@ -156,15 +157,6 @@ let markLabel = MARK_LABELS[0];
 let markNote = "";
 
 /* ---------------- 纯函数 ---------------- */
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 /** 答案比对前的处理：只去首尾空格，不做大小写归一 */
 function normalize(value) {

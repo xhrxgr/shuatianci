@@ -126,6 +126,48 @@ function find_paper_by_name($name)
 }
 
 /**
+ * 批量导入期间缓存「卷名 → 卷 id」，避免同一张卷被重复查库。
+ *
+ * 为什么要这个
+ * ------------
+ * 批量导入是逐题调ensure_paper_by_name() 的（N 次），而一整张卷子的题
+ * 共用同一个 source，也就是同一个卷名——原本每道题都会去SELECT 一次
+ * papers 表。一张 100 题的卷会打 100 次相同的查询。
+ *
+ * 只在**单次请求内**缓存，不跨请求：卷名可能被另一个请求改掉，
+ * 跨请求缓存会读到过期的卷 id，把题挂到已经改名的卷上。
+ *
+ * 由 ensure_paper_by_name() 负责写入，这里只提供查询入口。
+ */
+function paper_name_cache_get($name)
+{
+    return paper_name_cache()[$name] ?? null;
+}
+
+function paper_name_cache_set($name, $paperId)
+{
+    if ($paperId === '' || $paperId === null) {
+        return;
+    }
+    // 注意：只缓存「已存在且是真实卷」的结果。虚拟卷名被占用时会抛错，
+    // 不该进缓存——否则同一批次后续同卷名的题会被误判成可用。
+    $GLOBALS['paper_name_cache'][$name] = (string) $paperId;
+}
+
+function paper_name_cache_reset()
+{
+    $GLOBALS['paper_name_cache'] = [];
+}
+
+function paper_name_cache()
+{
+    if (!isset($GLOBALS['paper_name_cache']) || !is_array($GLOBALS['paper_name_cache'])) {
+        $GLOBALS['paper_name_cache'] = [];
+    }
+    return $GLOBALS['paper_name_cache'];
+}
+
+/**
  * 按 name 取卷，没有就建一张。
  *
  * 题目写入时统一走这里：source 为空时不会建卷，
@@ -134,6 +176,9 @@ function find_paper_by_name($name)
  * 名字撞上一张**虚拟卷**（蓝图生成的）时拒绝而不是塞进去：
  * 虚拟卷的成员由抽题产生、会被「重新生成」整体覆盖，
  * 把真实录入的题塞进去，下一次重新生成就找不回来了。
+ *
+ * 批量导入时先调 paper_name_cache_reset()，让这次导入内部复用
+ * 同名卷的查询结果（见 paper_name_cache_get）。
  *
  * @param string $name
  * @return string 试卷 id
@@ -144,12 +189,20 @@ function ensure_paper_by_name($name)
     if ($name === '') {
         return '';
     }
+
+    $cached = paper_name_cache_get($name);
+    if ($cached !== null) {
+        return $cached;
+    }
+
     $existing = query_one('SELECT id, kind FROM papers WHERE name = ?', [$name]);
     if ($existing !== null) {
         if ((string) ($existing['kind'] ?? 'original') === 'generated') {
             throw http_error(400, '试卷名「' . $name . '」已被一张虚拟卷占用。请换一个来源名，或先删除那张虚拟卷。');
         }
-        return (string) $existing['id'];
+        $id = (string) $existing['id'];
+        paper_name_cache_set($name, $id);
+        return $id;
     }
     $id = next_paper_id();
     execute(
@@ -157,6 +210,7 @@ function ensure_paper_by_name($name)
          VALUES (?, ?, NULL, '', 'original', datetime('now'), datetime('now'))",
         [$id, $name]
     );
+    paper_name_cache_set($name, $id);
     return $id;
 }
 
