@@ -19,6 +19,7 @@
     "test:ai-preview-edit": "node php/tests/ai-preview-edit-test.mjs http://127.0.0.1:9002",
     "test:passage-entry": "node php/tests/passage-entry-test.mjs http://127.0.0.1:9002",
     "test:update-state": "php php/tests/update-state-test.php",
+    "test:update-trigger": "node php/tests/update-trigger-test.mjs http://127.0.0.1:9002",
     "test:tag-collapse": "node php/tests/tag-collapse-test.mjs http://127.0.0.1:9002",
     "test:paper-delete": "node php/tests/paper-delete-test.mjs http://127.0.0.1:9002",
     "test:ai-passage": "node php/tests/ai-passage-collapse-test.mjs http://127.0.0.1:9002",
