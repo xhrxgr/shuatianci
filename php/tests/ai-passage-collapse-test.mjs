@@ -34,7 +34,8 @@ const payload = {
   questions: [1, 2, 3].map((i) => ({
     originalSentence: `Last summer I went to a small village blank ${i} ______ in the mountains for the test.`,
     source: "折叠原文自测",
-    passage: PASSAGE,
+    // 第 2 题给不同内容：这批不会被自动套用，正好用来验证「按内容去重」
+    passage: i === 2 ? PASSAGE + " This extra sentence only belongs to the second blank." : PASSAGE,
     blanks: [
       { blankIndex: 1, answer: ["went"], hintType: "给动词", hintWord: "went", trapAnalysis: `第 ${i} 空：went 是 go 的过去式。` },
     ],
@@ -72,14 +73,16 @@ const fullTextOccurrences = await p.evaluate(
 );
 check("全文没有平铺在预览里（折叠状态下应为 0 处可见）", fullTextOccurrences === 0, fullTextOccurrences);
 
-// 3 道题带的是**同一份**原文（AI 提示词要求同一篇下所有题填同一份），
-// 所以只应有 1 个折叠入口，其余标「与第 N 题相同」
+// v3.7.7 起，AI 解析完会自动把「全批一致」的原文套用成共享篇章。
+// 所以这里改成测**内容不一致**的场景：那批不会被自动套用，各题各自带原文，
+// 折叠入口按内容去重（只第一处渲染，其余标「与第 N 题相同」）。
 const summaries = await p.locator("#admin-ai-preview-list details summary").count();
-check("同一份原文只渲染 1 个折叠入口（不是 3 个）", summaries === 1, summaries);
+// 第 1、3 题同内容 → 一个入口；第 2 题内容不同 → 另一个入口
+check("按内容去重：2 处不同内容 → 2 个折叠入口", summaries === 2, summaries);
 
 const dedupNotes = await p.locator("#admin-ai-preview-list").innerText();
 check("重复的题标了「与第 N 题相同」", /与第 1 题相同/.test(dedupNotes), dedupNotes.slice(0, 120));
-check("唯一的入口写明本批几道题共用", /本批 3 道题共用/.test(dedupNotes), dedupNotes.slice(0, 160));
+check("唯一的入口写明本批几道题共用", /本批 2 道题共用/.test(dedupNotes), dedupNotes.slice(0, 160));
 
 const summaryText = summaries > 0 ? await p.locator("#admin-ai-preview-list details summary").first().innerText() : "";
 check("折叠标题写清了字数", /[0-9]+ 字/.test(summaryText), summaryText.slice(0, 60));

@@ -42,6 +42,30 @@
       <div data-update-actions></div>
       <div data-check-result></div>
     </section>
+    <!-- 更新进度：紧跟在「检查更新」下面。
+         原来它挂在页面**最底部**，而按钮在最上面 —— 点了「开始更新」得翻过
+         更新源、数据迁移几屏才看得到进度，用户第一反应是「点了没反应」。
+         进度是这次操作的直接反馈，必须紧挨着触发它的按钮。 -->
+    <section class="rounded-xl border border-line bg-surface p-5" id="admin-system-progress" hidden>
+      <div class="mb-3 flex items-center justify-between">
+        <h2 class="text-sm font-semibold text-ink">更新进度</h2>
+        <span class="text-xs text-muted" id="admin-system-stage" hidden></span>
+      </div>
+
+      <div class="max-h-72 overflow-y-auto rounded-lg border border-line bg-surface-alt p-3" id="admin-system-logs"></div>
+
+      <p class="mt-3 text-xs text-muted" id="admin-system-updating-hint" hidden>
+        更新期间请勿关闭页面（通常十几秒完成；完成后页面会自动刷新）。
+      </p>
+
+      <button
+        type="button"
+        data-action="reload"
+        id="admin-system-reload"
+        class="mt-4 min-h-11 w-full rounded-xl bg-primary px-6 py-3 text-sm font-medium text-on-primary transition hover:bg-primary-hover sm:w-auto"
+        hidden
+      >刷新页面</button>
+    </section>
 
     <!-- 更新源：服务器能不能直连 GitHub 因机器而异，放在这里配置，
          不用 SSH 上去敲 git config。
@@ -160,27 +184,6 @@
       </div>
     </section>
 
-    <!-- 更新进度 -->
-    <section class="rounded-xl border border-line bg-surface p-5" id="admin-system-progress" hidden>
-      <div class="mb-3 flex items-center justify-between">
-        <h2 class="text-sm font-semibold text-ink">更新进度</h2>
-        <span class="text-xs text-muted" id="admin-system-stage" hidden></span>
-      </div>
-
-      <div class="max-h-72 overflow-y-auto rounded-lg border border-line bg-surface-alt p-3" id="admin-system-logs"></div>
-
-      <p class="mt-3 text-xs text-muted" id="admin-system-updating-hint" hidden>
-        更新期间请勿关闭页面（通常十几秒完成；完成后页面会自动刷新）。
-      </p>
-
-      <button
-        type="button"
-        data-action="reload"
-        id="admin-system-reload"
-        class="mt-4 min-h-11 w-full rounded-xl bg-primary px-6 py-3 text-sm font-medium text-on-primary transition hover:bg-primary-hover sm:w-auto"
-        hidden
-      >刷新页面</button>
-    </section>
   </div>
 
   <script type="module" src="<?= e(asset_url('/js/admin-system.js')) ?>"></script>

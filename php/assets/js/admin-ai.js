@@ -1426,33 +1426,91 @@ async function applyPassageToBatch() {
   }
   els.passageApply.disabled = true;
   try {
-    // 已经建过就改它，不要每点一次建一篇（那会留下一堆空篇章）
-    let passageId = previewPassageId;
-    if (passageId) {
-      await api.updatePassage(passageId, { text });
-    } else {
-      const created = await api.createPassage({ text });
-      passageId = created.passage?.id ?? null;
-      if (!passageId) throw new Error("建篇章失败");
-    }
-    previewPassageId = passageId;
-    // 本批所有题统一指向这篇；各题自己的 passageText 先备份再清掉
-    // （清是为了「两处各说各话」，但必须能还原 —— 见 clearPassageFromBatch）
-    if (savedPassageTexts === null) {
-      savedPassageTexts = previewList.map((q) => q.passageText ?? null);
-    }
-    previewList.forEach((question) => {
-      question.passageId = passageId;
-      question.passageText = null;
-    });
-    syncLastBuild();
+    await sharePassageForBatch(text);
     clearError();
-    renderPassagePanel();
-    renderPreview();
   } catch (error) {
     notifyError(error, { retry: () => void applyPassageToBatch() });
   } finally {
     els.passageApply.disabled = false;
+  }
+}
+
+/**
+ * 把一段原文建（或更新）成篇章，并让本批所有题指向它。
+ *
+ * 抽出来是为了让「按钮手动套用」与「解析后自动套用」走**同一条路径** ——
+ * 两条路径各自实现一遍，迟早会出现「自动的漏了备份逻辑，清除时还原不回来」。
+ *
+ * @param {string} text 原文
+ */
+async function sharePassageForBatch(text) {
+  // 已经建过就改它，不要每点一次建一篇（那会留下一堆空篇章）
+  let passageId = previewPassageId;
+  if (passageId) {
+    await api.updatePassage(passageId, { text });
+  } else {
+    const created = await api.createPassage({ text });
+    passageId = created.passage?.id ?? null;
+    if (!passageId) throw new Error("建篇章失败");
+  }
+  previewPassageId = passageId;
+  // 本批所有题统一指向这篇；各题自己的 passageText 先备份再清掉
+  // （清是为了「两处各说各话」，但必须能还原 —— 见 clearPassageFromBatch）
+  if (savedPassageTexts === null) {
+    savedPassageTexts = previewList.map((q) => q.passageText ?? null);
+  }
+  previewList.forEach((question) => {
+    question.passageId = passageId;
+    question.passageText = null;
+  });
+  // 顶部面板的输入框同步成这份原文，用户改的就是它
+  if (els.passageText) {
+    els.passageText.value = text;
+  }
+  syncLastBuild();
+  renderPassagePanel();
+  renderPreview();
+}
+
+/**
+ * 解析完 AI 结果后自动套用「本篇完整原文」。
+ *
+ * AI 的提示词里已经明确要求「一篇阅读挖多个空时，把整篇未挖掉的原文放进
+ * passage 字段，同一篇下的所有 Question 填同一份，一字不差」——
+ * 也就是说**原文本来就是 AI 填好的**，用户再手动点一次「套用到本批」
+ * 只是重复劳动，还容易让人以为「是不是漏了一步没做」。
+ *
+ * 所以这里在解析完成后自动判断：
+ *   - 本批**全部**题都带原文，且内容完全一致 → 直接建篇章并套用；
+ *   - 只有一部分带、或内容不一致 → 不自动处理（那说明 AI 的输出不规整，
+ *     自动猜反而可能把错的原文套上去），保持各题各自带原文，走折叠显示。
+ *
+ * 失败**不阻断**：套用只是优化，失败就退回「各题带自己的原文」，
+ * 导入照常进行。
+ */
+async function autoAdoptSharedPassage(list) {
+  if (previewPassageId !== null) {
+    return false;   // 已经套过了
+  }
+  if (!Array.isArray(list) || list.length < 2) {
+    return false;   // 只有一道题谈不上「共享」
+  }
+  const texts = list.map((q) => (typeof q?.passageText === "string" ? q.passageText.trim() : ""));
+  if (texts.some((t) => t === "")) {
+    return false;   // 有题没带原文，谈不上全批一致
+  }
+  const first = texts[0];
+  if (!texts.every((t) => t === first)) {
+    return false;   // 内容不一致，让用户自己判断
+  }
+  try {
+    await sharePassageForBatch(first);
+    return true;
+  } catch (error) {
+    // 自动套用失败不该拦住导入：退回各题各自带原文即可
+    console.warn("[admin-ai] 自动套用本篇原文失败，改为各题各自保留原文", error);
+    previewPassageId = null;
+    return false;
   }
 }
 
@@ -1971,6 +2029,11 @@ async function buildPreviewInner(raw) {
   previewList = list;
   // 换了一批题，上一篇的共用引用作废（否则会把上一篇的原文套到新一批上）
   previewPassageId = null;
+
+  // 原文是 AI 已经填好的，不该再让用户手动点一次「套用到本批」。
+  // 必须放在 previewList = list 之后：判断与落库都读 previewList，
+  // 放在赋值前读到的是上一批（首次构建时甚至是空数组），判断永远不成立。
+  await autoAdoptSharedPassage(list);
   previewVerdicts = list.map((_, index) => verdicts[index] ?? { state: "new", hint: "", matched: [] });
   // 默认勾选规则：新增勾上；已存在 / 答案不同默认不勾（宁可少录，不要默默产生两条互相矛盾的题）
   previewChecks = previewVerdicts.map((v) => v.state === "new");

@@ -1,5 +1,6 @@
-/**
 import { iconSuccess, iconError, iconWarn, iconInfo } from "./icons.js";
+
+/**
  * 统一反馈组件：成功 / 失败 / 警告 / 提示的呈现方式。
  *
  * 为什么要有这个

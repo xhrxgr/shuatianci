@@ -78,6 +78,7 @@ if (root) {
   /* ---------------- 状态 ---------------- */
 
   let version = null;
+  let progressShownBefore = false; // 只在「首次从隐藏变可见」时滚动，避免每 2 秒轮询都滚一次
   /** 项目目录是否为 git 仓库。复制粘贴部署的目录没有 .git，在线更新不可用 */
   let gitAvailable = true;
   let check = null;
@@ -225,6 +226,13 @@ if (root) {
     if (!progressSection) return;
     const visible = updating || logs.length > 0;
     progressSection.hidden = !visible;
+    // 进度从隐藏变成显示时，把它滚进视野：用户点完「开始更新」应该
+    // 立刻看到在做什么，而不是还要自己往下翻（进度块现在就在按钮下面，
+    // 但按钮可能在视口之外，比如用户滚下去又点回来确认）
+    if (visible && !progressShownBefore) {
+      progressSection.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    progressShownBefore = visible;
 
     if (stageEl) {
       stageEl.hidden = stage === "";
