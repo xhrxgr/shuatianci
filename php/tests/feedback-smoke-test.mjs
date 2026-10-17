@@ -56,6 +56,20 @@ check("页面上能看到四条提示", boxes >= 4 || (bodyText.match(/自测提
   { boxes, matched: (bodyText.match(/自测提示/g) ?? []).length });
 
 check("提示里带上了图标（SVG 真的渲染了）", (await p.locator("svg").count()) > 0);
+
+// error 与 info 必须**不同形**：之前两者都是「圆圈+感叹号」只差圆点上下位置，
+// 线上截图里 error 的图标被当成了 info
+const icons = await p.evaluate(async (base) => {
+  const { iconError, iconInfo, iconSuccess, iconWarn } = await import(base + "/assets/js/icons.js");
+  return {
+    error: iconError("x"),
+    info: iconInfo("x"),
+    success: iconSuccess("x"),
+    warn: iconWarn("x"),
+  };
+}, BASE);
+check("error 图标与 info 图形不同（否则用户分不清）", icons.error !== icons.info);
+check("error 图标与 success、warn 也都不同", icons.error !== icons.success && icons.error !== icons.warn);
 check("详情行也渲染出来了", bodyText.includes("第二行详情"));
 check("全程无未捕获异常", errors.length === 0, errors.slice(0, 2));
 check("控制台无 error", consoleErrors.length === 0, consoleErrors.slice(0, 2));

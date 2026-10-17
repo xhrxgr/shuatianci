@@ -35,7 +35,10 @@ export function iconSuccess(cls = "h-5 w-5") {
 
 /** 失败 */
 export function iconError(cls = "h-5 w-5") {
-  return svg('<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.2v.3"/>', cls);
+  // 用叉号而不是「圆圈+感叹号」：iconInfo 已经是圆圈+感叹号，
+  // 两者只差圆点上下位置，肉眼几乎分不出来（线上截图里 error 就被当成了 info）。
+  // 叉号与 iconSuccess 的对勾同族，一眼可辨。
+  return svg('<circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/>', cls);
 }
 
 /** 警告 */
