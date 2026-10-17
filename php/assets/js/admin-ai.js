@@ -269,9 +269,11 @@ Question（一道题，即一个句子）：
 
 interface Question {
   originalSentence: string;   // 挖空后的句子（含做出本题所必需的上下文句子）
-  passage?: string;           // 这道题所属**整篇阅读的未挖空原文**；一篇阅读挖多个空时，
-                              // 同一篇下所有 Question 填同一份 passage（一字不差）。
-                              // 单句题可以省略这个字段
+  passage?: string;           // 这道题所属**整篇阅读的未挖空原文**。
+                              // ⚠️ 一篇阅读挖多个空时，**只有该篇 questions 数组的
+                              // 第一道题要写它，其余每一道都省��� passage 字段**。
+                              // 重复写十遍会让输出膨胀十倍，更容易撞上长度限制被截断。
+                              // 单句题不要写这个字段
   blanks: Blank[];
 }
 
@@ -401,6 +403,29 @@ ${activeTags.map((tag) => `- ${tag.id} ${tag.name}`).join("\n")}
 6. 注意原文中还有中文注释（如"新石器""礼仪器"），这些是原卷的一部分，**原样保留在 originalSentence 里**。
 7. **不要输出 id 字段**。
 
+## 这些地方最容易被搞错（都踩过，请逐条自查）
+
+这一节不是补充说明，是**我这边会直接判定为错误**的地方：
+
+1. **不要输出 markdown 代码块**。只输出 JSON 本体，第一个字符是左花括号或左方括号，最后一个是右花括号或右方括号。
+2. **JSON 里的引号必须用中文引号**「」或英文弯引号，不要用英文直引号 " " ——
+   原句里出现英文直引号会让 JSON 直接解析失败，整批导入不了。
+   卷面里的引号一律转成中文引号保留。
+3. **原句里挖空的数量必须与 blanks 数组长度完全相等**，一个不多一个不少。
+   题号（如 56、57）要换成 ______，但**题号本身不出现在任何字段里**。
+4. **passage 里不能有挖空**。它必须是完完整整的原文（就像卷子上印的那样），
+   不要出现 ______，也不要出现给提示词用的括号。
+5. **passage 一篇只写一次**，放在该篇 questions 的第一道题里，其余省略。
+6. **hintWord 为 null 时必须真的写 null**，不要写空字符串 ""，也不要省略这个字段。
+7. **hintType 只能取这五个值之一**：${HINT_TYPES.join(" / ")}。不要自造。
+8. **answer 必须是数组**，哪怕只有一个答案也要写成 ["as"] 这种形式，不要写裸字符串。
+9. **不要输出 id 字段**，题目编号由我的系统在你返回之后自行生成。
+10. **不要输出空题目**：数组里每一项都必须是一个完整可用的 Question 对象，
+    不要放占位符、不要放空对象、不要放说明文字。
+11. **答案与原文严格一致**：answer 里的大小写、拼写必须与 passage 里的用词完全相同
+    （除非原卷就是错的，那就在 trapAnalysis 里指出来）。
+12. 整批输出里**不要出现任何解释、开场白、结语**，也不要输出多个 JSON 块。
+
 ## 试卷来源：整批只给一次，放在数组最前面
 
 一次粘贴就是**一整张卷子**，所有题目来自同一张卷。所以来源不是每道题各写一遍，
@@ -479,6 +504,7 @@ tagIds 的判定规则已经按类别分好标签，**不要凭语感随意归�
   "source": "某某中学2026-2027学年高三上学期10月阶段检测试题",
   "questions": [
     {
+      "passage": "Among the foundational cornerstones of early Chinese civilization, Hongshan Culture holds a place of profound significance. Hongshan Culture, flourishing roughly from 4700 to 2900 BCE in Liaoning Province and neighboring regions, stands as one of China's most remarkable Neolithic (新石器) cultures. The most famous site, Niuheliang, features a magnificent temple and rubble-mound stone tombs.",
       "originalSentence": "Hongshan Culture, flourishing roughly from 4700 to 2900 BCE in ______ is now Liaoning Province and neighboring regions, stands ______ one of China's most remarkable Neolithic (新石器) cultures.",
       "blanks": [
         {
@@ -487,7 +513,7 @@ tagIds 的判定规则已经按类别分好标签，**不要凭语感随意归�
           "hintWord": null,
           "hintType": "无提示词",
           "tagIds": ["t_002", "t_013"],
-          "trapAnalysis": "空格作 in 的宾语，填红山文化遗址所在省份。后文 is now Liaoning Province 给出提示，考查地理常识与 archaeological site 的对应。"
+          "trapAnalysis": "空格作介词 in 的宾语，填红山文化遗址所在的省份。空格后紧跟 is now Liaoning Province，可由后文直接推出该省名。"
         },
         {
           "blankIndex": 2,
