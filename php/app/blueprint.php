@@ -165,9 +165,18 @@ function blueprint_normalize_rules($rules)
     if ($sections > 0 && $perSection === 0) {
         // 只给了篇数：总量由 count 决定，每篇题数按总量均分（引擎按实际情况分配）
         $perSection = (int) ceil($count / $sections);
+        if ($perSection > BLUEPRINT_MAX_COUNT) {
+            throw http_error(400, '按「篇数」均分后每篇题数超过 ' . BLUEPRINT_MAX_COUNT . '，请调整篇数或题量');
+        }
         $layout['perSection'] = $perSection;
     } elseif ($sections === 0 && $perSection > 0) {
         $sections = (int) ceil($count / $perSection);
+        // ⚠️ 推导出来的篇数也要复查上限：上面的检查只管显式传入的值。
+        // {count:500, perSection:1} 会推出 500 篇，而 BLUEPRINT_MAX_SECTIONS 是 50 ——
+        // 题量上限拦不住它（两个上限互相独立），于是白跑 500 桶 × 500 题的分组。
+        if ($sections > BLUEPRINT_MAX_SECTIONS) {
+            throw http_error(400, '按「每篇题数」推导出的篇数超过 ' . BLUEPRINT_MAX_SECTIONS . '，请调整每篇题数或总题量');
+        }
         $layout['sections'] = $sections;
     } elseif ($sections === 0) {
         // 既没给布局也没法推导：单篇

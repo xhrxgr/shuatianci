@@ -143,6 +143,8 @@ let shuffledIds = null;
 let currentIndex = 0;
 let markedIds = new Set();
 let favoritedSources = new Set();
+/** loadCollectionState 的并发序号：只认最后一次发起的请求 */
+let collectionSeq = 0;
 
 /** 当前题的作答状态（换题即重置） */
 let answerState = { questionId: null, inputs: {}, submitted: false };
@@ -836,10 +838,16 @@ function handleTagClick(tagId) {
 /** 读取收藏与标记状态（登录用户） */
 async function loadCollectionState(silent = false) {
   if (!authenticated) return;
+  // 并发保护：init() 与 toggleMark/toggleFavorite 都会调它，两个请求可能交叉返回，
+  // 后发先至时会把先发的旧响应覆盖回去 —— 表现为「标记了但按钮文案又跳回去」。
+  // 与 ai-actions.js 的 state.previewSeq 同一套做法。
+  const seq = ++collectionSeq;
   try {
     const marks = await api.getMarks();
+    if (seq !== collectionSeq) return;
     if (marks.authenticated) markedIds = new Set(marks.marks.map((m) => m.questionId));
     const favorites = await api.getFavorites();
+    if (seq !== collectionSeq) return;
     if (favorites.authenticated) {
       favoritedSources = new Set(favorites.favorites.map((f) => f.source));
     }

@@ -425,6 +425,10 @@ function route_blueprints_generate($id)
     $paperId = isset($body['paperId']) ? trim((string) $body['paperId']) : '';
     $isRegenerate = $paperId !== '';
 
+    // 新建卷时下面不会走到 if 分支，$paper 不存在；这里先给个 null，
+    // 否则闭包的 use (...) 会捕获一个未定义变量 → 每次「首次生成」都刷一条
+    // Undefined variable warning，还会掩盖真正的错误。
+    $paper = null;
     if ($isRegenerate) {
         $paper = query_one('SELECT * FROM papers WHERE id = ?', [$paperId]);
         if ($paper === null) {

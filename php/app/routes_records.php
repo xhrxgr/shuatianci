@@ -321,9 +321,10 @@ function route_marks_toggle()
         json_response(['ok' => true, 'marked' => false, 'message' => '已取消标记']);
     }
 
-    $label = substr((string) (body_param('label') ?: '重点'), 0, 32);
-    // 用 mb_substr 而不是 substr：substr 按字节截断，会把多字节字符劈开
-    // 产生非法 UTF-8，存库后 json_encode 返回 false，列表接口会输出空响应体
+    // label 与 note 都要用 mb_substr：substr 按**字节**截断，会把多字节字符劈开，
+    // 产生非法 UTF-8，存库后 json_encode 返回 false，整个列表接口输出空响应体。
+    // 11 个汉字（33 字节）截到 32 字节就会命中——所以下面这行不能图省事用 substr。
+    $label = mb_substr((string) (body_param('label') ?: '重点'), 0, 32, 'UTF-8');
     $note = body_param('note') ? mb_substr((string) body_param('note'), 0, 255, 'UTF-8') : null;
 
     // 确认题目存在，避免标记到已删除的题

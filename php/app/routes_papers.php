@@ -419,6 +419,11 @@ function delete_paper_questions($paperId)
         $params = array_values($chunk);
         execute("DELETE FROM question_tags WHERE question_id IN ($placeholders)", $params);
         execute("DELETE FROM question_hints WHERE question_id IN ($placeholders)", $params);
+        // paper_items 没有外键约束（schema.sql 里只有主键），必须显式清：
+        // 否则同一道题若也在某张虚拟卷里，那张卷的成员表会留着已删除的题，
+        // questionCount 虚高、成员列表出现「缺失的题」。
+        // 单题删除路径（routes_bank.php）也要做这件事，两条路径口径一致。
+        execute("DELETE FROM paper_items WHERE question_id IN ($placeholders)", $params);
         execute("DELETE FROM user_progress WHERE question_id IN ($placeholders)", $params);
         execute("DELETE FROM practice_records WHERE question_id IN ($placeholders)", $params);
         execute("DELETE FROM user_marks WHERE question_id IN ($placeholders)", $params);

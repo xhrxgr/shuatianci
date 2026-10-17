@@ -184,27 +184,29 @@ function route_questions_list()
     // ---- 按提示词类型：任意一个空命中即算 ----
     $hintType = isset($_GET['hintType']) ? trim((string) $_GET['hintType']) : '';
     if ($hintType !== '') {
-        // JSON1 的 json_each 逐空展开。hintType 取值受限（5 个常量），
-        // 但这里仍走参数绑定，不做字符串拼接
-        $where[] = "EXISTS (SELECT 1 FROM json_each(q.blanks_json)
-                             WHERE json_extract(value, '$.hintType') = ?)";
+        // 走 question_hints 投影表而不是 json_each(blanks_json)：
+        // 后者每行都要把 blanks_json 解析一遍（EXPLAIN 实测是
+        // SCAN q + CORRELATED SUBQUERY + SCAN json_each），题库上千后全表扫描。
+        // 投影表在写入时由 sync_question_hints 维护，hint_type 上有
+        // idx_qhints_type，与 blueprint.php 抽题用的是同一套口径。
+        $where[] = 'EXISTS (SELECT 1 FROM question_hints h
+                             WHERE h.question_id = q.id AND h.hint_type = ?)';
         $params[] = $hintType;
     }
 
     // ---- 按空格数区间 ----
     $blankMin = isset($_GET['blankCountMin']) && $_GET['blankCountMin'] !== '' ? (int) $_GET['blankCountMin'] : null;
     $blankMax = isset($_GET['blankCountMax']) && $_GET['blankCountMax'] !== '' ? (int) $_GET['blankCountMax'] : null;
-    // ⚠️ 必须 CAST：db_params 交给 PDO::execute() 批量绑定时，所有值都按
-    // TEXT 绑。跟「有类型亲和性的列」比较时 SQLite 会自动转换（所以
-    // owner_id = ? 之类没问题），但 json_array_length() 是**计算表达式、
-    // 没有亲和性**，此时 `2 >= '2'` 按 SQLite 的类型序（INTEGER < TEXT）
-    // 恒为假 —— 实测「>= 2」返回 0 条、「<= 1」返回全部，筛选静默失效。
+    // 走 questions.blank_count 副本列（有 idx_questions_blank_count），
+    // 而不是 json_array_length()：后者是计算表达式、无类型亲和性，
+    // 既不能走索引，还踩过一个坑——db_params 交给 PDO::execute() 时所有值按 TEXT 绑，
+    // `2 >= '2'` 按 SQLite 类型序（INTEGER < TEXT）恒为假，筛选静默失效。
     if ($blankMin !== null) {
-        $where[] = 'json_array_length(q.blanks_json) >= CAST(? AS INTEGER)';
+        $where[] = 'q.blank_count >= CAST(? AS INTEGER)';
         $params[] = $blankMin;
     }
     if ($blankMax !== null) {
-        $where[] = 'json_array_length(q.blanks_json) <= CAST(? AS INTEGER)';
+        $where[] = 'q.blank_count <= CAST(? AS INTEGER)';
         $params[] = $blankMax;
     }
 
@@ -536,7 +538,7 @@ function route_questions_create()
                     $sentence,
                     $passageId,
                     $passage,
-                    json_encode($blanks, JSON_UNESCAPED_UNICODE),
+                    encode_json_for_db($blanks, "题目填空配置"),
                     $source,
                     $paperId,
                     isset($question['schemaVersion']) ? $question['schemaVersion'] : 1,
@@ -741,6 +743,15 @@ function route_questions_delete($id)
         execute('DELETE FROM question_tags WHERE question_id = ?', [$id]);
         execute('DELETE FROM question_hints WHERE question_id = ?', [$id]);
         execute('DELETE FROM paper_items WHERE question_id = ?', [$id]);
+        // 这三张表的 question_id 没有外键约束（只有 user_id 有），
+        // 不清会留下孤儿行：/api/progress 与 /api/marks 不 JOIN questions，
+        // 会把已删题的进度与标记返回给前端；而 /api/records/summary 用了 JOIN，
+        // 于是两个接口对同一用户报出不同的题量口径。
+        // 批量删题路径（routes_papers.php delete_paper_questions）本来就在清，
+        // 这里补齐，两条路径口径一致。
+        execute('DELETE FROM user_progress WHERE question_id = ?', [$id]);
+        execute('DELETE FROM practice_records WHERE question_id = ?', [$id]);
+        execute('DELETE FROM user_marks WHERE question_id = ?', [$id]);
         return $r;
     });
 
@@ -875,7 +886,7 @@ function route_tags_save()
                 execute(
                     'UPDATE questions SET blanks_json = ?, content_hash = ?, updated_at = datetime(\'now\') WHERE id = ?',
                     [
-                        json_encode($blanks, JSON_UNESCAPED_UNICODE),
+                        encode_json_for_db($blanks, "题目填空配置"),
                         compute_content_hash((string) $q['original_sentence'], $blanks),
                         $questionId,
                     ]

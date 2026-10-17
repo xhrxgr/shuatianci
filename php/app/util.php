@@ -8,6 +8,30 @@
  */
 
 /**
+ * 把数组编码成 JSON 存库；编码失败直接拒绝入库。
+ *
+ * 为什么不能直接用 json_encode：它在遇到 INF / NAN、非法 UTF-8、递归引用时
+ * 返回 **false**，而 db_params 会把 false 静默转成整数 0（is_bool 分支）。
+ * 于是 blanks_json 变成字符串 "0"，题被当成「0 个空」——
+ * map_question 还原成空数组返回给学生，全程不报任何错。
+ *
+ * 这类输入能从 JSON 接口进来（如 answer 里写 1e999 被解析成 INF），
+ * 所以必须在入库前拦住。
+ *
+ * @param mixed $value
+ * @param string $label 报错时告诉用户是哪部分内容
+ * @return string
+ */
+function encode_json_for_db($value, $label = '内容')
+{
+    $json = json_encode($value, JSON_UNESCAPED_UNICODE);
+    if ($json === false) {
+        throw http_error(400, $label . '无法序列化（可能含非法数值如 Infinity/NaN，或非法字符编码）');
+    }
+    return $json;
+}
+
+/**
  * 输出 JSON 并结束请求。
  *
  * @param mixed $data

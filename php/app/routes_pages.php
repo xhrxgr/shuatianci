@@ -196,6 +196,11 @@ function page_paper_practice($id)
         render_page('404', [], '试卷不存在');
         return;
     }
+    // ⚠️ 变量名要区分开：下面查题目的循环若也用 $row，会把它覆盖成最后一道**题目**行，
+    // 而 map_paper() 读的却是 papers 表的字段 —— 所有字段走 ?? 兜底、不报错，
+    // 于是卷名渲染成空、考试日期不显示、「虚拟卷」标识永不出现，
+    // 去刷题页的链接还会指向 /practice?paperId=<题目id>。
+    $paperRow = $row;
 
     // 直接取该卷题目并合并个人进度，省掉前端再请求一次。
     // 顺序与分篇以 paper_items 为准（第 2 期起）：生成的虚拟卷只登记在成员表里，
@@ -211,16 +216,16 @@ function page_paper_practice($id)
         [$id]
     );
     $questions = [];
-    foreach ($questionRows as $row) {
-        $question = map_question($row);
-        $question['sectionNo'] = (int) $row['section_no'];
+    foreach ($questionRows as $qrow) {
+        $question = map_question($qrow);
+        $question['sectionNo'] = (int) $qrow['section_no'];
         $questions[] = $question;
     }
     $questions = merge_progress($questions, $user);
 
     render_page('paper-practice', [
         'currentPath' => '/papers',
-        'paper' => map_paper($row),
+        'paper' => map_paper($paperRow),
         'questions' => $questions,
         'authenticated' => $user !== null,
     ]);
