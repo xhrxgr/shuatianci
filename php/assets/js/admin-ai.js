@@ -99,6 +99,86 @@ const QUOTE_PLACEHOLDER_MARK = "\uE000";
  * 全角下划线、中文破折号、3+ 连续下划线都统一成标准 "______"，
  * 避免 AI 返回或粘贴内容里的字符差异导致校验误报。
  */
+/**
+ * 把 passage 里的挖空痕迹还原成**原文**。
+ *
+ * 实测 AI 经常把 passage 也写成挖空版：
+ *
+ *   "…national parks, officially ______ (establish) in 2021, cover 230,000…"
+ *
+ * 这有两个问题：它不是「未挖空的原文」；而且括号里就是答案，学生展开对照时
+ * 等于直接看到答案 —— 对照功能完全失效。
+ *
+ * 还原时**必须用答案，不能用括号里的提示词**：提示词是词原形（establish），
+ * 而句子里要的是变形后的形式（established / stability / treasures）。
+ * 填回原形会造出语法错误的原文，比留空格更糟。
+ *
+ * 还原不了的位置（没有括号、或答案缺失）保持原样，不猜。
+ *
+ * @param {string} text passage 原文
+ * @param {string[]} answers 该题各空的答案（按 blankIndex 顺序）
+ * @returns {{ text: string, restored: number, missed: number }}
+ */
+function restorePassageBlanks(text, answers) {
+  if (typeof text !== "string" || text === "") {
+    return { text: text ?? null, restored: 0, missed: 0 };
+  }
+  const pool = (Array.isArray(answers) ? answers : []).map((a) => String(a ?? "").trim());
+  const mark = BLANK_PLACEHOLDER;      // "______"
+  let cursor = 0;
+  let restored = 0;
+  let missed = 0;
+  let out = "";
+  let pos = 0;
+
+  while (pos < text.length) {
+    const hit = text.indexOf(mark, pos);
+    if (hit === -1) {
+      out += text.slice(pos);
+      break;
+    }
+    out += text.slice(pos, hit);
+
+    // 从挖空后面跳过空白；若接着是括号，就把它一并纳入替换区间
+    let end = hit + mark.length;
+    let probe = end;
+    while (probe < text.length && /[ 	]/.test(text[probe])) probe += 1;
+    const open = text[probe];
+    if (open === "(" || open === "（") {
+      const close = open === "(" ? ")" : "）";
+      const closeAt = text.indexOf(close, probe + 1);
+      // 只在括号内容较短（提示词不会很长）且确实闭合时才吃掉它
+      if (closeAt !== -1 && closeAt - probe <= 62) {
+        end = closeAt + 1;
+      }
+    }
+
+    const answer = pool[cursor] ?? "";
+    cursor += 1;
+    if (answer === "") {
+      missed += 1;
+      out += text.slice(hit, end);      // 没有对应答案，保持原样，不猜
+    } else {
+      restored += 1;
+      out += answer;
+    }
+    pos = end;
+  }
+
+  return { text: out, restored, missed };
+}
+
+/**
+ * 检查 passage 里是否还残留挖空标记。
+ *
+ * @param {string} text
+ * @returns {number} 残留的挖空个数
+ */
+function countRemainingBlanks(text) {
+  if (typeof text !== "string") return 0;
+  return (text.match(/______/g) ?? []).length;
+}
+
 function normalizeSentence(text) {
   return String(text)
     .replace(/＿/g, "_")
@@ -208,6 +288,9 @@ ${activeTags.map((tag) => `- ${tag.id} ${tag.name}`).join("\n")}
 
 如果这是「一篇阅读 / 一个大题挖多个空」的题型（高考短文填空就是这个形态）：
 
+- ⚠️ passage 里**不能出现挖空**：不要写 ______，也不要把提示词括号带进去。
+  它必须是**完完整整、一字不差**的原文（就像卷子上印的那样），
+  错的题目标成 officially established in 2021，不要写成带空格和括号的形式。
 - 把**整篇未挖掉的原文**放进 passage 字段
 - ⚠️ **只放在这一篇 questions 数组的第一道题里，其余每一道都省略 passage 字段。**
   同一篇的 10 道题重复贴 10 遍全文，会让输出膨胀十倍以上（一篇 500 词的短文
@@ -1847,7 +1930,17 @@ function renderPreviewSummary() {
   if (counts.duplicate > 0) bits.push(`已存在 ${counts.duplicate}`);
   if (counts.diff > 0) bits.push(`答案不同 ${counts.diff}`);
   const head = bits.join("，");
-  els.previewSummary.textContent = `${head}；将导入 ${willImport} 题`;
+
+  // 自动修正的说明在这里也显示一次。
+  //
+  // 原来只在**导入后**才提示（runImport 读 pendingRepairs），于是预览阶段
+  // 用户看不到自己的数据被改过什么 —— 比如 AI 把原文也写成了挖空版、
+  // 我们按答案还原了 10 处，这种事应该**导入前**就说清楚，而不是事后才知道。
+  const repaired = (pendingRepairs ?? []).filter((line) => String(line).trim() !== "");
+  const tail = repaired.length
+    ? `；已自动修正 ${repaired.length} 处：${repaired.join("；")}`
+    : "";
+  els.previewSummary.textContent = `${head}；将导入 ${willImport} 题${tail}`;
 }
 
 /** 渲染整个预览区（含汇总与全选/全不选状态） */
@@ -1986,6 +2079,20 @@ async function buildPreviewInner(raw) {
   }
 
   repairs.push(...repairSentences(list));
+  // passage 是**整篇共享**的：一篇文章挖 11 个空，passage 里就有 11 处挖空，
+  // 而每道题只知道自己那一个空。所以还原时必须把**全批题的答案按顺序摊平**
+  // 一起用 —— 只用当前题的答案，11 处里只能还原第 1 处，其余全部还原不了。
+  // 摊平顺序 = 题目顺序 × 每题按 blankIndex 升序，与 passage 里空的出现顺序一致。
+  const allAnswers = [];
+  for (const q of list) {
+    const sorted = (q?.blanks ?? [])
+      .slice()
+      .sort((a, b) => (a?.blankIndex ?? 0) - (b?.blankIndex ?? 0));
+    for (const blank of sorted) {
+      allAnswers.push(Array.isArray(blank?.answer) ? blank.answer[0] : blank?.answer);
+    }
+  }
+
   list.forEach((question) => {
     if (question && typeof question.originalSentence === "string") {
       question.originalSentence = normalizeSentence(question.originalSentence);
@@ -1996,6 +2103,28 @@ async function buildPreviewInner(raw) {
     if (question) {
       const raw = question.passage ?? question.passageText ?? null;
       question.passageText = typeof raw === "string" && raw.trim() !== "" ? raw.trim() : null;
+      // AI 经常把 passage 也写成挖空版（______ (establish)）。
+      // 那不是「未挖空的原文」—— 括号里就是答案，学生展开对照时等于直接看到答案。
+      // 还原时**必须用答案**（established / stability / treasures）而不是括号里的
+      // 提示词原形（establish / stable / treasure），否则会造出语法错误的原文，
+      // 比留空格更糟。
+      if (question.passageText) {
+        const { text: fixed, restored, missed } = restorePassageBlanks(
+          question.passageText,
+          allAnswers
+        );
+        if (restored > 0) {
+          question.passageText = fixed;
+          repairs.push(
+            `原文里的 ${restored} 处挖空已按答案还原（AI 把 passage 也写成了挖空版）`
+          );
+        }
+        if (missed > 0) {
+          repairs.push(
+            `原文里有 ${missed} 处挖空没还原（本批答案不够），已按原样保留，请人工确认`
+          );
+        }
+      }
     }
   });
 

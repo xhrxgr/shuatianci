@@ -1,0 +1,145 @@
+{
+  "source": "2026年2月安徽省A10联盟高三开学考英语-语法填空",
+  "questions": [
+    {
+      "originalSentence": "The first five national parks, officially ______ (establish) in 2021, cover 230,000 square kilometers and protect nearly 30% of the country’s key wildlife species.",
+      "passage": "Over the past five years, China has made great progress in building its national park system. The first five national parks, officially ______ (establish) in 2021, cover 230,000 square kilometers and protect nearly 30% of the country’s key wildlife species. These parks have joined over 120 nature reserves together, greatly improving ecosystem health and long-term ______ (stable). Each park plays a special role. The Sanjiangyuan National Park protects the sources of three major rivers, having increased their water flow ______ nearly 50% in the past five years. The Giant Panda National Park connects separate panda habitats, giving the animals a larger and ______ (safe) home. In the Northeast Tiger and Leopard National Park, the number of wild tigers ______ (grow) from 27 to about 70 since 2017. The Hainan Tropical Rainforest National Park is the only place ______ the Hainan gibbon population has been steadily rising. Wuyishan National Park ______ (hold) the world’s most complete mid-subtropical forest ecosystem at its latitude. The parks also benefit local people: nearly 50,000 residents have found park-related jobs near their homes, ______ (earn) 10,000—20,000 yuan yearly. In August 2024, China completed property rights registration for these parks, clarifying ownership ______ responsibilities. A new national park law will take effect on January 1, 2026, providing strong legal protection for these natural ______ (treasure).",
+      "blanks": [
+        {
+          "blankIndex": 1,
+          "answer": ["established"],
+          "hintWord": "establish",
+          "hintType": "给动词",
+          "tagIds": ["t_010"],
+          "trapAnalysis": "此处为非谓语动词作后置定语修饰 national parks，national parks 与 establish 之间是被动关系，故用过去分词 established。"
+        }
+      ]
+    },
+    {
+      "originalSentence": "These parks have joined over 120 nature reserves together, greatly improving ecosystem health and long-term ______ (stable).",
+      "passage": "Over the past five years, China has made great progress in building its national park system. The first five national parks, officially ______ (establish) in 2021, cover 230,000 square kilometers and protect nearly 30% of the country’s key wildlife species. These parks have joined over 120 nature reserves together, greatly improving ecosystem health and long-term ______ (stable). Each park plays a special role. The Sanjiangyuan National Park protects the sources of three major rivers, having increased their water flow ______ nearly 50% in the past five years. The Giant Panda National Park connects separate panda habitats, giving the animals a larger and ______ (safe) home. In the Northeast Tiger and Leopard National Park, the number of wild tigers ______ (grow) from 27 to about 70 since 2017. The Hainan Tropical Rainforest National Park is the only place ______ the Hainan gibbon population has been steadily rising. Wuyishan National Park ______ (hold) the world’s most complete mid-subtropical forest ecosystem at its latitude. The parks also benefit local people: nearly 50,000 residents have found park-related jobs near their homes, ______ (earn) 10,000—20,000 yuan yearly. In August 2024, China completed property rights registration for these parks, clarifying ownership ______ responsibilities. A new national park law will take effect on January 1, 2026, providing strong legal protection for these natural ______ (treasure).",
+      "blanks": [
+        {
+          "blankIndex": 1,
+          "answer": ["stability"],
+          "hintWord": "stable",
+          "hintType": "给形容词",
+          "tagIds": ["t_023"],
+          "trapAnalysis": "空格处与 ecosystem health 并列，且由形容词 long-term 修饰，需要填入名词形式，stable 的名词为 stability。"
+        }
+      ]
+    },
+    {
+      "originalSentence": "The Sanjiangyuan National Park protects the sources of three major rivers, having increased their water flow ______ nearly 50% in the past five years.",
+      "passage": "Over the past five years, China has made great progress in building its national park system. The first five national parks, officially ______ (establish) in 2021, cover 230,000 square kilometers and protect nearly 30% of the country’s key wildlife species. These parks have joined over 120 nature reserves together, greatly improving ecosystem health and long-term ______ (stable). Each park plays a special role. The Sanjiangyuan National Park protects the sources of three major rivers, having increased their water flow ______ nearly 50% in the past five years. The Giant Panda National Park connects separate panda habitats, giving the animals a larger and ______ (safe) home. In the Northeast Tiger and Leopard National Park, the number of wild tigers ______ (grow) from 27 to about 70 since 2017. The Hainan Tropical Rainforest National Park is the only place ______ the Hainan gibbon population has been steadily rising. Wuyishan National Park ______ (hold) the world’s most complete mid-subtropical forest ecosystem at its latitude. The parks also benefit local people: nearly 50,000 residents have found park-related jobs near their homes, ______ (earn) 10,000—20,000 yuan yearly. In August 2024, China completed property rights registration for these parks, clarifying ownership ______ responsibilities. A new national park law will take effect on January 1, 2026, providing strong legal protection for these natural ______ (treasure).",
+      "blanks": [
+        {
+          "blankIndex": 1,
+          "answer": ["by"],
+          "hintWord": null,
+          "hintType": "无提示词",
+          "tagIds": ["t_026"],
+          "trapAnalysis": "表示增减幅度时，常与动词 increase/decrease 等搭配，此处考查介词 by，表示增加了近 50%。"
+        }
+      ]
+    },
+    {
+      "originalSentence": "The Giant Panda National Park connects separate panda habitats, giving the animals a larger and ______ (safe) home.",
+      "passage": "Over the past five years, China has made great progress in building its national park system. The first five national parks, officially ______ (establish) in 2021, cover 230,000 square kilometers and protect nearly 30% of the country’s key wildlife species. These parks have joined over 120 nature reserves together, greatly improving ecosystem health and long-term ______ (stable). Each park plays a special role. The Sanjiangyuan National Park protects the sources of three major rivers, having increased their water flow ______ nearly 50% in the past five years. The Giant Panda National Park connects separate panda habitats, giving the animals a larger and ______ (safe) home. In the Northeast Tiger and Leopard National Park, the number of wild tigers ______ (grow) from 27 to about 70 since 2017. The Hainan Tropical Rainforest National Park is the only place ______ the Hainan gibbon population has been steadily rising. Wuyishan National Park ______ (hold) the world’s most complete mid-subtropical forest ecosystem at its latitude. The parks also benefit local people: nearly 50,000 residents have found park-related jobs near their homes, ______ (earn) 10,000—20,000 yuan yearly. In August 2024, China completed property rights registration for these parks, clarifying ownership ______ responsibilities. A new national park law will take effect on January 1, 2026, providing strong legal protection for these natural ______ (treasure).",
+      "blanks": [
+        {
+          "blankIndex": 1,
+          "answer": ["safer"],
+          "hintWord": "safe",
+          "hintType": "给形容词",
+          "tagIds": ["t_016"],
+          "trapAnalysis": "空格处由并列连词 and 与比较级 larger 连接，需保持形式一致，修饰 home，故填 safer。"
+        }
+      ]
+    },
+    {
+      "originalSentence": "In the Northeast Tiger and Leopard National Park, the number of wild tigers ______ (grow) from 27 to about 70 since 2017.",
+      "passage": "Over the past five years, China has made great progress in building its national park system. The first five national parks, officially ______ (establish) in 2021, cover 230,000 square kilometers and protect nearly 30% of the country’s key wildlife species. These parks have joined over 120 nature reserves together, greatly improving ecosystem health and long-term ______ (stable). Each park plays a special role. The Sanjiangyuan National Park protects the sources of three major rivers, having increased their water flow ______ nearly 50% in the past five years. The Giant Panda National Park connects separate panda habitats, giving the animals a larger and ______ (safe) home. In the Northeast Tiger and Leopard National Park, the number of wild tigers ______ (grow) from 27 to about 70 since 2017. The Hainan Tropical Rainforest National Park is the only place ______ the Hainan gibbon population has been steadily rising. Wuyishan National Park ______ (hold) the world’s most complete mid-subtropical forest ecosystem at its latitude. The parks also benefit local people: nearly 50,000 residents have found park-related jobs near their homes, ______ (earn) 10,000—20,000 yuan yearly. In August 2024, China completed property rights registration for these parks, clarifying ownership ______ responsibilities. A new national park law will take effect on January 1, 2026, providing strong legal protection for these natural ______ (treasure).",
+      "blanks": [
+        {
+          "blankIndex": 1,
+          "answer": ["has grown"],
+          "hintWord": "grow",
+          "hintType": "给动词",
+          "tagIds": ["t_005", "t_007"],
+          "trapAnalysis": "时间状语 since 2017 提示用现在完成时；主语为 the number of wild tigers，中心词是单数名词 number，谓语动词需用单数，故填 has grown。"
+        }
+      ]
+    },
+    {
+      "originalSentence": "The Hainan Tropical Rainforest National Park is the only place ______ the Hainan gibbon population has been steadily rising.",
+      "passage": "Over the past five years, China has made great progress in building its national park system. The first five national parks, officially ______ (establish) in 2021, cover 230,000 square kilometers and protect nearly 30% of the country’s key wildlife species. These parks have joined over 120 nature reserves together, greatly improving ecosystem health and long-term ______ (stable). Each park plays a special role. The Sanjiangyuan National Park protects the sources of three major rivers, having increased their water flow ______ nearly 50% in the past five years. The Giant Panda National Park connects separate panda habitats, giving the animals a larger and ______ (safe) home. In the Northeast Tiger and Leopard National Park, the number of wild tigers ______ (grow) from 27 to about 70 since 2017. The Hainan Tropical Rainforest National Park is the only place ______ the Hainan gibbon population has been steadily rising. Wuyishan National Park ______ (hold) the world’s most complete mid-subtropical forest ecosystem at its latitude. The parks also benefit local people: nearly 50,000 residents have found park-related jobs near their homes, ______ (earn) 10,000—20,000 yuan yearly. In August 2024, China completed property rights registration for these parks, clarifying ownership ______ responsibilities. A new national park law will take effect on January 1, 2026, providing strong legal protection for these natural ______ (treasure).",
+      "blanks": [
+        {
+          "blankIndex": 1,
+          "answer": ["where"],
+          "hintWord": null,
+          "hintType": "无提示词",
+          "tagIds": ["t_032"],
+          "trapAnalysis": "先行词为地点名词 place，空格引导的定语从句中，主谓结构 the Hainan gibbon population has been steadily rising 完整，缺少地点状语，故用关系副词 where。"
+        }
+      ]
+    },
+    {
+      "originalSentence": "Wuyishan National Park ______ (hold) the world’s most complete mid-subtropical forest ecosystem at its latitude.",
+      "passage": "Over the past five years, China has made great progress in building its national park system. The first five national parks, officially ______ (establish) in 2021, cover 230,000 square kilometers and protect nearly 30% of the country’s key wildlife species. These parks have joined over 120 nature reserves together, greatly improving ecosystem health and long-term ______ (stable). Each park plays a special role. The Sanjiangyuan National Park protects the sources of three major rivers, having increased their water flow ______ nearly 50% in the past five years. The Giant Panda National Park connects separate panda habitats, giving the animals a larger and ______ (safe) home. In the Northeast Tiger and Leopard National Park, the number of wild tigers ______ (grow) from 27 to about 70 since 2017. The Hainan Tropical Rainforest National Park is the only place ______ the Hainan gibbon population has been steadily rising. Wuyishan National Park ______ (hold) the world’s most complete mid-subtropical forest ecosystem at its latitude. The parks also benefit local people: nearly 50,000 residents have found park-related jobs near their homes, ______ (earn) 10,000—20,000 yuan yearly. In August 2024, China completed property rights registration for these parks, clarifying ownership ______ responsibilities. A new national park law will take effect on January 1, 2026, providing strong legal protection for these natural ______ (treasure).",
+      "blanks": [
+        {
+          "blankIndex": 1,
+          "answer": ["holds"],
+          "hintWord": "hold",
+          "hintType": "给动词",
+          "tagIds": ["t_005", "t_007"],
+          "trapAnalysis": "本句陈述客观事实，应用一般现在时；主语 Wuyishan National Park 为第三人称单数，故谓语动词填 holds。"
+        }
+      ]
+    },
+    {
+      "originalSentence": "The parks also benefit local people: nearly 50,000 residents have found park-related jobs near their homes, ______ (earn) 10,000—20,000 yuan yearly.",
+      "passage": "Over the past five years, China has made great progress in building its national park system. The first five national parks, officially ______ (establish) in 2021, cover 230,000 square kilometers and protect nearly 30% of the country’s key wildlife species. These parks have joined over 120 nature reserves together, greatly improving ecosystem health and long-term ______ (stable). Each park plays a special role. The Sanjiangyuan National Park protects the sources of three major rivers, having increased their water flow ______ nearly 50% in the past five years. The Giant Panda National Park connects separate panda habitats, giving the animals a larger and ______ (safe) home. In the Northeast Tiger and Leopard National Park, the number of wild tigers ______ (grow) from 27 to about 70 since 2017. The Hainan Tropical Rainforest National Park is the only place ______ the Hainan gibbon population has been steadily rising. Wuyishan National Park ______ (hold) the world’s most complete mid-subtropical forest ecosystem at its latitude. The parks also benefit local people: nearly 50,000 residents have found park-related jobs near their homes, ______ (earn) 10,000—20,000 yuan yearly. In August 2024, China completed property rights registration for these parks, clarifying ownership ______ responsibilities. A new national park law will take effect on January 1, 2026, providing strong legal protection for these natural ______ (treasure).",
+      "blanks": [
+        {
+          "blankIndex": 1,
+          "answer": ["earning"],
+          "hintWord": "earn",
+          "hintType": "给动词",
+          "tagIds": ["t_009"],
+          "trapAnalysis": "句中已有谓语动词 have found，空格处作伴随状语，逻辑主语 residents 与 earn 之间为主动关系，故用现在分词 earning。"
+        }
+      ]
+    },
+    {
+      "originalSentence": "In August 2024, China completed property rights registration for these parks, clarifying ownership ______ responsibilities.",
+      "passage": "Over the past five years, China has made great progress in building its national park system. The first five national parks, officially ______ (establish) in 2021, cover 230,000 square kilometers and protect nearly 30% of the country’s key wildlife species. These parks have joined over 120 nature reserves together, greatly improving ecosystem health and long-term ______ (stable). Each park plays a special role. The Sanjiangyuan National Park protects the sources of three major rivers, having increased their water flow ______ nearly 50% in the past five years. The Giant Panda National Park connects separate panda habitats, giving the animals a larger and ______ (safe) home. In the Northeast Tiger and Leopard National Park, the number of wild tigers ______ (grow) from 27 to about 70 since 2017. The Hainan Tropical Rainforest National Park is the only place ______ the Hainan gibbon population has been steadily rising. Wuyishan National Park ______ (hold) the world’s most complete mid-subtropical forest ecosystem at its latitude. The parks also benefit local people: nearly 50,000 residents have found park-related jobs near their homes, ______ (earn) 10,000—20,000 yuan yearly. In August 2024, China completed property rights registration for these parks, clarifying ownership ______ responsibilities. A new national park law will take effect on January 1, 2026, providing strong legal protection for these natural ______ (treasure).",
+      "blanks": [
+        {
+          "blankIndex": 1,
+          "answer": ["and"],
+          "hintWord": null,
+          "hintType": "无提示词",
+          "tagIds": ["t_029"],
+          "trapAnalysis": "空格前后为 ownership 和 responsibilities 两个并列的名词，作 clarifying 的宾语，需用并列连词 and 连接。"
+        }
+      ]
+    },
+    {
+      "originalSentence": "A new national park law will take effect on January 1, 2026, providing strong legal protection for these natural ______ (treasure).",
+      "passage": "Over the past five years, China has made great progress in building its national park system. The first five national parks, officially ______ (establish) in 2021, cover 230,000 square kilometers and protect nearly 30% of the country’s key wildlife species. These parks have joined over 120 nature reserves together, greatly improving ecosystem health and long-term ______ (stable). Each park plays a special role. The Sanjiangyuan National Park protects the sources of three major rivers, having increased their water flow ______ nearly 50% in the past five years. The Giant Panda National Park connects separate panda habitats, giving the animals a larger and ______ (safe) home. In the Northeast Tiger and Leopard National Park, the number of wild tigers ______ (grow) from 27 to about 70 since 2017. The Hainan Tropical Rainforest National Park is the only place ______ the Hainan gibbon population has been steadily rising. Wuyishan National Park ______ (hold) the world’s most complete mid-subtropical forest ecosystem at its latitude. The parks also benefit local people: nearly 50,000 residents have found park-related jobs near their homes, ______ (earn) 10,000—20,000 yuan yearly. In August 2024, China completed property rights registration for these parks, clarifying ownership ______ responsibilities. A new national park law will take effect on January 1, 2026, providing strong legal protection for these natural ______ (treasure).",
+      "blanks": [
+        {
+          "blankIndex": 1,
+          "answer": ["treasures"],
+          "hintWord": "treasure",
+          "hintType": "给名词",
+          "tagIds": ["t_013"],
+          "trapAnalysis": "空格前有指示代词 these 修饰，表明此处指代复数概念，故 treasure 需用复数形式 treasures。"
+        }
+      ]
+    }
+  ]
+}

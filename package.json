@@ -1,7 +1,7 @@
 {
   "name": "english-quiz",
   "private": true,
-  "version": "3.7.9",
+  "version": "3.7.10",
   "type": "module",
   "description": "English cloze question bank for exam practice (pure PHP backend + vanilla JS frontend, no Node at runtime)",
   "scripts": {
@@ -24,7 +24,8 @@
     "test:ai-passage": "node php/tests/ai-passage-collapse-test.mjs http://127.0.0.1:9002",
     "test:passage-leak": "node php/tests/passage-leak-test.mjs http://127.0.0.1:9002",
     "test:feedback": "node php/tests/feedback-smoke-test.mjs http://127.0.0.1:9002",
-    "test:ai-auto-passage": "node php/tests/ai-auto-passage-test.mjs http://127.0.0.1:9002"
+    "test:ai-auto-passage": "node php/tests/ai-auto-passage-test.mjs http://127.0.0.1:9002",
+    "test:ai-unblank": "node php/tests/ai-passage-unblank-test.mjs http://127.0.0.1:9002"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3"
