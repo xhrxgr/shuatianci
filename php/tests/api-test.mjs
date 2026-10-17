@@ -11,6 +11,8 @@
  * 用来证明两边的响应结构完全一致。
  */
 
+import { checkAuthCoverage } from "./auth-coverage-test.mjs";
+
 const BASE = process.argv[2] || "http://127.0.0.1:9001";
 
 // 每次运行用随机后缀：同一个库反复跑也不会因为「用户名已被占用」而失败
@@ -1052,6 +1054,16 @@ async function main() {
   /* ---------------- 不存在的接口 ---------------- */
   const notFound = await request("GET", "/no-such-api");
   check("未定义接口 -> 404", notFound.status === 404, notFound.data);
+
+  /* ================================================================== */
+  /* 鉴权兜底：防止「路由表没有鉴权层 + 新 handler 忘了自己调」         */
+  /* ================================================================== */
+  // v3.8.5 修过的漏洞：index.php 的路由表只是路由匹配，没有兜底鉴权层，
+  // handler 不自己调 require_permission 就等于匿名可读。当时蓝图 list/show
+  // 就漏了，匿名能拉到 rules_json（= 完整抽题条件）。这里加两道：
+  //   ① 静态扫描：所有需要鉴权的 handler 函数体里必须有鉴权调用
+  //   ② 运行时抽查：匿名调几个敏感端点必须是 401
+  await checkAuthCoverage(request, check);
 
   /* ---------------- 汇总 ---------------- */
   console.log(`\n通过 ${pass} 项，失败 ${failures.length} 项`);
