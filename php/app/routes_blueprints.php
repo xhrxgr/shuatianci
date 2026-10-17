@@ -83,6 +83,10 @@ function assert_blueprint_name($name, $excludeId = '')
 /** GET /api/blueprints —— 全部蓝图（带生成次数与最近一次生成） */
 function route_blueprints_list()
 {
+    // 蓝图是「仅管理员」功能（README 功能说明），与本文件其余 CRUD 端点用同一档权限。
+    // 这里原本漏了鉴权：index.php 的路由表没有兜底鉴权层，handler 不自己调就等于匿名可读，
+    // 而 rules_json 泄露的是完整抽题条件（标签/提示词/来源组合）＝题库结构。
+    require_permission('question:write');
     $rows = query('SELECT * FROM blueprints ORDER BY COALESCE(updated_at, created_at) DESC, id');
     $blueprints = array_map('map_blueprint', $rows);
 
@@ -157,6 +161,7 @@ function route_blueprints_create()
 /** GET /api/blueprints/{id} */
 function route_blueprints_show($id)
 {
+    require_permission('question:write');
     $row = query_one('SELECT * FROM blueprints WHERE id = ?', [$id]);
     if ($row === null) {
         throw http_error(404, '蓝图不存在或已删除');

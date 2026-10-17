@@ -945,6 +945,10 @@ function route_system_update_source_set()
 function route_system_update_source_test()
 {
     // 这个接口会**临时改写全局的 update_source.json** 去测连通性，跑完再还原。
+    // 鉴权必须在最前面：否则未登录用户能靠状态码差异（409 更新中 / 401 未登录）
+    // 反推「系统此刻是否正在更新」，这是给 system:write 子系统做的前置侦察。
+    require_permission('system:write');
+
     // 更新进行中时 worker 也在读同一份配置，会把 fetch 引到错误的远端；
     // 更糟的是进程若在中途被杀，配置就永久停在测试值上。直接挡掉。
     $state = update_state_read();
@@ -954,8 +958,6 @@ function route_system_update_source_test()
             'error' => '正在更新中，此时不能测试更新源（测试会临时改写更新配置，可能把这次更新带偏）',
         ], 409);
     }
-
-    require_permission('system:write');
 
     $body = request_body();
     // 不落盘，只验证传进来的这一组

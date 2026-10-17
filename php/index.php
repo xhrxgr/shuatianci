@@ -286,7 +286,12 @@ try {
             header('Content-Type: text/html; charset=utf-8');
             echo maintenance_page(
                 '新版本的数据库结构没能初始化成功',
-                '代码已更新到最新版，但数据库结构升级失败：' . $bootErr->getMessage(),
+                // 只说结论，不回显异常原文：PDOException 的 getMessage() 会带出
+                // SQL 片段、表名列名与数据库绝对路径，而这一页是未登录可见的
+                //（在 attach_user() 之前就 exit 了），等于对外公开服务器内部结构。
+                // 完整信息已经在上一行 error_log 里。
+                '代码已更新到最新版，但数据库结构升级失败。请查看服务器错误日志'
+                . '（PHP error log）获取详细信息。',
                 '解决办法：在服务器上执行 git reset --hard HEAD~1 回到上一个版本，'
                 . '站点会立刻恢复。数据库结构的改动只做加法，旧代码可以继续用新库，'
                 . '所以回滚代码是安全的，不会丢数据。'

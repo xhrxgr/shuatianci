@@ -83,8 +83,6 @@ interface Blank {
   trapAnalysis: string;    // 命题意图与判断依据，说清要点即可，不要求凑字数
 }
 
-Question（一道题，即一个句子）：
-
 顶层结构（passage 与 source、questions 平级）：
 
 interface Batch {
@@ -224,8 +222,11 @@ ${activeTags.map((tag) => `- ${tag.id} ${tag.name}`).join("\n")}
 
 ## 输出要求
 
-1. 只输出一个 JSON 数组，不要输出任何解释文字，不要用 markdown 代码块包裹。
-   格式细节见上文「JSON 格式要求」，尤其是**原句里的引号必须换成中文引号**。
+1. 只输出**一个 JSON 对象**（顶层含 source / passage / questions），不要输出任何解释文字，
+   不要用 markdown 代码块包裹。**不要输出裸数组** —— 顶层不是数组，
+   那样整批的 source 会读不到，导入时会因「请先填写试卷名」而失败。
+   格式细节见上文「1-1 题号必须替换成空格」到「1-3 JSON 自身的三条硬规则」，
+   尤其是**原句里的引号必须换成中文引号**。
 2. 每道题都要写 trapAnalysis，说清两件事即可：命题人为什么这么设计、正确的判断依据是什么。
    只写正确的形式与依据，不要把错误的写法或错误选项列出来（展示错误形式会误导学生）。
    写具体、写到点子上即可，不要为凑字数重复或编造内容。
@@ -234,7 +235,7 @@ ${activeTags.map((tag) => `- ${tag.id} ${tag.name}`).join("\n")}
 5. answer 只收录结构上真正成立的答案，不要塞入冗余或凑数选项。
    每个词按标准拼写和大小写书写。
 6. 注意原文中还有中文注释（如"新石器""礼仪器"），这些是原卷的一部分，**原样保留在 originalSentence 里**。
-11. **不要输出 id 字段**。
+7. **不要输出 id 字段**。
 
 ## 这些地方最容易被搞错（都踩过，请逐条自查）
 
@@ -254,16 +255,16 @@ ${activeTags.map((tag) => `- ${tag.id} ${tag.name}`).join("\n")}
 7. **hintType 只能取这五个值之一**：${HINT_TYPES.join(" / ")}。不要自造。
 8. **answer 必须是数组**，哪怕只有一个答案也要写成 ["as"] 这种形式，不要写裸字符串。
 9. **不要输出 id 字段**，题目编号由我的系统在你返回之后自行生成。
-10. **不要输出空题目**：数组里每一项都必须是一个完整可用的 Question 对象，
+10. **不要输出空题目**：questions 数组里每一项都必须是一个完整可用的 Question 对象，
     不要放占位符、不要放空对象、不要放说明文字。
 11. **答案与原文严格一致**：answer 里的大小写、拼写必须与 passage 里的用词完全相同
     （除非原卷就是错的，那就在 trapAnalysis 里指出来）。
 12. 整批输出里**不要出现任何解释、开场白、结语**，也不要输出多个 JSON 块。
 
-## 试卷来源：整批只给一次，放在数组最前面
+## 试卷来源：整批只给一次，放在顶层 source
 
 一次粘贴就是**一整张卷子**，所有题目来自同一张卷。所以来源不是每道题各写一遍，
-而是在数组**第一个元素之前**单独给一次。
+而是作为**顶层的 source 字段**单独给一次（与 passage、questions 平级）。
 
 返回格式（注意最前面那个 source 和 questions）：
 
@@ -321,40 +322,43 @@ tagIds 的判定规则已经按类别分好标签，**不要凭语感随意归�
 假设试卷上有这样一段（题号 56、57 原样照抄试卷）：
 
   “Among the foundational cornerstones of early Chinese civilization, Hongshan Culture holds a place
-   of profound significance. Hongshan Culture, flourishing roughly from 4700 to 2900 BCE in 56 is now
-   Liaoning Province and neighboring regions, stands 57 one of China's most remarkable Neolithic
+   of profound significance. Hongshan Culture, flourishing roughly from 4700 to 2900 BCE, 56 (Liaoning)
+   Province and neighboring regions, stands 57 one of China's most remarkable Neolithic
    (新石器) cultures.”
 
 对照一下原句和输出，就可以看清题号是怎么处理的：
 
-- 卷面原文：in **56** is now Liaoning Province
-- 输出内容：in **______** is now Liaoning Province
+- 卷面原文：56 **(Liaoning)** Province
+- 输出内容：______ **(Liaoning)** Province
 
 **题号 56 换成空格 ______，题号 57 同样换成 ______。** 题号本身不出现在任何字段里。
 
-应该输出**两条**（注意最前面那个 source 只写一次）：
+注意第 1 处的括号：**空格后带括号 = 有提示词**，所以 hintWord 填 Liaoning、hintType 填「给名词」；
+第 2 处空格后没有括号 = 无提示词，hintWord 必须是 null，且答案只能是功能词（这里是 as）。
+
+应该输出**两条**（注意 source 和 passage 都只在顶层写一次）：
 
 {
   "source": "某某中学2026-2027学年高三上学期10月阶段检测试题",
+  "passage": "Among the foundational cornerstones of early Chinese civilization, Hongshan Culture holds a place of profound significance. Hongshan Culture, flourishing roughly from 4700 to 2900 BCE, Liaoning Province and neighboring regions, stands as one of China's most remarkable Neolithic (新石器) cultures. The most famous site, Niuheliang, features a magnificent temple and rubble-mound stone tombs.",
   "questions": [
     {
-      "passage": "Among the foundational cornerstones of early Chinese civilization, Hongshan Culture holds a place of profound significance. Hongshan Culture, flourishing roughly from 4700 to 2900 BCE in Liaoning Province and neighboring regions, stands as one of China's most remarkable Neolithic (新石器) cultures. The most famous site, Niuheliang, features a magnificent temple and rubble-mound stone tombs.",
-      "originalSentence": "Hongshan Culture, flourishing roughly from 4700 to 2900 BCE in ______ is now Liaoning Province and neighboring regions, stands ______ one of China's most remarkable Neolithic (新石器) cultures.",
+      "originalSentence": "Hongshan Culture, flourishing roughly from 4700 to 2900 BCE, ______ (Liaoning) Province and neighboring regions, stands ______ one of China's most remarkable Neolithic (新石器) cultures.",
       "blanks": [
         {
           "blankIndex": 1,
           "answer": ["Liaoning"],
-          "hintWord": null,
-          "hintType": "无提示词",
+          "hintWord": "Liaoning",
+          "hintType": "给名词",
           "tagIds": ["t_002", "t_013"],
-          "trapAnalysis": "空格作介词 in 的宾语，填红山文化遗址所在的省份。空格后紧跟 is now Liaoning Province，可由后文直接推出该省名。"
+          "trapAnalysis": "括号提示词是省份名，学生要判断此处填专有名词或相应的词形。空格后紧跟 Province，与提示词 Liaoning 构成「辽宁省」，学生须写出 Liaoning 而非 Liaoning Province——后者会与后面的 Province 重复。"
         },
         {
           "blankIndex": 2,
           "answer": ["as"],
           "hintWord": null,
           "hintType": "无提示词",
-          "tagIds": ["t_005", "t_029"],
+          "tagIds": ["t_029"],
           "trapAnalysis": "空格与后文 one of 构成 as one of the most... 固定结构，as 在此作介词，与 one of 搭配使用。"
         }
       ]
@@ -392,6 +396,7 @@ tagIds 的判定规则已经按类别分好标签，**不要凭语感随意归�
 - 题号 56、57 没有出现在任何字段里
 - **source 写在 questions 前面，整批只写一次**（本示例假设封面是某某中学的
   月考试卷）；两条题里都没有再写 source
+- **passage 也写在顶层、整篇只出现一次**，两条题的对象里都**没有** passage 字段
 
 ## 需要拆解的内容
 

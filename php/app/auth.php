@@ -110,6 +110,28 @@ function auth_cookie_name()
     return 'eq_token';
 }
 
+/**
+ * 当前请求是否走 HTTPS。
+ *
+ * 用于给 Cookie 加 Secure 属性。只在 HTTPS 下才加：
+ * 本地开发（README 的 http://127.0.0.1:9001）没有 TLS，硬写 secure=true
+ * 会让浏览器根本不回传 Cookie，表现为「登录后立刻掉登录」。
+ * 线上是 HTTPS（记忆里部署拓扑为 WAF 终止 TLS 后回源），这条会生效。
+ *
+ * 额外看 X-Forwarded-Proto：宝塔/nginx 常见做法是前置代理终结 TLS，
+ * 回源到 PHP 时 HTTPS 变量可能已被清掉。
+ */
+function request_is_https()
+{
+    if (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off') {
+        return true;
+    }
+    if (strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https') {
+        return true;
+    }
+    return (int) ($_SERVER['SERVER_PORT'] ?? 0) === 443;
+}
+
 /** 写入登录 Cookie */
 function set_auth_cookie($token)
 {
@@ -120,6 +142,10 @@ function set_auth_cookie($token)
         'expires' => time() + SESSION_TTL_DAYS * 24 * 60 * 60,
         'path' => '/',
         'httponly' => true,
+        // HTTPS 下加 Secure：该 token 有效期 30 天且与 sessions 表一一对应，
+        // 走明文 HTTP 会被中间人直接嗅探走。没条件加时宁可不加，
+        // 免得本地 HTTP 开发直接登不上。
+        'secure' => request_is_https(),
         'samesite' => 'Lax',
     ]);
 }
@@ -130,10 +156,12 @@ function clear_auth_cookie()
     if (headers_sent()) {
         return;
     }
+    // 属性必须与写入时一致，否则清不掉
     setcookie(auth_cookie_name(), '', [
         'expires' => time() - 3600,
         'path' => '/',
         'httponly' => true,
+        'secure' => request_is_https(),
         'samesite' => 'Lax',
     ]);
 }
