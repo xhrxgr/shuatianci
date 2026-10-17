@@ -267,6 +267,17 @@ interface Blank {
 
 Question（一道题，即一个句子）：
 
+顶层结构（passage 与 source、questions 平级）：
+
+interface Batch {
+  source: string;            // 试卷名，整批只给一次
+  passage?: string;          // 整篇阅读的未挖空原文。一篇只给一次，放在**顶层**；
+                              // 每道题里都不要重复写。单句题集合则整个省略这个字段。
+  questions: Question[];     // 这一篇挖出来的若干道小题
+}
+
+Question（一道题，即一个句子；**不含 passage 字段**）：
+
 interface Question {
   originalSentence: string;   // 挖空后的句子（含做出本题所必需的上下文句子）
   passage?: string;           // 这道题所属**整篇阅读的未挖空原文**。
@@ -293,22 +304,31 @@ ${activeTags.map((tag) => `- ${tag.id} ${tag.name}`).join("\n")}
 - ⚠️ passage 里**不能出现挖空**：不要写 ______，也不要把提示词括号带进去。
   它必须是**完完整整、一字不差**的原文（就像卷子上印的那样），
   错的题目标成 officially established in 2021，不要写成带空格和括号的形式。
-- 把**整篇未挖掉的原文**放进 passage 字段
-- ⚠️ **只放在这一篇 questions 数组的第一道题里，其余每一道都省略 passage 字段。**
-  同一篇的 10 道题重复贴 10 遍全文，会让输出膨胀十倍以上（一篇 500 词的短文
+- **把整篇未挖掉的原文放进**顶层**的 passage 字段**（与 source、questions 平级），
+  每道题里**都不要写** passage。
+  这样一眼就能看出「这一篇 = 一个 passage + N 道题」的对应关系，也不会出现
+  「到底是第几道题带了原文」这种歧义。
+- ⚠️ 同一篇的 10 道题重复贴 10 遍全文，会让输出膨胀十倍以上（一篇 500 词的短文
   能把 JSON 从 60 行撑到 600 行），既拖慢生成、又多花 token，还极易被长度限制截断。
   **这是硬性要求，不是建议。**
+- 这一篇是单句题集合（每题独立、互不相关）时，**顶层不要写 passage**。
 - 为什么必须给：代词指代、时态呼应、篇章逻辑这类空，只看挖出来的那一句判断不了，
   学生要能随时展开全文对照
 - originalSentence 仍然只放「挖空后的本题句子 + 做出本题必需的上下文」——
   两者不重复也不矛盾：originalSentence 是考题，passage 是参照
 - 单句题（一空一句、无需上下文）不要 passage；图片里只有单个句子时也留空
 
-**正确写法**（同一篇 3 道题，questions 数组）：
+**正确写法**（同一篇 3 道题）：
 
-    第 1 题：{ "passage": "整篇原文只在这里出现这一次……", "originalSentence": "第 1 题……", "blanks": [...] }
-    第 2 题：{ "originalSentence": "第 2 题……", "blanks": [...] }
-    第 3 题：{ "originalSentence": "第 3 题……", "blanks": [...] }
+    {
+      "source": "某某中学2026-2027学年高三上学期10月阶段检测试题",
+      "passage": "整篇未挖空的原文，只在这里出现这一次……",
+      "questions": [
+        { "originalSentence": "第 1 题……", "blanks": [...] },
+        { "originalSentence": "第 2 题……", "blanks": [...] },
+        { "originalSentence": "第 3 题……", "blanks": [...] }
+      ]
+    }
 
 ## 核心要求：按句切分，但不能删掉答题依据
 
@@ -401,7 +421,7 @@ ${activeTags.map((tag) => `- ${tag.id} ${tag.name}`).join("\n")}
 5. answer 只收录结构上真正成立的答案，不要塞入冗余或凑数选项。
    每个词按标准拼写和大小写书写。
 6. 注意原文中还有中文注释（如"新石器""礼仪器"），这些是原卷的一部分，**原样保留在 originalSentence 里**。
-7. **不要输出 id 字段**。
+11. **不要输出 id 字段**。
 
 ## 这些地方最容易被搞错（都踩过，请逐条自查）
 
@@ -413,9 +433,10 @@ ${activeTags.map((tag) => `- ${tag.id} ${tag.name}`).join("\n")}
    卷面里的引号一律转成中文引号保留。
 3. **原句里挖空的数量必须与 blanks 数组长度完全相等**，一个不多一个不少。
    题号（如 56、57）要换成 ______，但**题号本身不出现在任何字段里**。
-4. **passage 里不能有挖空**。它必须是完完整整的原文（就像卷子上印的那样），
-   不要出现 ______，也不要出现给提示词用的括号。
-5. **passage 一篇只写一次**，放在该篇 questions 的第一道题里，其余省略。
+4. **passage 只能出现在顶层**（与 source、questions 平级），一篇只写一次，
+   **每道题里都不要再写一遍**。
+5. **顶层 passage 里不能有挖空，也不能带提示词括号** —— 它必须完完整整、一字不差地
+   照抄卷面（例：officially established in 2021，不是带空格和括号的形式）。
 6. **hintWord 为 null 时必须真的写 null**，不要写空字符串 ""，也不要省略这个字段。
 7. **hintType 只能取这五个值之一**：${HINT_TYPES.join(" / ")}。不要自造。
 8. **answer 必须是数组**，哪怕只有一个答案也要写成 ["as"] 这种形式，不要写裸字符串。
@@ -1251,10 +1272,24 @@ function splitBatch(parsed) {
     !Array.isArray(parsed) &&
     Array.isArray(parsed.questions)
   ) {
+    // 顶层 passage（提示词现在要求的写法）：整篇原文与 questions 平级，
+    // 一眼就能看出「一篇 = 一个 passage + N 道题」，题里不再重复带 passage。
+    const topPassage =
+      typeof parsed.passage === "string" && parsed.passage.trim() !== ""
+        ? parsed.passage.trim()
+        : "";
+    const list = topPassage
+      ? parsed.questions.map((q) =>
+          q && typeof q === "object" && !Array.isArray(q)
+            ? { ...q, passage: q.passage ?? topPassage }
+            : q
+        )
+      : parsed.questions;
     return {
-      list: parsed.questions,
+      list,
       source: typeof parsed.source === "string" ? parsed.source.trim() : "",
       perItem: false,
+      topPassage,
     };
   }
 
@@ -1263,7 +1298,7 @@ function splitBatch(parsed) {
     // 老写法：source 写在每道题里
     const perItem = first && typeof first.source === "string";
     const source = perItem ? first.source.trim() : "";
-    return { list: parsed, source, perItem: Boolean(perItem) };
+    return { list: parsed, source, perItem: Boolean(perItem), topPassage: "" };
   }
 
   // 误粘了单个对象
@@ -1627,11 +1662,15 @@ async function sharePassageForBatch(text) {
  * 其余每道省略 passage。理由很实在 —— 一篇 500 词的短文重复贴 10 遍，
  * 会把 JSON 从 60 行撑到 600 行：生成更慢、更费 token，还极易被长度限制截断。
  *
- * 原文本来就是 AI 填好的，用户再手动点一次「套用到本批」是重复劳动，
- * 还容易让人以为漏了一步没做，所以这里自动做掉。
+ * 但**不能只指望 AI 听话**：实测同一个模型、同一份提示词，AI 照样会把
+ * 同一篇原文贴进 10 道题里（用户连续两次实测都这样）。所以这里做兜底，
+ * 两种形态都自动合并：
  *
- * 判定很简单：**有且只有第一道题带 passage**，就按「这一篇就是这个原文」套用。
- * 别的形态（多题各带一份、只有中间某题带）一律不自动处理 ——
+ *   1. **只有第一道题带 passage** —— 提示词生效时的形态；
+ *   2. **每道题都带、且内容完全一致** —— AI 不听话时的形态。
+ *      这一条是关键：不合并的话，10 道题就往库里塞 10 份一模一样的长文本。
+ *
+ * 只在「内容完全一致」时才合并。有的带有的不带、或内容有出入，一律不动 ——
  * 说不清哪份才是这篇的原文，自动猜反而可能把错的套上去。
  *
  * 失败**不阻断**：套用只是优化，失败就保留 AI 给的原样，导入照常进行。
@@ -1645,8 +1684,15 @@ async function autoAdoptSharedPassage(list) {
   }
 
   const texts = list.map((q) => (typeof q?.passageText === "string" ? q.passageText.trim() : ""));
-  if (texts[0] === "" || texts.slice(1).some((t) => t !== "")) {
-    return false;   // 不是「只有第一道题带」这个形态，不猜
+
+  // 只有第一道题带 —— 提示词生效时的形态
+  const onlyFirstHas = texts[0] !== "" && texts.slice(1).every((t) => t === "");
+  // 每道题都带、且内容完全一致 —— AI 不听话时的形态，同样要合并
+  const allSame =
+    texts[0] !== "" && texts.every((t) => t === texts[0]);
+
+  if (!onlyFirstHas && !allSame) {
+    return false;   // 有的带有的不带、或内容有出入，不猜
   }
 
   try {

@@ -36,29 +36,24 @@ const expected = JSON.parse(RAW).questions.length;
 check(`${expected} 道题都解析出来了`, cards === expected, { cards, expected });
 
 // 关键：存进篇章的原文里**不能再有挖空标记**
-// 这份数据没自动套用成共享篇章，所以从预览里的折叠块取原文
-const passageText = await p.evaluate(() => {
-  const dets = [...document.querySelectorAll("#admin-ai-preview-list details")];
-  return dets.map((d) => { d.open = true; return d.textContent ?? ""; }).join(" ");
-});
+// v3.8.2 起「每题都带同一份」也会自动合并成共享篇章，
+// 原文统一显示在顶部的面板输入框里（不再逐题重复）
+const passageText = await p.locator("#admin-ai-passage-text").inputValue().catch(() => "");
 check("还原后原文里不再有 ______", passageText.includes("______") === false,
   (passageText.match(/[^ ]*______[^ ]*/) ?? [""])[0]);
 check("填的是答案 established，不是提示词原形 establish",
-  /officially established in 2021/.test(passageText), passageText.slice(0, 130));
+  passageText.includes("officially established in 2021"), passageText.slice(0, 130));
 check("名词题也还原成 stability / treasures",
-  /long-term stability/.test(passageText) && /natural treasures/.test(passageText),
+  passageText.includes("long-term stability") && passageText.includes("natural treasures"),
   passageText.slice(0, 200));
 
 // 面板状态 + 修复说明
-// 这份数据每题都带 passage（用户当时还没换新提示词），按设计**不做兼容** → 不自动套用，
-// 各题保留自己那份（预览里按内容去重，只渲染一个折叠入口）
+// 这份数据每题都带同一份 passage（AI 没听提示词）→ 兜底自动合并
 const panel = (await p.locator("#admin-ai-passage").innerText().catch(() => "")) || "";
-check("不做兼容：每题都带 passage 时不自动套用", !/已套用到本批/.test(panel), panel.slice(0, 120));
-// 还原用的是**全批题的答案**，所以 10 份 passage 变得完全一致 → 去重成 1 个入口
+check("每题都带同一份 → 仍然自动合并成共享篇章", /已套用到本批/.test(panel), panel.slice(0, 120));
+// 合并成共享篇章后，逐题原文块一个都不该有
 const dedup = await p.locator("#admin-ai-preview-list details").count();
-check("还原后 10 份原文一致 → 折叠入口去重成 1 个", dedup === 1, dedup);
-const dedupLabel = await p.locator("#admin-ai-preview-list details summary").first().innerText().catch(() => "");
-check("折叠标题写明本批共用", /本批/.test(dedupLabel), dedupLabel.slice(0, 60));
+check("合并后没有逐题原文块", dedup === 0, dedup);
 
 const body = await p.locator("body").innerText();
 // 「已自动修正」那一栏：确认自动还原这件事被告知了用户（文案会随版本调整，只断言在不在）

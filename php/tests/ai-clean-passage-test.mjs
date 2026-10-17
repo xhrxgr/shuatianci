@@ -48,19 +48,15 @@ check("查重已完成并给出摘要", summary.includes("新增") || summary.in
 const hasRepair = summary.includes("还原");
 check("原文本就完整 → 不做还原（不产生多余提示）", hasRepair === false, summary.slice(0, 140));
 
-const firstDetails = await p.evaluate(() => {
-  const d = document.querySelector("#admin-ai-preview-list details");
-  if (!d) return "";
-  d.open = true;
-  return d.textContent ?? "";
-});
-check("原文里没有挖空（AI 这次给对了）", firstDetails.includes("______") === false,
-  (firstDetails.match(/[^ ]*______[^ ]*/) ?? [""])[0]);
-check("原文是完整句子", /officially established in 2021/.test(firstDetails), firstDetails.slice(0, 110));
+// 合并成共享篇章后，预览里不再有逐题原文块，原文在顶部面板
+const panelArea = await p.locator("#admin-ai-passage").innerText().catch(() => "");
+check("共享后预览里没有逐题原文块（原文在顶部面板）",
+  panelArea.includes("本篇完整原文"), panelArea.slice(0, 100));
 
-// 内容相同 → 折叠入口去重成 1 个
+// 自动合并成共享篇章后，10 道题都不再带各自的 passageText
+// → 预览里一个逐题原文块都不该有（原文统一在顶部面板）
 const dedup = await p.locator("#admin-ai-preview-list details").count();
-check("10 份相同原文 → 折叠入口去重成 1 个", dedup === 1, dedup);
+check("自动合并后没有逐题原文块（不是去重成 1 个，是 0 个）", dedup === 0, dedup);
 
 // 真正走一遍导入
 p.once("dialog", (d) => d.accept());
@@ -77,6 +73,38 @@ if (await importBtn.count()) {
 } else {
   check("找得到导入按钮", false, "按钮未出现");
 }
+
+// 核心断言：入库后 passage 只存一份（走 passages 表），不随题重复
+const stored = await p.evaluate(async (base) => {
+  const res = await fetch(
+    base + "/api/questions?source=" + encodeURIComponent("2026年2月安徽省A10联盟高三开学考英语试题"),
+    { headers: { Authorization: "Bearer " + localStorage.getItem("eq_token") } }
+  );
+  const data = await res.json();
+  const qs = data.questions ?? [];
+  return {
+    total: qs.length,
+    withPassageId: qs.filter((q) => q.passageId).length,
+    withOwnText: qs.filter((q) => (q.passageText ?? "").length > 0).length,
+  };
+}, BASE);
+check("10 道题全部入库", stored.total === 10, stored);
+check("10 道题都指向共享篇章（不是各存一份）", stored.withPassageId === 10, stored);
+
+// ⚠️ 接口返回的 passageText 是**读路径从 passages 表 JOIN 出来的**（统一出口），
+// 所以它有值是正常的，不能用来判断「库里是否重复存了 10 份」。
+// 真正的判据是 passageId：全部非空且指向同一篇，说明只有 passages 表里那一份。
+const ids = await p.evaluate(async (base) => {
+  const res = await fetch(
+    base + "/api/questions?source=" + encodeURIComponent("2026年2月安徽省A10联盟高三开学考英语试题"),
+    { headers: { Authorization: "Bearer " + localStorage.getItem("eq_token") } }
+  );
+  const data = await res.json();
+  return (data.questions ?? []).map((q) => q.passageId ?? "");
+}, BASE);
+const uniqueIds = [...new Set(ids)];
+check("10 道题指向的是**同一篇**篇章（只存一份）",
+  uniqueIds.length === 1 && uniqueIds[0] !== "", { uniqueIds });
 
 check("全程无 JS 异常", errors.length === 0, errors.slice(0, 2));
 
