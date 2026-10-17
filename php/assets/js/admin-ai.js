@@ -280,11 +280,6 @@ Question（一道题，即一个句子；**不含 passage 字段**）：
 
 interface Question {
   originalSentence: string;   // 挖空后的句子（含做出本题所必需的上下文句子）
-  passage?: string;           // 这道题所属**整篇阅读的未挖空原文**。
-                              // ⚠️ 一篇阅读挖多个空时，**只有该篇 questions 数组的
-                              // 第一道题要写它，其余每一道都省��� passage 字段**。
-                              // 重复写十遍会让输出膨胀十倍，更容易撞上长度限制被截断。
-                              // 单句题不要写这个字段
   blanks: Blank[];
 }
 
