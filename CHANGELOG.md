@@ -11,6 +11,94 @@
 当前版本写在根目录的 `VERSION` 文件里，与 `package.json` 的 `version`、git 标签 `v{VERSION}`
 三处保持一致；发版流程见 README「发版」一节。
 
+## 3.8.7（2026-10-17）—— 收敛 6 份 escapeHtml、补一个零覆盖的端点、修导入 N+1
+
+三个提交：`46852d7`（补 `POST /system/update` 测试）、`95118ee`（收敛 + 补断言 + 修 N+1）。
+
+### escapeHtml 从 6 份副本收敛成 1 份
+
+`admin.js`、`admin-system.js`、`admin-users.js`、`practice.js`、`paper-practice.js`、
+`ai-text.js` 各有一份**逐字节相同**的 HTML 转义实现。副本的危害不是多占几行：
+
+- 要改转义规则（比如补上反引号，挡 markdown 里的属性注入）时改一处漏五处，
+  漏掉的那份就成了 XSS 口子
+- 审查时看到「这个文件用了 escapeHtml」会误以为用的是统一实现，
+  实际可能是一份早已过时的副本
+
+现统一到 `php/assets/js/escape-html.js`，各文件改为 import。`admin.js` 与
+`ai-text.js` 保留对外导出，下游模块（`ai-render.js` 等）的 import 不用改。
+
+### ⚠️ 途中踩到的坑：re-export 不在本模块建绑定
+
+把本地定义换成 `export { escapeHtml } from "./escape-html.js"` 是**错的**——
+re-export 只把符号转发给下游，**不给当前模块建立本地绑定**。
+于是 `admin.js` 里 26 处 `escapeHtml(...)` 全部抛 `ReferenceError`，
+admin 页的「导入 N 道题」提示不显示。
+
+正确写法是 import 和export 两条都留（文件里已注明原因）。
+
+这个错特别阴险，因为**三种检查都测不出来**：
+
+| 检查 | 结果 |
+|---|---|
+| `node --check` 语法检查 | 通过（语法没问题，是运行期作用域） |
+| 从下游 import | 正常（re-export 确实生效了） |
+| 静态代码审查 | 看不出来 |
+| 浏览器端到端测试 | 才炸 |
+
+因此新增 `php/tests/js-binding-test.mjs` 做静态防线：扫出「文件内部调用了某个
+符号，却既没 import 也没本地定义」。并入 `test:api`（124 → 125 项），
+并用注入故障的方式验证过它真能抓到。
+
+### 补 `POST /admin/users/{id}/status` 的接口级断言（+8 项）
+
+`role`、`reset-password`、`delete` 三个端点都有「不能对自己动手」的校验，
+唯独 `status` 端点此前**零覆盖**，只能靠 UI 隐式验证。
+
+除「不能禁用自己的账号」，还补了两条更要紧的：
+
+- **禁用后已签发的 token 立即作废** —— `change_status` 会调
+  `destroy_user_sessions`。不验这条的话，「禁用后旧 token 还能继续用到 30 天过期」
+  这个洞会漏过去
+- 被禁用账号登录返回 **403「账号已被禁用」**，不是 401（`routes_auth.php` 按
+  `status` 拦，返回码容易记错）
+
+同样用注入故障验证过：把自我保护校验删掉后，管理员会把自己禁用掉
+（返回 `{"ok":true}`），后续 6 项断言连锁失败。
+
+### 修批量导入的 N+1
+
+`ensure_paper_by_name()` 在批量导入里逐题调用，而一整张卷的题共用同一个
+`source`（= 同一个卷名），于是每道题都 `SELECT` 一次 papers 表。
+实测导入 60 道同卷题：**60 次 → 1 次**。
+
+加的是**请求内**缓存，不是跨请求：卷名可能被另一个请求改掉，跨请求缓存会读到
+过期的卷 id，把题挂到已经改名的卷上。已实测改卷名后再导入同名卷会新建卷。
+
+另外，虚拟卷名被占用时报的错**不进缓存**——否则同一批次后续同卷名的题会被
+误判成可用。
+
+### 补 `POST /system/update` 的回归测试（11 项）
+
+全站唯一会执行 `git reset --hard` 的接口，此前零覆盖（`test:ui` 里恰好断言
+「已是最新时不显示更新按钮」，等于永远点不到）。只覆盖**不真正更新**的早退分支：
+用脏工作区把请求挡在启动之前，绝不触发会 `nohup` 拉起 worker 的那条路。
+
+### 本次未能验证的部分
+
+- `POST /system/update-source/test` 仍无覆盖。它没有「安全早退」分支可用——
+  行为是「临时改写全局配置 → 真的拉一次远端 → 还原」，想测它就必然踩到这两者之一。
+  其校验逻辑已被 `test:api` 通过同一个归一化函数覆盖，缺的是编排顺序。
+
+### 验证
+
+api 125、AI 9 套件 124、bank-phase1 66、bank-phase2 88、paper-delete 8、
+blueprint-ui 30、passage-leak 9、tag-collapse 10、update-trigger 11，
+合计 **471 项全绿**。
+
+`test:ui` 仍有 1 项既有失败（多空答错提示），已用**改动前的 practice.js**
+对照确认同样失败，与本次改动无关。
+
 ## 3.8.6（2026-10-17）—— 整卷页卷名空白等 8 个真实缺陷 + 筛选全表扫描
 
 全面审查（第二轮）的结果：47 个 PHP + 26 个 JS，逐条核实后修了 8 个真实缺陷
