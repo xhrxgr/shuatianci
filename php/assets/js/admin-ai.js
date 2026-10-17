@@ -648,8 +648,18 @@ function repairSentences(questions) {
       return `${lead}${BLANK_PLACEHOLDER}`;
     });
     // 位置三：其他空格后的两位数，如 `drew many praises 57 people`
-    sentence = sentence.replace(/(\s)(\d{2,3})(?=\s+[a-zA-Z])/g, (all, space, digits) => {
+    //
+    // ⚠️ 这里必须排除「介词/连词后面的数字」，否则会误伤真题里的正常表达：
+    //   "grown from 27 to about 70 since 2017" → 70 后面是 since，被当成题号
+    //   → 整句被改写，空格数量就比 blanks 多了，校验直接拦下整批题。
+    // 真题号的后面跟的是被考查的那个词（people / cultures / one），
+    // 不会是这些虚词。
+    const NOT_QUESTION_NUMBER_AFTER =
+      /^(since|from|between|among|and|or|but|so|in|on|at|to|of|for|with|about|over|under|near|by|during|before|after|into|onto|than|as)\b/i;
+    sentence = sentence.replace(/(\s)(\d{2,3})(?=\s+[a-zA-Z])/g, (all, space, digits, offset, whole) => {
       if (!isQuestionNumber(digits)) return all;
+      const after = whole.slice(offset + all.length).match(/^\s+([a-zA-Z]+)/);
+      if (after && NOT_QUESTION_NUMBER_AFTER.test(after[1])) return all;
       numbers.push(digits);
       return `${space}${BLANK_PLACEHOLDER}`;
     });
@@ -755,12 +765,31 @@ function findPlaceholderPositions(sentence) {
  * @returns {string[]} 残留的题号
  */
 function findStrayQuestionNumbers(sentence) {
+  // 题号的真正特征是**前面是句首或标点，后面不是单位**，
+  // 而不是「数值落在 50~99 之间」。
+  //
+  // 原来只按数值范围判定，实测把真题里的正常数字全当成题号了：
+  //   "water flow ______ nearly 50% in the past five years"  → 50 被当成题号
+  //   "grown from 27 to about 70 since 2017"                 → 70 被当成题号
+  // 于是本来合格的题被判成「残留题号」，整批导入不了 —— 而这恰恰是
+  // 这套校验要防的那类问题的**误报**版本。
+  //
+  // 卷面题号长这样：56 is now Liaoning / 57 one of China's…
+  // 也就是「前面是句首或句末标点，后面跟空格或标点」。按这个形态匹配，
+  // 上面的 50% 与 about 70 都不再命中。
   const found = [];
-  const pattern = /(?<![\w-])(\d{2,3})(?![\w-])/g;
+  // 前面是句首或句末标点，后面跟空格/标点/结尾 —— 这两条限定一起，
+  // 才能把 "nearly 50%" 与 "about 70" 排除掉。
+  const pattern = new RegExp(
+    "(^|[.;:!?\\n]\\s*)(\\d{1,3})(?=\\s|[.,;:!?]|$)",
+    "g"
+  );
   let match;
   while ((match = pattern.exec(sentence)) !== null) {
-    const value = Number(match[1]);
-    if (value >= 50 && value <= 99) found.push(match[1]);
+    const value = Number(match[2]);
+    if (value >= 1 && value <= 99) {
+      found.push(match[2]);
+    }
   }
   return found;
 }
