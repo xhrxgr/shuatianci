@@ -79,12 +79,39 @@ function resolveContainer(boxId) {
   return created;
 }
 
-/** 给容器加上「这是个反馈区」的基础样式（只设一次） */
-function ensureContainerStyle(container) {
+/**
+ * 提示条容器：定位在这里统一加，不要写在各视图的 class 里。
+ *
+ * 为什么必须是 fixed
+ * ------------------
+ * 各视图的容器原本只有 `space-y-2`，没有定位类，于是提示条是**普通文档流块**：
+ *   · 出现时会把下面的内容整体顶下去（页面高度突然变了）
+ *   · 跟着页面滚动 —— 用户点了保存、在半屏处操作，出错后提示却在一屏之外，
+ *     看上去就是「什么都没发生」
+ * 真实踩到的是手机端：题库总览很长，报错条在顶部，滚动到列表里操作时完全看不见。
+ *
+ * 统一在这里改，一处生效，所有容器（页面给定的 + resolveContainer 动态建的）都覆盖到。
+ * 视图里保留原 class 也没关系，这里会先 remove 掉——避免 `mt-3`/`space-y-2`
+ * 跟 fixed 叠加出意料之外的偏移。
+ *
+ * pointer-events-none 是必要的：容器是个横跨全屏的固定层，
+ * 不关掉它会挡住下面所有元素的点击（对话框、按钮、链接全都点不动）。
+ * 提示条本体再单独开 pointer-events-auto（见 buildBox）。
+ */
+export function ensureFeedbackContainerStyle(container) {
   if (container.dataset.feedbackReady === "1") return;
   container.dataset.feedbackReady = "1";
-  container.classList.add("space-y-2");
-  container.classList.remove("hidden");
+  // ⚠️ 必须**逐个 token** add：classList.add() 只接受单个类名，
+  // 传 "a b c" 会抛 InvalidCharacterError（DOMTokenList 不拆空格）。
+  // 一旦这里抛，提示条根本渲染不出来 —— feedback-smoke 的
+  // 「四种语气都能真正弹出」就是抓这个。
+  for (const token of "fixed inset-x-0 top-3 z-50 mx-auto w-full max-w-3xl px-4 pointer-events-none".split(" ")) {
+    container.classList.add(token);
+  }
+  // 原 class 里的间距与隐藏态跟 fixed 叠加会出怪偏移，统一清掉
+  for (const token of "hidden space-y-2 mt-3 mt-4".split(" ")) {
+    container.classList.remove(token);
+  }
   container.hidden = false;
 }
 
@@ -134,7 +161,7 @@ function icon(tone) {
 export function notify(message, tone = "info", options = {}) {
   const config = TONES[tone] || TONES.info;
   const container = resolveContainer(options.boxId);
-  ensureContainerStyle(container);
+  ensureFeedbackContainerStyle(container);
 
   // 刷屏保护：超过上限就把最旧的收掉。
   //
@@ -149,7 +176,9 @@ export function notify(message, tone = "info", options = {}) {
   }
 
   const box = document.createElement("div");
-  box.className = `flex items-start gap-2 rounded-lg border px-6 py-3 text-sm ${config.box}`;
+  // pointer-events-auto：容器为了不挡页面设了 none，提示条本体要恢复可点，
+  // 否则「重试 / 展开详情 / 关闭」这些按钮全都按不到
+  box.className = `pointer-events-auto flex items-start gap-2 rounded-lg border px-6 py-3 text-sm shadow-sm ${config.box}`;
   box.setAttribute("role", tone === "error" ? "alert" : "status");
   box.dataset.tone = tone;
 

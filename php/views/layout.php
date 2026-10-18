@@ -27,6 +27,13 @@ $items = nav_items($user);
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><?= e($title) ?></title>
   <link rel="stylesheet" href="<?= e(asset_url('/app.css')) ?>">
+
+  <!-- import map 必须在 <head> 里、也就是**所有** module script 之前。
+       各视图自己会在 $content 里输出 <script type="module">，那些位置在
+       <body> 中间，比这里晚 —— import map 放晚了浏览器会直接忽略它，
+       子模块就又退回「无缓存戳」的状态（正是 v3.8.9 那个坑的成因）。
+       作用说明见 app/views.php 的 import_map_json()。 -->
+  <script type="importmap"><?= import_map_json() ?></script>
 </head>
 <!-- data-authenticated 供 app.js 判断服务端是否已识别登录态 -->
 <body data-authenticated="<?= $user !== null ? '1' : '0' ?>">

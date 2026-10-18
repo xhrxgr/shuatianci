@@ -29,6 +29,14 @@ function e($value)
  * 代码更新后 URL 随之变化，浏览器会自动重新下载，无需手动 Ctrl+F5；
  * 未变化的文件版本号不变，继续走缓存。
  *
+ * ⚠️ 这个戳只保护**入口**。页面里的 <script src="...?v=X"> 变了会重新下载，
+ * 但模块内部的 `import "./admin-papers.js"` URL 是不带戳的静态字符串，
+ * 浏览器照样会用缓存里的旧模块 —— 入口是新的、子模块是旧的，
+ * 混起来就是一个「改了却没反应」的页面。
+ *
+ * 所以子模块统一由 import_map_json() 生成的 import map 接管，
+ * 见那个函数的说明。
+ *
  * @param string $path 形如 /app.css、/js/practice.js
  * @return string
  */
@@ -39,6 +47,57 @@ function asset_url($path)
     $file = PHP_DIR . '/assets' . $path;
     $mtime = is_file($file) ? filemtime($file) : false;
     return $mtime !== false ? $url . '?v=' . $mtime : $url;
+}
+
+/**
+ * 生成 import map 的 JSON，给**所有** JS 模块带上缓存戳。
+ *
+ * 背景：项目用原生 ES module，模块之间靠 `import "./x.js"` 静态串联。
+ * 那些相对路径是源码里的字面量，没法逐个加戳（无构建步骤，改了就得手工维护）。
+ * import map 正好能在**运行时**把它们重定向到带戳的 URL：
+ *
+ *     import "./admin-papers.js"  →  /assets/js/admin-papers.js?v=1758...
+ *
+ * 少一个 import map 就会命中一个陈旧模块。实际踩过的坑：
+ * v3.8.9 修好了「删除试卷弹窗三个按钮点不动」，服务器也更新了，
+ * 用户刷新后依然点不动 —— 浏览器拿着缓存里的旧 admin-papers.js，
+ * 那三个按钮在旧文件里根本没绑定。反复 Ctrl+F5 才生效。
+ *
+ * 版本戳用整个 assets/js 目录的**最新** mtime：任何一个模块改动，
+ * 全部模块的 URL 都变。子模块数量少（几十个），一次多带几个参数没有代价；
+ * 换来的是「只要 git pull 过就一定是最新的」，不需要推理哪个文件变了。
+ *
+ * 键必须是**绝对路径** "/assets/js/xxx.js"，不能用 "./xxx.js"。
+ * import map 匹配时会把 key 相对于**文档 base** 解析再和 import 说明符的
+ * 解析结果比较：文档在 /admin，"./x.js" 解析成 /x.js，
+ * 而模块实际解析成 /assets/js/x.js —— 对不上，import map 会被静默忽略。
+ * 带前导 / 的 key 则解析成绝对 URL，与模块的真实地址一致。
+ *
+ * @return string 可直接嵌入 <script type="importmap"> 的 JSON
+ */
+function import_map_json()
+{
+    $dir = PHP_DIR . '/assets/js';
+    $mtime = 0;
+    $map = [];
+
+    foreach (glob($dir . '/*.js') ?: [] as $file) {
+        $mtime = max($mtime, (int) filemtime($file));
+        $url = '/assets/js/' . basename($file);
+        // key 与 value 同一个绝对 URL —— 把 "./xxx.js" 重定向到带戳的同名文件
+        $map[$url] = $url . '?v=' . $mtime;
+    }
+
+    if ($mtime === 0) {
+        $mtime = time();
+    }
+
+    $json = json_encode(
+        ['imports' => $map],
+        JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+    );
+
+    return $json === false ? '{"imports":{}}' : $json;
 }
 
 /**

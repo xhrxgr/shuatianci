@@ -12,7 +12,7 @@
 
 import { api } from "./api.js";
 import { setFlash, takeFlash } from "./flash.js";
-import { notify, notifyError, clearFeedback } from "./feedback.js";
+import { notify, notifyError, clearFeedback, ensureFeedbackContainerStyle } from "./feedback.js";
 // AI 导入必须走 import 引入：此前靠 window.setupAdminAi 全局约定，
 // 而 admin-ai.js 没有被任何 script 标签加载，导致整个 AI 面板（含"复制提示词"）
 // 从未绑定事件、点击无反应。import 由模块依赖图保证求值顺序，不依赖标签顺序。
@@ -87,8 +87,17 @@ function showNotice(payload) {
     return;
   }
 
+  // 定位交给 feedback.js 统一做：这里不走 feedback 的 notify，
+  // 容器不会自动拿到 fixed 类，提示就会退回「占文档流、跟着页面滚」。
+  // 那个函数带幂等标记，重复调用无副作用。
+  ensureFeedbackContainerStyle(box);
+
   if (typeof payload === "string") {
-    box.textContent = payload;
+    // 原来直接 textContent = 字符串，容器只有 space-y-2、没有卡片样式，
+    // 屏幕上就是一行裸文字（没有边框、底色），和结构化卡片完全两个样。
+    box.innerHTML = `<div class="pointer-events-auto rounded-lg border border-line bg-surface px-6 py-3 text-sm text-ink shadow-sm">${
+      escapeHtml(payload)
+    }</div>`;
     box.hidden = false;
     return;
   }
@@ -102,7 +111,7 @@ function showNotice(payload) {
   if (skipped > 0) extras.push(`跳过 ${skipped} 道（未勾选）`);
   if (repairs.length > 0) extras.push(`已自动修正：${repairs.join("；")}`);
 
-  box.innerHTML = `<div class="rounded-xl border border-success/40 bg-success-soft p-4">
+  box.innerHTML = `<div class="pointer-events-auto rounded-xl border border-success/40 bg-success-soft p-4">
     <div class="flex items-start gap-3">
       ${iconSuccess("mt-0.5 h-5 w-5 shrink-0 text-success")}
       <div class="min-w-0 flex-1">
@@ -140,6 +149,13 @@ function switchTab(tab) {
     button.classList.toggle("text-surface", active);
     button.classList.toggle("text-muted", !active);
     button.classList.toggle("hover:bg-surface-alt", !active);
+
+    // 窄屏上第 6、7 个页签（数据迁移、知识点标签）本来就在可视区外。
+    // 点到它们时把它滚进来，否则用户点了却看不到自己选中了哪个 ——
+    // 加上右侧渐隐提示了「能滑」，但不能指望用户每次都想到去滑。
+    if (active) {
+      button.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    }
   });
 
   // 页签写回 URL：7 个平级页签的页签栏是**唯一的定位信号**，

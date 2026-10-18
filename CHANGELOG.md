@@ -1,3 +1,91 @@
+## 3.9.1（2026-10-18）—— 手机端弹窗点不动、提示条不悬浮、子模块缓存
+
+用户在手机上重报「删除试卷弹窗三个按钮点不动」。v3.8.9 在桌面端修好了，
+手机端仍复现 —— 说明根因不在那里。三个独立问题，一次解决。
+
+### 1. 弹窗：`<dialog>.showModal()` 的降级
+
+v3.8.9 把按钮绑到了 dialog 上，桌面端生效。但 `showModal()` 依赖浏览器的
+**top layer**（把弹窗提升到独立层）。部分手机浏览器（微信 / QQ 内置浏览器、
+若干国产 WebView）支持不完整：方法不存在、或调了但不进 top layer ——
+**弹窗内容看得见，按钮却点不动**，因为有别的东西叠在上面。
+
+新增 `assets/js/modal.js`：探测一次 `showModal` 能不能真用（造个临时 dialog
+实调一次，比查版本号可靠），不能用就退回 `setAttribute("open")`，
+样式由 `app.css` 里 `html.no-dialog dialog` 那段兜底，并补上原生自带的
+Esc 关闭与点遮罩关闭。三个弹窗全部改走这层封装。
+
+判据用 `html.no-dialog` 这个类，所以支持 top layer 的浏览器完全不受影响。
+
+### 2. 提示条：占文档流 → 悬浮
+
+12 个反馈容器（`admin-notice`、`admin-system-error`、`profile-error`…）
+全都只有 `space-y-2`，**没有任何定位类**，提示条是普通文档流块：
+- 出现时把下面内容整体顶下去
+- 跟着页面滚动 —— 手机上题库总览很长，滚动到列表里操作时报错，
+  提示条却在一屏之外，看上去就是「点了没反应」
+
+现在 `ensureFeedbackContainerStyle()` 统一加 `fixed inset-x-0 top-3 z-50`
++ `pointer-events-none`（不让这层挡住下面的点击），提示条本体再开
+`pointer-events-auto` 恢复可点。`admin.js` 的 `showNotice` 不走 feedback 的
+notify，单独调了一次同一函数。
+
+顺带修了 `showNotice` 的字符串分支：原来 `box.textContent = 字符串`，
+容器没有卡片样式，屏幕上是一行**裸文字**，和结构化卡片完全是两个样。
+
+### 3. 子模块：17 个模块没有缓存保护
+
+`asset_url()` 给 HTML 里的引用加了 `?v=mtime`，但模块内部的
+`import "./admin-papers.js"` 是源码里的字面量，**URL 永远不变**。
+入口是新的、子模块是旧的，混出来就是「改了却没反应」的页面。
+
+27 个模块里有 17 个只通过 import 被引用，全都没有缓存戳 —— 包括
+`admin-papers.js`（v3.8.9 修的那个文件）。这解释了为什么用户「更新完刷新
+还是点不动」。
+
+用 **import map** 在运行时统一补戳。踩了两个坑，都记在代码注释里：
+- import map 必须放 `<head>`，放 `<body>` 里会被浏览器忽略
+  （各视图自己的 `<script type="module">` 在 `$content` 里，位置比 layout 的 body 早）
+- key 必须是**绝对路径** `/assets/js/x.js`，不能是 `./x.js` ——
+  后者相对于文档 base 解析，与模块的真实地址对不上，import map 被静默忽略
+  （第一版就是这么写的，浏览器端实测「26 个模块仍然无戳」才发现）
+
+### 4. 手机 UI：7 个页签只显示 4~5 个
+
+页签是横向滚动的（`overflow-x-auto`），窄屏上第 6、7 个（数据迁移、知识点标签）
+本来就在可视区外，**没有任何提示告诉用户能往右滑**，看上去就是只有 5 个页签。
+
+- 右侧加渐隐遮罩（`pointer-events-none`，不吃点击）
+- 切页签时把选中项 `scrollIntoView` 滚进视野 —— 提示了「能滑」也不能指望
+  用户每次都想到去滑
+
+实测：点「知识点标签」后自动滚入并高亮。
+
+### 5. 「本卷原文」一直转圈时给出可执行提示
+
+原来初始文案是「读取中…」。JS 没跑到（比如子模块走缓存）时就会永远停在这。
+改成明确告诉用户按 `Ctrl+Shift+R` 强制刷新。
+
+### 测试
+
+- 新增 `dialog-fallback-test`（5 项，`npm run test:dialog-fallback`）：
+  `addInitScript` 删掉 `showModal`/`close` 强制走降级分支，逐项验证
+- 新增 `asset-cache-test`（`npm run test:asset-cache`）：断言每一个被加载的
+  JS 都带 `?v=`，一个都不能漏
+
+### 过程中自己引入并修掉的一个回归
+
+`classList.add("fixed inset-x-0 top-3 z-50 …")` 传了**含空格的多词字符串** ——
+`classList.add` 只接受单个类名，抛 `InvalidCharacterError`，提示条根本渲染不出来。
+改成逐 token add。`feedback-smoke` 的「四种语气都能真正弹出」抓到的。
+
+### 验证
+
+干净串行 20 个套件全绿：api 128、bank-phase1 66、bank-phase2 88、
+paper-passage 10、paper-delete 17、dialog-fallback 5、asset-cache 27 模块全带戳、
+admin-buttons 14、blueprint-ui 30、passage-entry 11、passage-leak 9、
+tag-collapse 10、update-trigger 11、feedback-smoke 8、AI 7 套件 109。
+
 # 更新日志
 
 本项目从 **2.0.0** 起正式记录版本。此前没有版本号管理，历史变更请看 `git log`。

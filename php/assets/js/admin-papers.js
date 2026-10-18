@@ -14,6 +14,7 @@
 
 import { setFlash } from "./flash.js";
 import { notify, notifyError } from "./feedback.js";
+import { openDialog, closeModal } from "./modal.js";
 
 /**
  * 由 admin.js 调用完成绑定。
@@ -443,7 +444,7 @@ export function setupPaperAndQuestionPanels(context) {
       withBtn.hidden = count <= 0;
     }
     dialog.dataset.paperId = paperId;
-    dialog.showModal();
+    openDialog(dialog);
   }
 
   /** 真正执行删除。withQuestions 决定题目是保留还是一起删。 */
@@ -463,7 +464,7 @@ export function setupPaperAndQuestionPanels(context) {
 
     try {
       const result = await api.deletePaper(paperId, { deleteQuestions: withQuestions });
-      dialog.close();
+      closeModal(dialog);
       const deleted = Number(result?.deletedQuestions ?? 0);
       if (deleted > 0) {
         setFlash(`已删除试卷及其下 ${deleted} 道题`);
@@ -472,7 +473,7 @@ export function setupPaperAndQuestionPanels(context) {
       }
       window.location.reload();
     } catch (error) {
-      dialog.close();
+      closeModal(dialog);
       showFlash(error, "danger", {
         retry: () => {
           if (withQuestions) void confirmDeletePaper(true);
@@ -668,7 +669,7 @@ export function setupPaperAndQuestionPanels(context) {
 
     showEditErrors([]);
     renderEditBlanks();
-    document.getElementById("question-edit-dialog")?.showModal();
+    openDialog(document.getElementById("question-edit-dialog"));
   }
 
   /** 编辑弹窗里的逐空配置 */
@@ -990,7 +991,7 @@ export function setupPaperAndQuestionPanels(context) {
     .getElementById("edit-question-save")
     ?.addEventListener("click", () => void handleSaveEditQuestion());
   document.querySelectorAll('[data-action="close-edit-question"]').forEach((button) => {
-    button.addEventListener("click", () => document.getElementById("question-edit-dialog")?.close());
+    button.addEventListener("click", () => closeModal(document.getElementById("question-edit-dialog")));
   });
 
   /**
@@ -1012,7 +1013,7 @@ export function setupPaperAndQuestionPanels(context) {
     } else if (action === "delete-paper-with-questions") {
       void confirmDeletePaper(true);
     } else if (action === "delete-paper-cancel") {
-      deleteDialog.close();
+      closeModal(deleteDialog);
     }
   });
 

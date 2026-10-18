@@ -15,6 +15,7 @@
 
 import { api } from "./api.js";
 import { notify, notifyError } from "./feedback.js";
+import { openDialog, closeModal } from "./modal.js";
 import { setFlash } from "./flash.js";
 import { iconPlus, iconTinyCross } from "./icons.js";
 
@@ -1005,7 +1006,7 @@ export function setupBlueprintPanels(context) {
     const subtitle = document.getElementById("paper-items-subtitle");
     if (subtitle) subtitle.textContent = "加载中…";
     if (body) body.innerHTML = `<p class="py-8 text-center text-sm text-faint">加载中…</p>`;
-    itemsDialog.showModal();
+    openDialog(itemsDialog);
 
     try {
       const data = await api.getPaperItems(paperId);
@@ -1204,7 +1205,7 @@ export function setupBlueprintPanels(context) {
         if (memberState?.dirty && !window.confirm("还有未保存的成员调整，确定关闭吗？")) {
           return;
         }
-        itemsDialog.close();
+        closeModal(itemsDialog);
         memberState = null;
       } else if (action === "save-paper-items") {
         void saveMemberChanges();

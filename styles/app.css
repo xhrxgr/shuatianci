@@ -162,6 +162,54 @@ details[data-tag-group][open] [data-caret] {
 }
 
 /* ---------------------------------------------------------------------------
+ * <dialog> 的降级样式（v3.9.1）
+ *
+ * 问题：部分手机浏览器（微信/QQ 内置浏览器、部分国产 WebView）对
+ * `<dialog>.showModal()` 支持不完整 —— 要么方法不存在，要么调用后不进入
+ * top layer，弹窗没有真正的遮罩与层叠高度。结果就是**弹窗里的按钮点不动**：
+ * 内容看得见，却有别的东西叠在上面（v3.8.9 修完桌面端，手机端仍复现）。
+ *
+ * 做法：JS 侧检测 showModal 能不能用，不能就退回 `setAttribute("open")`
+ * （见 assets/js/modal.js）。这一段 CSS 就是给那条降级路径兜底的 ——
+ * 手动打开的 dialog 没有 UA 默认样式，得自己摆成居中浮层。
+ *
+ * 判据用 `html.no-dialog`：JS 探测后加上这个类，
+ * 所以**支持 top layer 的浏览器完全不受这段影响**（原生 dialog 照常用）。
+ * --------------------------------------------------------------------------- */
+html.no-dialog dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  margin: auto;
+  max-height: 92vh;
+  overflow-y: auto;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+}
+
+/* 关闭态：必须显式 display:none。未支持 <dialog> 的浏览器会把它当普通
+   未知元素，默认 inline 显示 —— 不加这段，所有弹窗内容会直接摊在页面上。 */
+html.no-dialog dialog:not([open]) {
+  display: none;
+}
+
+html.no-dialog dialog[open] {
+  display: block;
+}
+
+/* 遮罩。原生用 ::backdrop，这里自己画一个固定层。
+   pointer-events 让遮罩吃掉点击：点空白处不会「点到」背后的按钮。 */
+html.no-dialog dialog[open]::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 0.4);
+  z-index: -1;
+}
+
+/* ---------------------------------------------------------------------------
  * 前端改为 PHP 服务端渲染后，Tailwind 需要同时扫描 PHP 模板与原生 JS 里的类名。
  *
  * 有 Node 时执行 `npm run build:css` 重新生成 php/assets/app.css；

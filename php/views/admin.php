@@ -29,20 +29,31 @@ $adminTabs = [
   <!-- 页签
        手机上横着排、放不下就左右滑：7 个页签在一行里放不下，
        用 flex-wrap 会折成 7 行、每行一个，看起来像菜单而不是页签。
-       按钮一律 shrink-0 + nowrap，不许被压扁或折行。 -->
-  <div
-    role="tablist"
-    class="flex gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-  >
-    <?php foreach ($adminTabs as $index => $item): ?>
-      <button
-        type="button"
-        role="tab"
-        aria-selected="<?= $item['id'] === 'manual' ? 'true' : 'false' ?>"
-        data-admin-tab="<?= e($item['id']) ?>"
-        class="min-h-11 shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-medium transition sm:px-4 sm:text-sm <?= $item['id'] === 'manual' ? 'bg-ink text-surface' : 'text-muted hover:bg-surface-alt' ?>"
-      ><?= e($item['label']) ?></button>
-    <?php endforeach; ?>
+       按钮一律 shrink-0 + nowrap，不许被压扁或折行。
+
+       右侧那层渐隐是为了**告诉用户还能往右滑**：窄屏上第 6、7 个页签
+       （数据迁移、知识点标签）本来就在可视区外，没有这层提示的话
+       用户会以为一共只有 5 个页签。pointer-events-none 保证它不吃点击。 -->
+  <div class="relative">
+    <div
+      role="tablist"
+      data-admin-tablist
+      class="flex gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
+      <?php foreach ($adminTabs as $index => $item): ?>
+        <button
+          type="button"
+          role="tab"
+          aria-selected="<?= $item['id'] === 'manual' ? 'true' : 'false' ?>"
+          data-admin-tab="<?= e($item['id']) ?>"
+          class="min-h-11 shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-medium transition sm:px-4 sm:text-sm <?= $item['id'] === 'manual' ? 'bg-ink text-surface' : 'text-muted hover:bg-surface-alt' ?>"
+        ><?= e($item['label']) ?></button>
+      <?php endforeach; ?>
+    </div>
+    <div
+      aria-hidden="true"
+      class="pointer-events-none absolute inset-y-0 right-0 w-10 rounded-r-xl bg-gradient-to-l from-surface via-surface/85 to-transparent"
+    ></div>
   </div>
 
   <!-- admin.js 走 textContent 写纯文本提示，admin-papers.js 走 feedback.js 塞完整提示条；
@@ -274,7 +285,16 @@ $adminTabs = [
                       代词指代、时态呼应、篇章逻辑这类空，只看挖出来的那句判断不了。
                     </p>
                     <div data-paper-passage-body>
-                      <p class="text-[11px] text-faint">读取中…</p>
+                      <p class="text-[11px] leading-5 text-faint">
+                        正在读取本卷原文…
+                        <br>
+                        <span class="text-faint/80">
+                          若一直停在这里，说明页面脚本没有更新到最新版本 ——
+                          按 <kbd class="rounded border border-line px-1">Ctrl</kbd> +
+                          <kbd class="rounded border border-line px-1">Shift</kbd> +
+                          <kbd class="rounded border border-line px-1">R</kbd> 强制刷新即可。
+                        </span>
+                      </p>
                     </div>
                   </div>
 
