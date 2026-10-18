@@ -164,6 +164,20 @@ function currentQuestion() {
   return questions[currentIndex] ?? null;
 }
 
+/**
+ * 本卷是否**全部交完**。
+ *
+ * v3.9.9：整卷做按考试来 —— 做完一题不给即时反馈，对错一律等整卷交完再揭晓。
+ * 实时反馈会毁掉整卷做的意义：学生看到前两题都对，后面的题就变成「照着感觉蒙」，
+ * 而真正的完形填空考的是通篇理解。
+ */
+function allSubmitted() {
+  return (
+    questions.length > 0 &&
+    questions.every((q) => Boolean(answers[q.id]?.submitted))
+  );
+}
+
 /** 本卷已作答的题数（含本次会话与历史） */
 function answeredCount() {
   const ids = new Set([...doneBefore]);
@@ -207,11 +221,16 @@ function renderSheet() {
       const isCurrent = index === currentIndex;
       let tone = "border-line bg-surface text-muted";
       let mark = "";
-      if (state?.submitted) {
+      // ⚠️ 对错只在**整卷交完**后揭晓（v3.9.9）。未交完时，已答的题只标成
+      // 中性色表示「做过」—— 提前露出对错等于把整卷做降级成逐题刷题。
+      if (state?.submitted && allSubmitted()) {
         tone = state.correct
           ? "border-success bg-success-soft text-success"
           : "border-danger bg-danger-soft text-danger";
         mark = state.correct ? "✓" : "×";
+      } else if (state?.submitted) {
+        tone = "border-primary bg-primary-soft text-primary";
+        mark = "·";
       } else if (doneBefore.has(question.id)) {
         // 历史做过但本次没作答：标成中性色，和「没做过」区分开
         tone = "border-line bg-surface-alt text-faint";
@@ -403,7 +422,33 @@ function collectInputs() {
     const key = Number(input.dataset.blank);
     state.inputs[key] = input.value;
   });
+  // 原文视图里的空也要一起收 —— 两处共用同一份 answers，
+  // 只收题目视图的话，学生在原文里填的会在判卷时丢掉。
+  collectPassageInputs();
 }
+
+/** 把展开的原文里填的空，按「题号:空号」写回对应题目的 answers */
+function collectPassageInputs() {
+  document.querySelectorAll("[data-passage-blank]").forEach((input) => {
+    const [qid, no] = String(input.dataset.passageBlank).split(":");
+    if (!qid || !no) return;
+    stateOf(qid).inputs[Number(no)] = input.value;
+  });
+}
+
+/**
+ * 原文视图里的输入也要能实时回写到题目卡片 ——
+ * 两边是同一份作答，改一处另一处跟着变，否则用户会以为填了两遍。
+ */
+document.addEventListener("input", (event) => {
+  const input = event.target.closest?.("[data-passage-blank]");
+  if (!input) return;
+  const [qid, no] = String(input.dataset.passageBlank).split(":");
+  if (!qid || !no) return;
+  stateOf(qid).inputs[Number(no)] = input.value;
+  const twin = document.querySelector(`#paper-card input[data-blank="${Number(no)}"]`);
+  if (twin) twin.value = input.value;
+});
 
 async function handleSubmit() {
   const question = currentQuestion();
@@ -453,8 +498,13 @@ function showFinish() {
   const total = attempted.length;
   const right = attempted.filter(([, state]) => state.correct).length;
 
-  if (card) card.innerHTML = "";
-  if (sheet) sheet.hidden = true;
+  // ⚠️ 交卷后**不能清空题目区**（v3.9.9）。
+  // 原来这里 `card.innerHTML = ""` + `sheet.hidden = true`，
+  // 交卷瞬间学生面前只剩一个百分比 —— 逐题对错、原文对照、解析全都没了，
+  // 等于「交卷」变成了「查不到成绩」。
+  // 现在改成渲染一份**逐题回顾**：题干、你的答案、对错、正确答案、原文挖空对照。
+  if (card) card.innerHTML = renderReview();
+  if (sheet) sheet.hidden = false;      // 答题卡保持可见 —— 这正是揭晓对错的地方
   if (pager) pager.disabled = true;
   if (text) {
     text.textContent =
@@ -463,6 +513,56 @@ function showFinish() {
         : `本次共作答 ${total} 题，答对 ${right} 题，正确率 ${Math.round((right / total) * 100)}%。`;
   }
   finish.hidden = false;
+  finish.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+/** 交卷后的逐题回顾 */
+function renderReview() {
+  const rows = questions.map((question, index) => {
+    const state = answers[question.id];
+    if (!state?.submitted) return "";
+    const ok = state.correct;
+    const yourAnswer = blankList(question)
+      .map((b) => state.inputs[b.blankIndex] ?? "")
+      .filter((v) => v !== "")
+      .join(" / ");
+    const right = blankList(question)
+      .map((b) => (b.answer ?? []).join(" / "))
+      .join("　");
+    return `<article class="rounded-xl border ${ok ? "border-line" : "border-danger/50"} bg-surface p-4">
+      <div class="mb-2 flex flex-wrap items-center gap-2">
+        <span class="text-xs font-semibold text-muted">第 ${index + 1} 题</span>
+        <span class="rounded px-2 py-0.5 text-xs font-medium ${ok ? "bg-success-soft text-success" : "bg-danger-soft text-danger"}">
+          ${ok ? "答对" : `错 ${state.wrongCount} 空`}
+        </span>
+      </div>
+      <p class="text-sm leading-6 text-ink">${escapeHtml(question.originalSentence ?? "")}</p>
+      <p class="mt-2 text-xs text-muted">
+        你的答案：<span class="${ok ? "text-success" : "text-danger"}">${escapeHtml(yourAnswer || "（未作答）")}</span>
+        ${ok ? "" : `　正确答案：<span class="text-success">${escapeHtml(right)}</span>`}
+      </p>
+      ${
+        question.trapAnalysis
+          ? `<p class="mt-2 rounded-lg bg-surface-alt px-3 py-2 text-xs leading-5 text-muted">${escapeHtml(question.trapAnalysis)}</p>`
+          : ""
+      }
+    </article>`;
+  });
+
+  const passage = renderPassageBlanked(
+    typeof paperPassage?.text === "string" ? paperPassage.text.trim() : "",
+    true   // 已交卷，只读
+  );
+  return `
+    ${
+      passage
+        ? `<details class="mb-4 rounded-xl border border-line bg-surface-alt p-4" data-passage-block open>
+            <summary class="cursor-pointer select-none text-xs font-medium text-muted">完整原文对照（空位显示你的作答）</summary>
+            <div class="mt-2 whitespace-pre-wrap break-words text-sm leading-7 text-ink">${passage}</div>
+          </details>`
+        : ""
+    }
+    <div class="space-y-3">${rows.filter(Boolean).join("")}</div>`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -570,17 +670,108 @@ init();
 function passageBlock(submitted) {
   const passage = typeof paperPassage?.text === "string" ? paperPassage.text.trim() : "";
   if (passage === "") return "";
-  // submitted 时自动展开：那是对答案阶段，需要对照原文
+  const revealed = Boolean(submitted) && allSubmitted();
+  // 未整卷交完时不挖空 —— 挖空视图和题目视图共用同一份作答与判卷，
+  // 直接给全文等于当场把答案摊开。
+  const html = revealed ? renderPassageBlanked(passage) : escapeHtml(passage);
   return `<details class="mb-5 rounded-xl border border-line bg-surface-alt p-3 sm:p-4" data-passage-block${
-    submitted ? " open" : ""
+    revealed ? " open" : ""
   }>
     <summary class="cursor-pointer select-none text-xs font-medium text-muted">
       ${
-        submitted
-          ? "完整原文（未挖空，供对照）"
-          : "完整原文（未挖空）—— 展开会直接看到本题答案"
+        revealed
+          ? "完整原文（空位可填，作答与题目共享）"
+          : "完整原文 —— 展开会直接看到本题答案"
       }
     </summary>
-    <p class="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-ink">${escapeHtml(passage)}</p>
+    <div class="mt-2 whitespace-pre-wrap break-words text-sm leading-7 text-ink">${html}</div>
   </details>`;
+}
+
+/**
+ * 把原文挖成可填的空位 —— **按答案词在原文中的位置**逐个替换。
+ *
+ * 规则（v3.9.9，用户定的「按词对位」）：
+ *   · 按题目顺序遍历，每题的每个空取 `answer[0]` 作为要挖的词
+ *   · 用一个游标往后找，**不允许回头** —— 否则同一个词会被挖掉多次
+ *   · 词形不一致（原文写 `rain`、答案写 `rains`）时试几种常见变形：
+ *     去掉词尾 s / ed / ing，以及反过来加
+ *   · 一个空都找不到就保留原词，并在末尾列一张「未能对位」清单 ——
+ *     宁可让学生看见原文里那个词，也不要静默挖错位置
+ *
+ * 每个空渲染成一个输入框，与题目视图共用 `answers[questionId].inputs`，
+ * 所以在原文里填和在题目里填是同一份，判卷也只判一次。
+ */
+function renderPassageBlanked(passage, readonly = false) {
+  const pieces = [];
+  let cursor = 0;
+  const unmatched = [];
+
+  for (const question of questions) {
+    for (const blank of blankList(question)) {
+      const word = (blank.answer ?? [])[0] ?? "";
+      const hit = findWord(passage, word, cursor);
+      if (!hit) {
+        if (word) unmatched.push({ no: blank.blankIndex, word });
+        continue;
+      }
+      pieces.push(escapeHtml(passage.slice(cursor, hit.start)));
+      pieces.push(blankInputHtml(question, blank, readonly));
+      cursor = hit.end;
+    }
+  }
+  pieces.push(escapeHtml(passage.slice(cursor)));
+
+  if (unmatched.length > 0) {
+    pieces.push(
+      `<p class="mt-3 rounded-lg bg-warning-soft px-3 py-2 text-[11px] text-warning">` +
+        `原文里没能对上位置的空（已保留原词）：` +
+        unmatched.map((u) => `第 ${u.no} 空 ${escapeHtml(u.word)}`).join("、") +
+        `</p>`
+    );
+  }
+  return pieces.join("");
+}
+
+/** 从 from 起往后找 word（含常见变形），返回 {start,end} 或 null */
+function findWord(text, word, from) {
+  const base = String(word ?? "").trim();
+  if (!base) return null;
+  // 先长的后短的（rains 要排在 rain 前面，否则会挖到词干）
+  const variants = [base, base.replace(/s$/i, ""), base.replace(/e?s$/i, ""), base.replace(/ing$/i, "")];
+  const unique = [...new Set(variants.filter(Boolean))].sort((a, b) => b.length - a.length);
+  const lower = text.toLowerCase();
+  for (const v of unique) {
+    const idx = lower.indexOf(v.toLowerCase(), from);
+    if (idx >= 0) return { start: idx, end: idx + v.length };
+  }
+  return null;
+}
+
+/**
+ * 原文里的空输入框 —— 与题目视图共用同一份 answers。
+ * readonly=true 用于**交卷后的回顾**：那时已经判过分，再改动不会重新判卷，
+ * 界面就会自相矛盾（答题卡说对、原文里却填着别的词）。
+ */
+function blankInputHtml(question, blank, readonly = false) {
+  const state = stateOf(question.id);
+  const value = state.inputs[blank.blankIndex] ?? "";
+  const shown = submittedAndRevealed(state) && value !== "" && !isBlankCorrect(blank, value)
+    ? `border-danger text-danger`
+    : submittedAndRevealed(state) && value !== ""
+      ? `border-success text-success`
+      : "";
+  return `<input
+    type="text"
+    value="${escapeHtml(value)}"
+    data-passage-blank="${escapeHtml(question.id)}:${blank.blankIndex}"
+    placeholder="第${blank.blankIndex}空"
+    aria-label="第 ${blank.blankIndex} 空"
+    ${readonly ? "readonly" : ""}
+    class="mx-0.5 inline-block h-8 w-[7.5rem] rounded border border-line bg-surface px-2 text-center align-baseline text-sm outline-none transition focus:border-primary ${shown} ${readonly ? "cursor-default" : ""}"
+  >`;
+}
+
+function submittedAndRevealed(state) {
+  return Boolean(state?.submitted) && allSubmitted();
 }
