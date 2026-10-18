@@ -11,6 +11,66 @@
 当前版本写在根目录的 `VERSION` 文件里，与 `package.json` 的 `version`、git 标签 `v{VERSION}`
 三处保持一致；发版流程见 README「发版」一节。
 
+## 3.8.8（2026-10-18）—— 弹窗不居中、导入后总览不刷新、单题编辑移除完整原文
+
+三个都是用户实际碰到的。其中第三个比表面更严重。
+
+### 三个弹窗全部钉在屏幕左上角
+
+`<dialog>` 的浏览器默认样式是 `margin: auto`，但 Tailwind v4 的 preflight
+把所有元素的 margin 重置成 0，于是 dialog 变成 `position: fixed; margin: 0`。
+三个弹窗（删试卷 / 虚拟卷成员 / 编辑题目）都中招，只是题目编辑那个最常用、
+最先被发现。
+
+修法是 class 加 `m-auto`。注意 Tailwind v4 只给**出现在 HTML 里**的 class
+生成样式，所以必须重新 `npm run build:css` 构建产物才生效。
+
+### 导入后点「去题库总览看看」看不到新题
+
+题库总览面板是 PHP 首屏直出的（`views/admin.php` 里 foreach 出列表），
+不是客户端渲染。而那个按钮原来只调 `switchTab()` 切页签 —— 翻一下 `hidden`
+属性，列表里的 HTML 还是首屏那份，刚导入的题不在里面。用户以为没导入成功，
+只能自己按 F5。
+
+项目里其他写操作都是 `window.location.reload()`，唯独这个按钮例外。
+改为带 hash 重载（沿用 `admin-blueprints.js` 的 `reloadKeepingTab` 做法），
+重载后按 hash 落回「题库总览」页签，不用自己切回来。
+
+顺带把导入提示用 flash 带过去 —— 重载会把提示条冲掉，用户点完按钮提示就
+消失了，像是白点了一下。`flash.js` 原来只支持字符串，这里扩展成也能存对象
+（`showNotice` 本来就同时接受字符串和对象），重载后还原成同一张结构化卡片。
+16 处字符串调用方行为不变。
+
+### 单题编辑弹窗移除「完整原文」字段
+
+用户反馈这个字段不该出现在单体编辑里。核实后确认问题比表面更严重：
+
+原文是**整篇共享**的（一道大题 10 道小题共用一篇），但弹窗把它当成本题的
+可改字段。而 `map_question` 返回的 `passageText` 是合并视图
+（`questions_passage_text()` 优先取 `passages.text`），保存时却写进
+`questions.passage_text`（每题那一列）—— 读的时候仍然优先取共享那篇，
+**结果是「改了看不到变化」，还留下一份永远不显示的脏数据**。
+
+已从弹窗移除该字段（HTML + 填充 + 保存载荷三处），录入与修改统一走
+「AI 导入」页签的「本篇完整原文」区（建一次、本批共用、改一处全篇生效）。
+
+老数据里每题一份的原文仍会在做题时正常展示，只是不再从这里改；用户确认会
+重新添加，故不做数据迁移。
+
+`passage-entry-test` 里原有的「编辑弹窗有完整原文框」断言已反向 ——
+改为断言它**不**在，防止回归。
+
+### 验证
+
+干净串行跑全部 17 个套件，与基线一致，全绿：api 125、ai-preview 43、
+ai-preview-edit 19、passage-entry 11、ai-passage-collapse 9、passage-leak 9、
+ai-auto-passage 8、ai-passage-unblank 10、ai-clean-passage 11、ai-top-passage 9、
+bank-phase1 66、bank-phase2 88、paper-delete 8、blueprint-ui 30、tag-collapse 10、
+update-trigger 11、feedback-smoke 8。
+
+弹窗位置与导入后刷新两项是浏览器端到端验证的：`m-auto` 生效后弹窗从
+`(0,0)` 变成水平居中；点按钮后题库总览里能看到刚导入的题，提示卡片完整还原。
+
 ## 3.8.7（2026-10-17）—— 收敛 6 份 escapeHtml、补一个零覆盖的端点、修导入 N+1
 
 三个提交：`46852d7`（补 `POST /system/update` 测试）、`95118ee`（收敛 + 补断言 + 修 N+1）。
