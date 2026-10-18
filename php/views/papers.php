@@ -72,7 +72,7 @@
                 >整卷做</a>
                 <a
                   href="/practice?paperId=<?= e(rawurlencode($paper['id'])) ?>"
-                  class="min-h-11 rounded-lg border border-line px-4 py-2 text-center text-xs text-muted transition hover:bg-surface-alt"
+                  class="min-h-11 rounded-lg border border-line px-4 py-2 text-center text-xs font-medium text-muted transition hover:bg-surface-alt"
                 >自由刷这卷</a>
               <?php else: ?>
                 <span class="rounded-lg bg-surface-alt px-4 py-2 text-xs text-faint">暂无题目</span>

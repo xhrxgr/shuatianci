@@ -568,7 +568,7 @@ init();
  * @returns {string} HTML
  */
 function passageBlock(submitted) {
-  const passage = typeof paperPassage.text === "string" ? paperPassage.text.trim() : "";
+  const passage = typeof paperPassage?.text === "string" ? paperPassage.text.trim() : "";
   if (passage === "") return "";
   // submitted 时自动展开：那是对答案阶段，需要对照原文
   return `<details class="mb-5 rounded-xl border border-line bg-surface-alt p-3 sm:p-4" data-passage-block${
