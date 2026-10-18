@@ -1,7 +1,7 @@
 {
   "name": "english-quiz",
   "private": true,
-  "version": "3.9.3",
+  "version": "3.9.4",
   "type": "module",
   "description": "English cloze question bank for exam practice (pure PHP backend + vanilla JS frontend, no Node at runtime)",
   "scripts": {
@@ -32,8 +32,8 @@
     "test:admin-buttons": "node php/tests/admin-buttons-test.mjs http://127.0.0.1:9002",
     "test:paper-passage": "node php/tests/paper-passage-test.mjs http://127.0.0.1:9002",
     "test:asset-cache": "node php/tests/asset-cache-test.mjs http://127.0.0.1:9002",
-    "test:dialog-fallback": "node php/tests/dialog-fallback-test.mjs http://127.0.0.1:9002",
-    "test:mobile-robust": "node php/tests/mobile-robustness-test.mjs http://127.0.0.1:9002"
+    "test:mobile-robust": "node php/tests/mobile-robustness-test.mjs http://127.0.0.1:9002",
+    "test:modal": "node php/tests/modal-test.mjs http://127.0.0.1:9002"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3"

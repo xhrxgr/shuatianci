@@ -1,3 +1,55 @@
+## 3.9.4（2026-10-18）—— 弹窗统一为一套实现，移除降级分支
+
+用户反馈：「这玩意好麻烦，统一回到一种一样的方法吧，不要搞什么降级，
+直接一种都可以用的」。同意 —— 两套路径的维护成本比它解决的问题还大。
+
+### 为什么彻底不用原生 `<dialog>`
+
+v3.9.1 的做法是「能用 `showModal()` 就用、不能就降级」，代价是：
+- 两套 CSS 分支 + 一个 `html.no-dialog` 全局开关
+- 一个只在降级时生效的遮罩伪元素
+- 一套专门的降级测试
+
+更关键的是**它救不了根本问题**：部分手机浏览器（微信 / QQ 内置浏览器、
+若干国产 WebView）对 top layer 支持不完整，而「调了但不进 top layer」
+这种半支持状态规范里根本没有对应的降级写法，只能靠猜。
+
+所以改成完全自己实现。四件事本来就该自己做，做了反而更可控：
+遮罩、滚动锁、焦点管理、Esc + 点遮罩关闭。
+
+### 实现要点
+
+- HTML：`<div class="modal" hidden><div class="modal-body">…</div></div>`
+  —— `.modal` 管定位与遮罩，`.modal-body` 管卡片外观。
+  三个弹窗全部改造，补了 `role="dialog" aria-modal aria-labelledby`
+- 开合状态统一看 `hidden` 属性，不再有原生 dialog 的 `.open`
+- 焦点管理：打开时聚焦首个可交互元素、Tab 循环不逃出弹窗、
+  关闭后焦点还给触发按钮（原生 dialog 免费提供的，现在自己做）
+- 滚动锁：`overflow:hidden` + **iOS 额外 position:fixed**，
+  并记住滚动位置在关闭时还原 —— 只 overflow:hidden 的话 iOS 橡皮筋
+  仍会拖动背景，弹窗一关页面位置就变了
+- BFCache 恢复时兜底关掉弹窗，避免「关不掉的弹窗」
+
+**没有降级分支，`no-dialog` 探测全部删除。**
+
+### 测试
+
+`dialog-fallback-test`（降级专用）已删除，替换为 `modal-test`
+（14 项，`npm run test:modal`），验的都是**自己实现的那几件事**：
+卡片居中、背景不透明、锁滚动、焦点进入、焦点归还、Esc、点遮罩、
+以及题目编辑弹窗走同一套。
+
+`paper-delete-test` 里两处 `evaluate((d) => d.open)` 改为 `isVisible()`
+（div 没有 `.open` 属性）。
+
+### 验证
+
+干净串行 20 个套件全绿：api 128、bank-phase1 66、bank-phase2 88、
+paper-passage 10、paper-delete 17、modal 14、asset-cache 29 模块全带戳、
+admin-buttons 14、mobile-robustness 8、blueprint-ui 30、passage-entry 11、
+passage-leak 9、tag-collapse 10、update-trigger 11、feedback-smoke 8、
+AI 7 套件 109。
+
 ## 3.9.3（2026-10-18）—— 移动端健壮性改造
 
 面向异常与边界情况的稳定性改进。**不改变现有视觉风格与业务逻辑**，

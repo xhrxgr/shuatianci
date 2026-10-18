@@ -653,12 +653,17 @@ $adminTabs = [
   - 「连题目一起删」是确实想整套清掉时才用的，红色 + 明确写清会连带删掉什么
   window.confirm 放不下这两个选项，所以用 dialog（与项目里其他弹窗一致）。
 -->
-<dialog
+<div
   id="delete-paper-dialog"
-  class="w-[min(30rem,calc(100vw-2rem))] m-auto rounded-2xl border border-line bg-surface p-0 text-ink backdrop:bg-black/40"
+  class="modal"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="delete-paper-title"
+  hidden
 >
+  <div class="modal-body w-[min(30rem,calc(100vw-2rem))]">
   <div class="p-5">
-    <h3 class="text-sm font-semibold text-ink">删除试卷</h3>
+    <h3 class="text-sm font-semibold text-ink" id="delete-paper-title">删除试卷</h3>
     <p class="mt-2 text-sm text-muted" id="delete-paper-desc"></p>
     <p class="mt-3 rounded-lg bg-surface-alt px-3 py-2 text-xs text-faint">
       试卷只是题目的一种归类方式。题目本身还留在题库里，随时能重新归到别的卷。
@@ -681,17 +686,23 @@ $adminTabs = [
       >取消</button>
     </div>
   </div>
-</dialog>
+</div>
+</div>
 
 <!-- ============ 虚拟卷成员编辑弹窗 ============ -->
-<dialog
+<div
   id="paper-items-dialog"
-  class="w-[min(52rem,calc(100vw-2rem))] m-auto rounded-2xl border border-line bg-surface p-0 text-ink backdrop:bg-black/40"
+  class="modal"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="paper-items-title"
+  hidden
 >
+  <div class="modal-body w-[min(52rem,calc(100vw-2rem))]">
   <div class="flex max-h-[85vh] flex-col">
     <div class="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
       <div class="min-w-0">
-        <h3 class="text-sm font-semibold text-ink">编辑卷成员</h3>
+        <h3 class="text-sm font-semibold text-ink" id="paper-items-title">编辑卷成员</h3>
         <p class="mt-0.5 truncate text-xs text-faint" id="paper-items-subtitle"></p>
       </div>
       <button
@@ -722,13 +733,19 @@ $adminTabs = [
       </div>
     </div>
   </div>
-</dialog>
+</div>
+</div>
 
 <!-- ============ 题目编辑弹窗 ============ -->
-<dialog
+<div
   id="question-edit-dialog"
-  class="w-[min(46rem,calc(100vw-2rem))] m-auto rounded-2xl border border-line bg-surface p-0 text-ink backdrop:bg-black/40"
+  class="modal"
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="edit-question-title"
+  hidden
 >
+  <div class="modal-body w-[min(46rem,calc(100vw-2rem))]">
   <div class="flex max-h-[85vh] flex-col">
     <div class="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
       <h3 class="text-sm font-semibold text-ink">编辑题目</h3>
@@ -801,7 +818,8 @@ $adminTabs = [
       >保存修改</button>
     </div>
   </div>
-</dialog>
+</div>
+</div>
 
 <?php
 // 内置示例数据（「恢复内置示例数据」按钮用）。直接读前端那份 JSON，

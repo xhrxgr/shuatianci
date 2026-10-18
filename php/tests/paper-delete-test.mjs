@@ -124,7 +124,8 @@ check("弹窗自测：试卷出现在列表里", (await uiRow.count()) === 1, aw
 
 await uiRow.locator('button[data-action="delete-paper"]').click();
 await p.waitForTimeout(500);
-check("点「删除」后弹窗打开", await p.locator("#delete-paper-dialog").evaluate((d) => d.open));
+// v3.9.4：弹窗改为 div.modal，开合状态看 hidden 属性（不再有原生 dialog 的 .open）
+check("点「删除」后弹窗打开", await p.locator("#delete-paper-dialog").isVisible());
 
 const descText = await p.locator("#delete-paper-desc").innerText().catch(() => "");
 check("弹窗里写出了卷名与题目数", /弹窗自测卷/.test(descText) && /2 道题/.test(descText), descText.slice(0, 80));
@@ -134,7 +135,7 @@ await p.locator('[data-action="delete-paper-cancel"]').click();
 await p.waitForTimeout(400);
 check(
   "「取消」能关掉弹窗（v3.8.9 修的三个按钮之一）",
-  !(await p.locator("#delete-paper-dialog").evaluate((d) => d.open))
+  !(await p.locator("#delete-paper-dialog").isVisible())
 );
 
 // 「只删除试卷，保留题目」必须真的执行

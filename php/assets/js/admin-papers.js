@@ -14,7 +14,7 @@
 
 import { setFlash } from "./flash.js";
 import { notify, notifyError } from "./feedback.js";
-import { openDialog, closeModal } from "./modal.js";
+import { openModal, closeModal } from "./modal.js";
 import { renderState } from "./ui-guard.js";
 
 /**
@@ -455,7 +455,7 @@ export function setupPaperAndQuestionPanels(context) {
       withBtn.hidden = count <= 0;
     }
     dialog.dataset.paperId = paperId;
-    openDialog(dialog);
+    openModal(dialog);
   }
 
   /** 真正执行删除。withQuestions 决定题目是保留还是一起删。 */
@@ -680,7 +680,7 @@ export function setupPaperAndQuestionPanels(context) {
 
     showEditErrors([]);
     renderEditBlanks();
-    openDialog(document.getElementById("question-edit-dialog"));
+    openModal(document.getElementById("question-edit-dialog"));
   }
 
   /** 编辑弹窗里的逐空配置 */
@@ -1008,13 +1008,17 @@ export function setupPaperAndQuestionPanels(context) {
   /**
    * 删除试卷确认弹窗的三个按钮。
    *
-   * 必须**直接绑在 dialog 上**，不能靠 paper-manage-list 的 click 委托：
-   * <dialog> 是 body 级元素，与试卷列表那个 <ul> 平级，不在它内部，
-   * 点按钮时事件冒泡不到 ul，委托里的三个 case 永远收不到。
-   * （v3.8.9 修：此前这三个按钮完全无响应，用户只能刷新页面。）
+   * 必须**直接绑在弹窗容器上**，不能靠 paper-manage-list 的 click 委托：
+   * 弹窗是 body 级元素，与试卷列表那个 <ul> 平级、不在它内部，
+   * 点按钮时事件冒泡不到 ul，委托里的 case 永远收不到。
+   *
+   * 两次踩坑：
+   *   · v3.8.9 事件绑错容器，三个按钮完全无响应
+   *   · v3.9.4 弹窗从原生 <dialog> 改成 div.modal —— 但**绑点仍然对**，
+   *     事件冒泡的规则跟元素类型无关，改实现不需要改这里
    *
    * 与 admin-blueprints.js 对 paper-items-dialog 的做法一致 ——
-   * 那里同样是 itemsDialog.addEventListener(...)。
+   * 那里同样是直接绑在弹窗容器上。
    */
   const deleteDialog = document.getElementById("delete-paper-dialog");
   deleteDialog?.addEventListener("click", (event) => {

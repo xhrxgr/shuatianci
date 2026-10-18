@@ -15,7 +15,7 @@
 
 import { api } from "./api.js";
 import { notify, notifyError } from "./feedback.js";
-import { openDialog, closeModal } from "./modal.js";
+import { openModal, closeModal } from "./modal.js";
 import { setFlash } from "./flash.js";
 import { iconPlus, iconTinyCross } from "./icons.js";
 
@@ -1006,7 +1006,7 @@ export function setupBlueprintPanels(context) {
     const subtitle = document.getElementById("paper-items-subtitle");
     if (subtitle) subtitle.textContent = "加载中…";
     if (body) body.innerHTML = `<p class="py-8 text-center text-sm text-faint">加载中…</p>`;
-    openDialog(itemsDialog);
+    openModal(itemsDialog);
 
     try {
       const data = await api.getPaperItems(paperId);
