@@ -94,11 +94,15 @@ await t("AI 导入：原文框出现且能输入", async () => {
   return (await box.inputValue()).includes("测试原文");
 });
 
-await t("AI 导入：「套用到本批题目」可点", async () => {
+// v3.9.6：按钮改名为「填入本卷原文」，也不再叫「套用」——
+// 原文是卷的属性，录入阶段不产生任何副作用，点按钮只是把文本记下来。
+await t("AI 导入：「填入本卷原文」可点，且不再提「套用」", async () => {
+  await page.locator("#admin-ai-passage-text").fill("BUTTON CLICK TEXT.");
   await page.locator("#admin-ai-passage-apply").click();
-  await page.waitForTimeout(1200);
+  await page.waitForTimeout(800);
   const status = await page.locator("#admin-ai-passage-status").innerText().catch(() => "");
-  return status.includes("已套用");
+  const label = await page.locator("#admin-ai-passage-apply").innerText().catch(() => "");
+  return status.includes("已填好") && !status.includes("套用") && !label.includes("套用");
 });
 
 await t("AI 导入：「清除」可点", async () => {

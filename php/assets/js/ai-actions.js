@@ -120,25 +120,15 @@ export async function handleParse() {
  * 为什么是建表而不是把文本塞进每题：一道大题 10 道小题共享一篇原文，
  * 塞进每题就要填 10 遍、改 10 遍；建成篇章只存一份，改一处全篇生效。
  */
-export async function applyPassageToBatch() {
+/** 记下本篇原文（不落库，点「导入」时才随题目一起提交） */
+export function applyPassageToBatch() {
   const text = (state.els.passageText?.value ?? "").trim();
   if (text === "") {
-    renderError("请先粘贴这篇阅读的完整原文");
+    renderError("请先粘贴这篇完形填空的完整原文");
     return;
   }
-  if (state.previewList.length === 0) {
-    renderError("先粘贴 AI 返回的 JSON，等预览出现后再套用原文");
-    return;
-  }
-  state.els.passageApply.disabled = true;
-  try {
-    await sharePassageForBatch(text);
-    clearError();
-  } catch (error) {
-    notifyError(error, { retry: () => void applyPassageToBatch() });
-  } finally {
-    state.els.passageApply.disabled = false;
-  }
+  sharePassageForBatch(text);
+  clearError();
 }
 
 /**
@@ -149,29 +139,34 @@ export async function applyPassageToBatch() {
  *
  * @param {string} text 原文
  */
-async function sharePassageForBatch(text) {
-  // 已经建过就改它，不要每点一次建一篇（那会留下一堆空篇章）
-  let passageId = state.previewPassageId;
-  if (passageId) {
-    await api.updatePassage(passageId, { text });
-  } else {
-    const created = await api.createPassage({ text });
-    passageId = created.passage?.id ?? null;
-    if (!passageId) throw new Error("建篇章失败");
-  }
-  state.previewPassageId = passageId;
-  // 本批所有题统一指向这篇；各题自己的 passageText 先备份再清掉
-  // （清是为了「两处各说各话」，但必须能还原 —— 见 clearPassageFromBatch）
-  if (state.savedPassageTexts === null) {
-    state.savedPassageTexts = state.previewList.map((q) => q.passageText ?? null);
-  }
+/**
+ * 记下本篇完整原文，**不建篇章、不碰任何题目**（v3.9.6）。
+ *
+ * 以前这里是「套用」：建一篇 passage，然后把本批每道题的 passageId 都指过去、
+ * passageText 清掉。那是「题要绑原文」时代的旧模型，v3.9.5 已经拆掉了 ——
+ * 现在原文是**卷的属性**，导入时随 `paperPassageText` 一起提交，
+ * 由服务端挂到那一卷上（见 routes_bank.php 的 route_questions_create）。
+ *
+ * 录入阶段不产生任何副作用：用户改几次原文都只是改这段内存，
+ * 点「导入」时才落库。
+ */
+function sharePassageForBatch(text) {
+  state.pendingPassageText = typeof text === "string" ? text.trim() : "";
+
+  // 清掉各题自带的副本。
+  //
+  // 顶层 passage 已经收进原文框（导入时挂到那一卷上），各题再留一份的话：
+  //   · 预览里同一篇原文重复渲染 N 次
+  //   · 导入时逐题带上 passageText，而后端按新模型会**拒绝**它
+  //     （原文只认卷上的那一份）
+  // 所以这里必须清干净 —— 不是「优化」，是模型切换后的必要收尾。
   state.previewList.forEach((question) => {
-    question.passageId = passageId;
     question.passageText = null;
   });
+
   // 顶部面板的输入框同步成这份原文，用户改的就是它
   if (state.els.passageText) {
-    state.els.passageText.value = text;
+    state.els.passageText.value = state.pendingPassageText;
   }
   syncLastBuild();
   renderPassagePanel();
@@ -199,8 +194,8 @@ async function sharePassageForBatch(text) {
  * 失败**不阻断**：套用只是优化，失败就保留 AI 给的原样，导入照常进行。
  */
 async function autoAdoptSharedPassage(list) {
-  if (state.previewPassageId !== null) {
-    return false;   // 已经套过了
+  if (state.pendingPassageText !== "") {
+    return false;   // 用户已经自己填了原文，不覆盖
   }
   if (!Array.isArray(list) || list.length < 2) {
     return false;   // 只有一道题谈不上「共享」
@@ -222,27 +217,19 @@ async function autoAdoptSharedPassage(list) {
     await sharePassageForBatch(texts[0]);
     return true;
   } catch (error) {
-    console.warn("[admin-ai] 自动套用本篇原文失败，保留原样继续导入", error);
-    state.previewPassageId = null;
+    console.warn("[admin-ai] 采纳本篇原文失败，保留原样继续导入", error);
+    state.pendingPassageText = "";
     return false;
   }
 }
 
-/** 清除共用原文：把本批所有题的篇章引用摘掉（不影响已导入的题） */
+/** 清掉待提交的原文（只是清输入框，题目完全不受影响） */
 export function clearPassageFromBatch() {
-  if (!state.previewPassageId) return;
-  state.previewPassageId = null;
-  // 还原套用前各题自带的原文：清空篇章不该顺手把 AI 给的原文也弄丢
-  state.previewList.forEach((question, index) => {
-    question.passageId = null;
-    if (state.savedPassageTexts && index < state.savedPassageTexts.length) {
-      question.passageText = state.savedPassageTexts[index];
-    }
-  });
-  state.savedPassageTexts = null;
+  if (state.pendingPassageText === "") return;
+  state.pendingPassageText = "";
+  if (state.els.passageText) state.els.passageText.value = "";
   syncLastBuild();
   renderPassagePanel();
-  renderPreview();
 }
 
 /**
@@ -271,8 +258,7 @@ export function buildPreview() {
     state.previewChecks = [...state.lastBuild.checks];
     state.pendingRepairs = [...state.lastBuild.repairs];
     state.missingTags = [...state.lastBuild.missingTags];
-    state.previewPassageId = state.lastBuild.passageId ?? null;
-    state.savedPassageTexts = state.lastBuild.savedPassageTexts ? [...state.lastBuild.savedPassageTexts] : null;
+    state.pendingPassageText = state.lastBuild.passageText ?? "";
     state.previewSourceText = raw;
     renderMissing();
     renderPreview();
@@ -293,10 +279,8 @@ export function buildPreview() {
         checks: [...state.previewChecks],
         repairs: [...state.pendingRepairs],
         missingTags: [...state.missingTags],
-        // 篇章引用也要进快照：命中缓存时如果不恢复，面板状态会与实际数据不一致
-        // （显示「已套用」而 previewPassageId 是 null，再点「重新套用」会改错篇章）
-        passageId: state.previewPassageId,
-        savedPassageTexts: state.savedPassageTexts === null ? null : [...state.savedPassageTexts],
+        // 待提交的原文也要进快照：命中缓存时不恢复，用户填的原文会凭空消失
+        passageText: state.pendingPassageText,
       };
       return result;
     })
@@ -442,7 +426,7 @@ async function buildPreviewInner(raw) {
 
   state.previewList = list;
   // 换了一批题，上一篇的共用引用作废（否则会把上一篇的原文套到新一批上）
-  state.previewPassageId = null;
+  state.pendingPassageText = "";
 
   // 原文是 AI 已经填好的，不该再让用户手动点一次「套用到本批」。
   // 必须放在 state.previewList = list 之后：判断与落库都读 state.previewList，
@@ -470,8 +454,7 @@ async function buildPreviewInner(raw) {
 function clearPreview() {
   state.previewList = [];
   state.previewEditIndex = null;   // 收起可能开着的编辑表单，否则会残留一张空表单
-  state.previewPassageId = null;   // 篇章引用也要清，否则上一批的引用会漏到下一批
-  state.savedPassageTexts = null;
+  state.pendingPassageText = "";   // 篇章引用也要清，否则上一批的引用会漏到下一批
   state.previewVerdicts = [];
   state.previewChecks = [];
   state.previewSourceText = null;
@@ -636,13 +619,12 @@ async function runImport(list, checks = null) {
   // 不等它就会变成两条提示互相覆盖——后到的那条（不带「跳过 N 道」信息）
   // 反而把更完整的那条盖掉，用户永远看不到跳过了几题。
   try {
-    await state.hooks.onAppend(stamped, finalSource);
+    await state.hooks.onAppend(stamped, finalSource, state.pendingPassageText ?? "");
   } catch (error) {
     notifyError(error, { retry: () => void handleParse() });
     return;
   }
 
-  // 提示里的来源取实际写库的值，便于当即核对 AI 有没有读对封面信息
   // 来源取实际写库的值，便于当即核对 AI 有没有读对封面信息
   const displaySource = stamped.length > 0 ? String(stamped[0].source ?? "").trim() : "";
   // 结构化传给 showNotice：数量、来源、跳过数、自动修正分开排成长卡片，
@@ -652,6 +634,8 @@ async function runImport(list, checks = null) {
     source: displaySource,
     skipped: skipped.length,
     repairs: state.pendingRepairs,
+    // 原文是卷的属性：填了就会随这批题挂到那一卷上
+    passageAttached: state.pendingPassageText !== "",
   });
   // 把这批题目所属的卷登记进本地列表。
   // state.allPapers 是页面加载时的快照，不更新的话「库里已有同名卷」的提示
@@ -667,8 +651,7 @@ async function runImport(list, checks = null) {
   // buildPreview 会命中 state.lastBuild 缓存直接返回（那条路径不经过 buildPreviewInner，
   // 不会重置 passageId），面板就会显示「已套用到本批 N 道题」而实际一题都没挂。
   // 更糟的是用户点「重新套用」会 updatePassage 改到**别的批次**的篇章上。
-  state.previewPassageId = null;
-  state.savedPassageTexts = null;
+  state.pendingPassageText = "";
   renderPassagePanel();
 
   state.els.textarea.value = "";

@@ -60,8 +60,9 @@ export const state = {
    */
   previewList: [],      // 解析 + 修复后的题目（全量，含未勾选的）
   previewEditIndex: null, // 正在编辑的题号（同一时间只编辑一张卡片）
-  previewPassageId: null, // 本批共用的篇章 id（一道大题 10 道小题共享一篇原文）
-  savedPassageTexts: null, // 套用篇章前各题自带的 passageText，点「清除」时还原
+  pendingPassageText: "", // 本篇完整原文（待导入时随题目一起提交，挂到那一卷上）
+  // v3.9.6 起不再有 previewPassageId / savedPassageTexts ——
+  // 原文是卷的属性，不再建篇章、不再往题上挂 passageId
   previewVerdicts: [],  // 每题查重结果
   previewChecks: [],    // 每题是否勾选
   /** 预览对应的 textarea 内容，用于判断「粘贴后立刻点导入」时预览是否还是新的 */
@@ -110,7 +111,5 @@ export function syncLastBuild() {
   state.lastBuild.list = [...state.previewList];
   state.lastBuild.verdicts = [...state.previewVerdicts];
   state.lastBuild.checks = [...state.previewChecks];
-  state.lastBuild.passageId = state.previewPassageId;
-  state.lastBuild.savedPassageTexts =
-    state.savedPassageTexts === null ? null : [...state.savedPassageTexts];
+  state.lastBuild.passageText = state.pendingPassageText;
 }

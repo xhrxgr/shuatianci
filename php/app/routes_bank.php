@@ -584,6 +584,62 @@ function route_questions_create()
         $response['rejected'] = count($list) - count($valid);
         $response['details'] = $errors;
     }
+
+    // 把本批的完整原文挂到**这一卷**上（v3.9.6）。
+    //
+    // 原文是卷的属性，不是题的：一张卷一篇完形填空 = 一篇原文 + N 道独立小题，
+    // 录入时两者互不牵连。所以这里不逐题写 passage_id —— 那是 v3.9.5
+    // 之前的旧模型（题绑原文），连 AI 导入页的「套用到本批题目」按钮一起废了。
+    //
+    // 必须在题目入库**之后**做：卷是导入过程中 ensure_paper_by_name() 建的，
+    // 事务内还没有它的 id。
+    $passageText = isset($body['paperPassageText']) && is_string($body['paperPassageText'])
+        ? trim($body['paperPassageText'])
+        : '';
+    if ($passageText !== '') {
+        try {
+            $paperRow = query_one(
+                'SELECT id FROM papers WHERE name = ? ORDER BY created_at LIMIT 1',
+                [$valid[0]['source'] ?? '']
+            );
+            if ($paperRow !== null) {
+                $existing = query_one(
+                    'SELECT id FROM passages WHERE paper_id = ? ORDER BY created_at LIMIT 1',
+                    [(string) $paperRow['id']]
+                );
+                if ($existing !== null) {
+                    // 一卷一篇：已有就更新，不要每次导入都多出一篇
+                    execute(
+                        'UPDATE passages SET text = ?, updated_at = ? WHERE id = ?',
+                        [$passageText, to_sql_date(null), (string) $existing['id']]
+                    );
+                } else {
+                    // passages.id 没有默认值，必须自己生成 ——
+                    // 与 routes_passages.php 同一套：时间戳 base36 + 随机后缀
+                    $passageId = 'p_' . base_convert((string) (int) (microtime(true) * 1000), 10, 36)
+                        . '_' . substr(bin2hex(random_bytes(3)), 0, 6);
+                    execute(
+                        'INSERT INTO passages (id, paper_id, title, text, created_at, updated_at)
+                         VALUES (?, ?, ?, ?, ?, ?)',
+                        [
+                            $passageId,
+                            (string) $paperRow['id'],
+                            '',
+                            $passageText,
+                            to_sql_date(null),
+                            to_sql_date(null),
+                        ]
+                    );
+                }
+                $response['passageAttached'] = true;
+            }
+        } catch (Throwable $error) {
+            // 原文是补充材料，挂不上不该让整批题导入失败
+            error_log('[questions] 挂卷原文失败：' . $error->getMessage());
+            $response['passageAttached'] = false;
+        }
+    }
+
     json_response($response, 201);
 }
 

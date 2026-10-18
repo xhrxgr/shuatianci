@@ -50,10 +50,12 @@ check("名词题也还原成 stability / treasures",
 // 面板状态 + 修复说明
 // 这份数据每题都带同一份 passage（AI 没听提示词）→ 兜底自动合并
 const panel = (await p.locator("#admin-ai-passage").innerText().catch(() => "")) || "";
-check("每题都带同一份 → 仍然自动合并成共享篇章", /已套用到本批/.test(panel), panel.slice(0, 120));
+// v3.9.6：「每题都带同一份」不再合并成题绑的共享篇章，
+// 而是填进本卷原文框，导入时挂到那一卷上。
+check("每题都带同一份 → 收进本卷原文框", /已填好/.test(panel), panel.slice(0, 120));
 // 合并成共享篇章后，逐题原文块一个都不该有
 const dedup = await p.locator("#admin-ai-preview-list details").count();
-check("合并后没有逐题原文块", dedup === 0, dedup);
+check("收进原文框后没有逐题原文块", dedup === 0, dedup);
 
 const body = await p.locator("body").innerText();
 // 「已自动修正」那一栏：确认自动还原这件事被告知了用户（文案会随版本调整，只断言在不在）

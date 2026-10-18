@@ -309,22 +309,23 @@ function removePreviewItem(index) {
   renderPassagePanel();
 }
 
-/** 刷新原文区的显隐与状态文字（预览有题时才显示这一块） */
+/**
+ * 刷新原文区的显隐与状态文字（预览有题时才显示这一块）。
+ *
+ * 原文是**卷的属性**：填了会随「导入」一起提交，服务端挂到那一卷上，
+ * 与本批题目无关。所以这里只反映「有没有填」，不再有「套用到 N 道题」的说法。
+ */
 export function renderPassagePanel() {
   if (!state.els.passageBox) return;
   const has = state.previewList.length > 0;
   state.els.passageBox.hidden = !has;
   if (!has) return;
-  if (state.previewPassageId) {
-    state.els.passageStatus.textContent = `已套用到本批 ${state.previewList.length} 道题（改原文只改一处，全部立即生效）`;
-    state.els.passageApply.textContent = "重新套用";
-  } else {
-    const own = state.previewList.filter((q) => typeof q.passageText === "string" && q.passageText.trim() !== "").length;
-    state.els.passageStatus.textContent = own > 0
-      ? `尚未设置共用原文（当前有 ${own} 道题各带一份自己的原文）`
-      : "尚未设置原文";
-    state.els.passageApply.textContent = "套用到本批题目";
-  }
+
+  const filled = typeof state.pendingPassageText === "string" && state.pendingPassageText !== "";
+  state.els.passageStatus.textContent = filled
+    ? "已填好，点「导入题目」时会挂到这一卷上"
+    : "尚未填写原文（选填，不填也能导入）";
+  state.els.passageApply.textContent = filled ? "保存原文" : "填入本卷原文";
 }
 
 /**

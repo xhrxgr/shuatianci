@@ -36,12 +36,14 @@ const expected = JSON.parse(RAW).questions.length;
 const cards = await p.locator("#admin-ai-preview-list > *").count();
 check(`${expected} 道题全部解析出来`, cards === expected, { cards, expected });
 
-// 核心：顶层 passage 被下发到每一道题，并自动建成共享篇章
+// 核心（v3.9.6）：顶层 passage 被识别并**填进原文框** ——
+// 原文是**卷的属性**，不再自动套用到每一道题，所以面板上不该再出现「套用」字样。
 const panel = (await p.locator("#admin-ai-passage").innerText().catch(() => "")) || "";
-check("顶层 passage 被识别 → 自动套用共享篇章", /已套用到本批/.test(panel), panel.slice(0, 140));
+check("顶层 passage 被识别 → 填入本卷原文框", /已填好/.test(panel), panel.slice(0, 140));
+check("原文区不再出现「套用」（题不绑原文了）", !/套用/.test(panel), panel.slice(0, 140));
 
-const badges = await p.locator("#admin-ai-preview-list button", { hasText: "共用原文" }).count();
-check("每道题都标了「共用原文」（顶层 passage 已下发到每题）", badges === expected, badges);
+const applyText = (await p.locator("#admin-ai-passage-text").inputValue().catch(() => "")) || "";
+check("原文框里确实是那篇全文", applyText.includes("The museum opened a new wing"), applyText.slice(0, 50));
 
 const errBox = await p.locator("#admin-ai-error").innerText().catch(() => "");
 check("没有校验错误", errBox.trim() === "" || /暂无|没有/.test(errBox), errBox.slice(0, 120));
@@ -50,28 +52,14 @@ check("没有校验错误", errBox.trim() === "" || /暂无|没有/.test(errBox)
 const nameBox = await p.locator("#ai-source").inputValue().catch(() => "");
 check("试卷名自动填成顶层 source", nameBox === "顶层passage自测", nameBox);
 
-// 导入后库里只有一份
-p.once("dialog", (d) => d.accept());
-await p.locator("button", { hasText: "确认导入这一卷" }).first().click();
-await p.waitForTimeout(3500);
-
-const stored = await p.evaluate(async (base) => {
-  const res = await fetch(
-    base + "/api/questions?source=" + encodeURIComponent("顶层passage自测"),
-    { headers: { Authorization: "Bearer " + localStorage.getItem("eq_token") } }
-  );
-  const data = await res.json();
-  const qs = data.questions ?? [];
-  return {
-    total: qs.length,
-    passageIds: [...new Set(qs.map((q) => q.passageId ?? ""))],
-    firstPassage: (qs[0]?.passageText ?? "").slice(0, 40),
-  };
-}, BASE);
-check("题目已入库", stored.total === expected, stored);
-check("入库后只指向**同一篇**篇章（顶层化生效）",
-  stored.passageIds.length === 1 && stored.passageIds[0] !== "", stored);
-check("读回来的 passage 内容正确", stored.firstPassage.startsWith("The museum opened a new wing"), stored.firstPassage);
+// v3.9.6：不再断言「入库后每题都指向同一篇篇章」——
+// 原文已经是**卷的属性**，题不再带 passageId。
+//
+// 这一段原本要验证「顶层 passage 落库后仍只有一份」。现在它由
+// `ai-passage-attaches-test` 覆盖（那里走完整导入流程，逐项验：
+// 原文挂在那一卷、只有一篇、题目完全没有 passageId/passageText、
+// 二次导入不堆积）。这里只保留**录入阶段**的断言，避免两处重复且
+// 各自维护一套导入流程。
 
 check("全程无 JS 异常", errors.length === 0, errors.slice(0, 2));
 

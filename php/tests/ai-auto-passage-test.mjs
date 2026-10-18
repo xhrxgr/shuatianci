@@ -42,17 +42,20 @@ await p.waitForSelector("#admin-ai-preview-list > *", { timeout: 25000 });
 await p.waitForTimeout(2500);
 
 const panelText = (await p.locator("#admin-ai-passage").innerText().catch(() => "")) || "";
-check("原文面板自动出现（说明自动套用触发了）", panelText.includes("已套用到本批"), panelText.slice(0, 120));
-check("面板写明改一处全部生效", /改原文只改一处/.test(panelText), panelText.slice(0, 160));
+// v3.9.6：不再「自动套用到每道题」，而是把顶层 passage 填进本卷原文框，
+// 导入时挂到**那一卷**上。题目与原文不关联。
+check("原文面板自动出现并已填好", panelText.includes("已填好"), panelText.slice(0, 120));
+check("面板不再出现「套用」字样", !/套用/.test(panelText), panelText.slice(0, 160));
 
+// 题上不再有任何原文徽标 —— 那是「题绑原文」时代的标记
 const badges = await p.locator("#admin-ai-preview-list button", { hasText: "共用原文" }).count();
-check("每题都标了「共用原文」徽标", badges === 3, badges);
+check("题上不再有「共用原文」徽标（原文挂卷，不挂题）", badges === 0, badges);
 
 const details = await p.locator("#admin-ai-preview-list details").count();
 check("预览里不再有逐题的原文折叠块", details === 0, details);
 
 const applyLabel = await p.locator("#admin-ai-passage-apply").innerText();
-check("按钮变成「重新套用」（说明已套用过）", /重新套用/.test(applyLabel), applyLabel);
+check("按钮变成「保存原文」（原文已记下）", /保存原文/.test(applyLabel), applyLabel);
 
 // 明确不做兼容：每道题都带 passage（旧行为）不再自动套用，
 // 免得 AI 没听提示词时把内容判断的责任也揽过来

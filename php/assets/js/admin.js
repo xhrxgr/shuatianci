@@ -110,6 +110,8 @@ function showNotice(payload) {
   const extras = [];
   if (skipped > 0) extras.push(`跳过 ${skipped} 道（未勾选）`);
   if (repairs.length > 0) extras.push(`已自动修正：${repairs.join("；")}`);
+  // 原文是卷的属性，不是题的 —— 说清楚它挂在哪，学生/用户才知道去哪儿找
+  if (payload.passageAttached) extras.push("原文已挂到本卷");
 
   box.innerHTML = `<div class="pointer-events-auto rounded-xl border border-success/40 bg-success-soft p-4">
     <div class="flex items-start gap-3">
@@ -898,13 +900,15 @@ async function applyTagName(tagId, name) {
 }
 
 /** AI 导入：把解析出的题目增量入库（来源统一打上） */
-async function handleAiAppend(incoming, source) {
+async function handleAiAppend(incoming, source, paperPassageText = "") {
   const stamped = incoming.map((question) => ({
     ...question,
     // 页面上手填的来源优先；留空则用 AI 从封面生成、写在 JSON 里的来源
     source: source || question.source || "AI 生成",
   }));
-  const result = await api.pushQuestions(stamped, false);
+  // 原文随这批题一起提交，服务端挂到**这一卷**上（v3.9.6）。
+  // 原文是卷的属性，不往每道题上挂 passageId —— 题只管自己的题干与空。
+  const result = await api.pushQuestions(stamped, false, paperPassageText);
   // 提示里展示实际写库的来源（可能来自手填，也可能来自 AI 识别封面），
   // 便于当即核对 AI 有没有读对卷子信息
   const finalSource = stamped.length > 0 ? String(stamped[0].source ?? "").trim() : "";

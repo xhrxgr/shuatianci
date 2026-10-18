@@ -50,13 +50,13 @@ check("原文本就完整 → 不做还原（不产生多余提示）", hasRepai
 
 // 合并成共享篇章后，预览里不再有逐题原文块，原文在顶部面板
 const panelArea = await p.locator("#admin-ai-passage").innerText().catch(() => "");
-check("共享后预览里没有逐题原文块（原文在顶部面板）",
-  panelArea.includes("本篇完整原文"), panelArea.slice(0, 100));
+check("收进原文框后原文在顶部面板（标签已改为「本卷」）",
+  panelArea.includes("本卷完整原文"), panelArea.slice(0, 100));
 
 // 自动合并成共享篇章后，10 道题都不再带各自的 passageText
 // → 预览里一个逐题原文块都不该有（原文统一在顶部面板）
 const dedup = await p.locator("#admin-ai-preview-list details").count();
-check("自动合并后没有逐题原文块（不是去重成 1 个，是 0 个）", dedup === 0, dedup);
+check("收进原文框后没有逐题原文块（不是去重成 1 个，是 0 个）", dedup === 0, dedup);
 
 // 真正走一遍导入
 p.once("dialog", (d) => d.accept());
@@ -75,36 +75,34 @@ if (await importBtn.count()) {
 }
 
 // 核心断言：入库后 passage 只存一份（走 passages 表），不随题重复
+// v3.9.6：原文是**卷的属性**，题不再带 passageId。
+// 这里改成验「原文挂在那一卷上，且题目干干净净」。
 const stored = await p.evaluate(async (base) => {
-  const res = await fetch(
-    base + "/api/questions?source=" + encodeURIComponent("2026年2月安徽省A10联盟高三开学考英语试题"),
-    { headers: { Authorization: "Bearer " + localStorage.getItem("eq_token") } }
-  );
-  const data = await res.json();
-  const qs = data.questions ?? [];
+  const h = { Authorization: "Bearer " + localStorage.getItem("eq_token") };
+  const name = "2026年2月安徽省A10联盟高三开学考英语试题";
+  const papers = (await (await fetch(base + "/api/papers", { headers: h })).json()).papers ?? [];
+  const paper = papers.find((x) => x.name === name);
+  if (!paper) return { paperFound: false, total: 0 };
+  const qs = (await (await fetch(
+    base + "/api/questions?paperId=" + encodeURIComponent(paper.id), { headers: h })).json()).questions ?? [];
+  const ps = (await (await fetch(
+    base + "/api/passages?paperId=" + encodeURIComponent(paper.id), { headers: h })).json()).passages ?? [];
   return {
+    paperFound: true,
     total: qs.length,
     withPassageId: qs.filter((q) => q.passageId).length,
     withOwnText: qs.filter((q) => (q.passageText ?? "").length > 0).length,
+    passageCount: ps.length,
+    passageHead: (ps[0]?.text ?? "").slice(0, 40),
   };
 }, BASE);
-check("10 道题全部入库", stored.total === 10, stored);
-check("10 道题都指向共享篇章（不是各存一份）", stored.withPassageId === 10, stored);
+check("10 道题全部入库", stored.paperFound && stored.total === 10, stored);
+// 题上一个 passageId / passageText 都不该有（原文只有卷上那一份）
+check("题目上没有 passageId（原文不挂题）", stored.withPassageId === 0, stored);
+check("题目上没有自带 passageText", stored.withOwnText === 0, stored);
+// 唯一那一份原文在卷上
+check("原文只存一份，挂在那一卷上", stored.passageCount === 1, stored);
 
-// ⚠️ 接口返回的 passageText 是**读路径从 passages 表 JOIN 出来的**（统一出口），
-// 所以它有值是正常的，不能用来判断「库里是否重复存了 10 份」。
-// 真正的判据是 passageId：全部非空且指向同一篇，说明只有 passages 表里那一份。
-const ids = await p.evaluate(async (base) => {
-  const res = await fetch(
-    base + "/api/questions?source=" + encodeURIComponent("2026年2月安徽省A10联盟高三开学考英语试题"),
-    { headers: { Authorization: "Bearer " + localStorage.getItem("eq_token") } }
-  );
-  const data = await res.json();
-  return (data.questions ?? []).map((q) => q.passageId ?? "");
-}, BASE);
-const uniqueIds = [...new Set(ids)];
-check("10 道题指向的是**同一篇**篇章（只存一份）",
-  uniqueIds.length === 1 && uniqueIds[0] !== "", { uniqueIds });
 
 check("全程无 JS 异常", errors.length === 0, errors.slice(0, 2));
 

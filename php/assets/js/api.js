@@ -231,8 +231,22 @@ export const api = {
   getQuestions: () => request("/questions"),
   getTags: () => request("/tags"),
   pushQuestion: (question) => request("/questions", { method: "POST", body: { question } }),
-  pushQuestions: (questions, replaceAll = false) =>
-    request("/questions", { method: "POST", body: { questions, replaceAll } }),
+  /**
+   * 批量写入题目。
+   *
+   * paperPassageText：本批的完整原文。服务端会把它挂到**这些题所属的那一卷**上
+   * （一卷一篇完形填空），而不是往每道题上挂 passageId ——
+   * 原文是卷的属性，题只管自己的题干与空。
+   */
+  pushQuestions: (questions, replaceAll = false, paperPassageText = "") =>
+    request("/questions", {
+      method: "POST",
+      body: {
+        questions,
+        replaceAll,
+        ...(paperPassageText ? { paperPassageText } : {}),
+      },
+    }),
   /**
    * 录入前查重。返回每题的判定（new / duplicate / diff）与匹配到的库内题目。
    * 刻意放在服务端：指纹规则必须与入库时用的完全一致。
