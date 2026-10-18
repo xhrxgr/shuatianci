@@ -718,15 +718,9 @@ export function setupPaperAndQuestionPanels(context) {
         openDeletePaperDialog(button.dataset.id, button.dataset.name ?? "", count);
         break;
       }
-      case "delete-paper-keep-questions":
-        void confirmDeletePaper(false);
-        break;
-      case "delete-paper-with-questions":
-        void confirmDeletePaper(true);
-        break;
-      case "delete-paper-cancel":
-        document.getElementById("delete-paper-dialog")?.close();
-        break;
+      // 弹窗里的三个按钮（delete-paper-keep-questions / -with-questions / -cancel）
+      // 不在这里处理：dialog 与这个 <ul> 平级，事件冒泡不到，写了也永远不执行。
+      // 它们直接绑在 delete-paper-dialog 上，见本函数末尾。
       case "view-paper-question":
         togglePaperQuestionDetail(button.dataset.id);
         break;
@@ -808,6 +802,29 @@ export function setupPaperAndQuestionPanels(context) {
     ?.addEventListener("click", () => void handleSaveEditQuestion());
   document.querySelectorAll('[data-action="close-edit-question"]').forEach((button) => {
     button.addEventListener("click", () => document.getElementById("question-edit-dialog")?.close());
+  });
+
+  /**
+   * 删除试卷确认弹窗的三个按钮。
+   *
+   * 必须**直接绑在 dialog 上**，不能靠 paper-manage-list 的 click 委托：
+   * <dialog> 是 body 级元素，与试卷列表那个 <ul> 平级，不在它内部，
+   * 点按钮时事件冒泡不到 ul，委托里的三个 case 永远收不到。
+   * （v3.8.9 修：此前这三个按钮完全无响应，用户只能刷新页面。）
+   *
+   * 与 admin-blueprints.js 对 paper-items-dialog 的做法一致 ——
+   * 那里同样是 itemsDialog.addEventListener(...)。
+   */
+  const deleteDialog = document.getElementById("delete-paper-dialog");
+  deleteDialog?.addEventListener("click", (event) => {
+    const action = event.target.closest("[data-action]")?.dataset?.action;
+    if (action === "delete-paper-keep-questions") {
+      void confirmDeletePaper(false);
+    } else if (action === "delete-paper-with-questions") {
+      void confirmDeletePaper(true);
+    } else if (action === "delete-paper-cancel") {
+      deleteDialog.close();
+    }
   });
 
   applyQuestionFilter();

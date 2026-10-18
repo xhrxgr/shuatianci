@@ -92,6 +92,99 @@ check("题目确实被删掉了", (afterDel.data?.questions ?? []).length === 0,
 // 清理第一批
 if (paperId) await call("DELETE", `/api/papers/${paperId}`, { deleteQuestions: true });
 
+/* ================================================================== */
+/* 弹窗交互（v3.8.9 补）                                              */
+/* ================================================================== */
+// 上面全是 API 层直接调 DELETE，**完全没碰过弹窗里的按钮** —— 而 v3.8.9 修的
+// 正是这个：删除试卷弹窗的三个按钮用 data-action，事件委托却挂在试卷列表那个
+// <ul> 上，而 <dialog> 与 <ul> 平级、不在它内部，事件冒泡不到，
+// 三个按钮全部无响应（用户只能刷新页面）。
+// API 层测试抓不到这类问题，必须真的去点。
+const uiName = "弹窗自测卷_" + Date.now();
+const uiPaper = await call("POST", "/api/papers", { name: uiName });
+const uiPaperId = uiPaper.data?.paper?.id ?? uiPaper.data?.id;
+check("弹窗自测：建卷成功", Boolean(uiPaperId), uiPaper.data);
+for (const ans of ["epsilon", "zeta"]) {
+  await call("POST", "/api/questions", {
+    question: {
+      originalSentence: `Dialog sample ______ (${ans}) sentence.`,
+      source: uiName,
+      paperId: uiPaperId,
+      blanks: [{ blankIndex: 1, answer: [ans], hintType: "给名词", hintWord: ans, trapAnalysis: "弹窗自测解析。" }],
+    },
+  });
+}
+// 列表是 PHP 首屏直出的，建卷要刷新后才看得到
+await p.goto(`${BASE}/admin`, { waitUntil: "networkidle" });
+await p.locator('[data-admin-tab="papers"]').click();
+await p.waitForTimeout(600);
+
+const uiRow = p.locator(`[data-paper-manage="${uiPaperId}"]`);
+check("弹窗自测：试卷出现在列表里", (await uiRow.count()) === 1, await uiRow.count());
+
+await uiRow.locator('button[data-action="delete-paper"]').click();
+await p.waitForTimeout(500);
+check("点「删除」后弹窗打开", await p.locator("#delete-paper-dialog").evaluate((d) => d.open));
+
+const descText = await p.locator("#delete-paper-desc").innerText().catch(() => "");
+check("弹窗里写出了卷名与题目数", /弹窗自测卷/.test(descText) && /2 道题/.test(descText), descText.slice(0, 80));
+
+// 「取消」必须能关掉 —— v3.8.9 之前它和另外两个按钮一样点不动
+await p.locator('[data-action="delete-paper-cancel"]').click();
+await p.waitForTimeout(400);
+check(
+  "「取消」能关掉弹窗（v3.8.9 修的三个按钮之一）",
+  !(await p.locator("#delete-paper-dialog").evaluate((d) => d.open))
+);
+
+// 「只删除试卷，保留题目」必须真的执行
+await uiRow.locator('button[data-action="delete-paper"]').click();
+await p.waitForTimeout(500);
+await p.locator('[data-action="delete-paper-keep-questions"]').click();
+await p.waitForTimeout(1500);
+const afterUi = await call("GET", `/api/questions?source=${encodeURIComponent(uiName)}`);
+const papersAfter = await call("GET", "/api/papers");
+check(
+  "「只删除试卷，保留题目」真的执行了（卷没了、题还在）",
+  !(papersAfter.data?.papers ?? []).some((x) => x.id === uiPaperId)
+    && (afterUi.data?.questions ?? []).length === 2,
+  { paperGone: !(papersAfter.data?.papers ?? []).some((x) => x.id === uiPaperId), questions: afterUi.data?.questions?.length }
+);
+
+// 连题一起删那条路径也点一遍
+const uiName2 = "弹窗自测卷2_" + Date.now();
+const uiPaper2 = await call("POST", "/api/papers", { name: uiName2 });
+const uiPaper2Id = uiPaper2.data?.paper?.id ?? uiPaper2.data?.id;
+check("弹窗自测：第二张卷建卷成功", Boolean(uiPaper2Id), uiPaper2.data);
+for (const ans of ["eta"]) {
+  await call("POST", "/api/questions", {
+    question: {
+      originalSentence: `Dialog sample two ______ (${ans}) sentence.`,
+      source: uiName2,
+      paperId: uiPaper2Id,
+      blanks: [{ blankIndex: 1, answer: [ans], hintType: "给名词", hintWord: ans, trapAnalysis: "弹窗自测解析二。" }],
+    },
+  });
+}
+await p.goto(`${BASE}/admin`, { waitUntil: "networkidle" });
+await p.locator('[data-admin-tab="papers"]').click();
+await p.waitForTimeout(600);
+const uiRow2 = p.locator(`[data-paper-manage="${uiPaper2Id}"]`);
+check("弹窗自测：第二张卷出现在列表里", (await uiRow2.count()) === 1, await uiRow2.count());
+await uiRow2.locator('button[data-action="delete-paper"]').click();
+await p.waitForTimeout(500);
+// 「连题一起删」有一道二次 window.confirm（会说明连带清掉掌握状态/记录/标记），
+// Playwright 默认 dismiss 等于按了取消，必须显式 accept
+p.once("dialog", (d) => d.accept());
+await p.locator('[data-action="delete-paper-with-questions"]').click();
+await p.waitForTimeout(1500);
+const afterUi2 = await call("GET", `/api/questions?source=${encodeURIComponent(uiName2)}`);
+check(
+  "「删除试卷，并删除这些题目」也真的执行了",
+  (afterUi2.data?.questions ?? []).length === 0,
+  afterUi2.data?.questions?.length
+);
+
 check("全程无 JS 异常", errors.length === 0, errors.slice(0, 2));
 
 await b.close();
