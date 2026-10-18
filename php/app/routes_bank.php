@@ -524,14 +524,24 @@ function route_questions_create()
             $blanks = isset($question['blanks']) && is_array($question['blanks']) ? $question['blanks'] : [];
             $paperId = ensure_paper_by_name($source);
             $createdAt = to_sql_date(isset($question['createdAt']) ? $question['createdAt'] : null);
-            // 完整原文两套并存：
-            // - 新模型：passageId 指向 passages 表（一道大题 10 道小题共享一篇，
-            //   改一处全篇生效）—— 传了它就以它为准
-            // - 旧形态：passageText 一题一份（v3.6.13 起，用户明确说不迁移老数据）
+            // 完整原文（v3.9.0 起单一权威）：只认 passageId，指向 passages 表。
+            // 一道大题 = 一篇原文 + N 道最小填空题，原文只存一份，改一处全篇生效。
+            //
+            // 收到 passageText 却没给 passageId 时**明确报错**而不是静默忽略：
+            // 静默忽略等于把用户填的原文丢掉，而请求照样成功、看不出任何异常——
+            // 那正是 v3.8.x 之前「改了原文没反应」那类问题的温床。
             $passageId = normalize_passage_id(isset($question['passageId']) ? $question['passageId'] : null);
-            $passage = $passageId !== null
-                ? null
-                : normalize_passage_text(isset($question['passageText']) ? $question['passageText'] : null);
+            if ($passageId === null
+                && isset($question['passageText'])
+                && trim((string) $question['passageText']) !== '') {
+                throw http_error(
+                    400,
+                    '完整原文不再按题存放。请先用 POST /api/passages 建一篇原文拿到 id，'
+                    . '再用 passageId 关联；前端「AI 导入」页会自动完成这一步。'
+                );
+            }
+            // questions.passage_text 这一列保留但不再写入（不做 DROP COLUMN，零迁移风险）
+            $passage = null;
 
             execute(
                 'INSERT INTO questions
@@ -602,10 +612,20 @@ function route_questions_update($id)
         $fields[] = 'original_sentence = ?';
         $values[] = (string) $patch['originalSentence'];
     }
-    // 完整原文：显式传 null 表示清除（老题补录后想删掉）
-    if (array_key_exists('passageText', $patch)) {
-        $fields[] = 'passage_text = ?';
-        $values[] = normalize_passage_text($patch['passageText']);
+    // 完整原文（v3.9.0）：单题编辑**不再能改原文**。
+    //
+    // 原文是整篇共享的，改单题那一份既写不进共享的那篇、又留下一份
+    // 永远不显示的脏数据（读取时优先 passages.text，用户改完看不到变化）。
+    // 要改原文请走 PUT /api/passages/{id}，或用试卷编辑面板的「本卷原文」区。
+    //
+    // 仍然显式拒绝而不是静默忽略：前端若漏改，接口要立刻指出问题在哪。
+    if (array_key_exists('passageText', $patch)
+        && trim((string) $patch['passageText']) !== '') {
+        throw http_error(
+            400,
+            '完整原文是整篇共享的，不能在单题编辑里改。请用 PUT /api/passages/{id}，'
+            . '或用试卷编辑面板的「本卷原文」区。'
+        );
     }
     // 所属篇章：显式传 null 表示把题从篇章里摘出来（变回"没有原文"）
     if (array_key_exists('passageId', $patch)) {
@@ -661,9 +681,10 @@ function route_questions_update($id)
         'originalSentence' => array_key_exists('originalSentence', $patch)
             ? $patch['originalSentence']
             : $row['original_sentence'],
-        'passageText' => array_key_exists('passageText', $patch)
-            ? $patch['passageText']
-            : ($row['passage_text'] ?? null),
+        // 校验用的合并值：原文取共享那篇（v3.9.0 不再回退 passage_text）。
+        // 这里仍带 passageText 是为了校验 —— normalize/长度限制都在那儿，
+        // 但它不参与写入（上面已经明确拒绝非空的 passageText）。
+        'passageText' => questions_passage_text($row),
         'passageId' => array_key_exists('passageId', $patch)
             ? $patch['passageId']
             : ($row['passage_id'] ?? null),

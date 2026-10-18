@@ -212,11 +212,20 @@ function questions_from_clause()
 }
 
 /**
- * 从一行题目数据里取「完整原文」：篇章优先，题目自身列兜底。
+ * 从一行题目数据里取「完整原文」——**只认 passages 表**。
  *
- * 两套并存的过渡期专用：
- * - 新数据走 passages 表（10 道小题共享一篇，改一处全篇生效）
- * - 老数据还留在 questions.passage_text（一题一份，用户明确说不迁移）
+ * v3.9.0 起彻底单一权威：
+ * 一道大题（一篇阅读挖多个空）= 一篇原文 + N 道最小填空题，
+ * 原文只存一份在 passages，多道题通过 passage_id 共享它，
+ * 改一处全篇立即生效。
+ *
+ * ⚠️ 不要再回退到 questions.passage_text（v3.6.13 的旧形态，一题一份）。
+ * 两套并存会出两类难查的问题：
+ *   ① 读的时候优先 passages、存的时候写 passage_text —— 「改了看不到变化」，
+ *      同时在 passage_text 里留下一份永远不显示的脏数据
+ *   ② 同一篇的两道题能看到不同的原文
+ * 数据库里那一列保留着（不做 DROP COLUMN，零迁移风险），
+ * 但读写都不再经过它。历史数据由用户重录。
  *
  * @param array $row 已按 questions_select_columns() 选出的行
  * @return string|null 没有原文返回 null（不是空串，前端据此区分）
@@ -225,9 +234,6 @@ function questions_passage_text(array $row)
 {
     if (isset($row['passage_text_now']) && trim((string) $row['passage_text_now']) !== '') {
         return (string) $row['passage_text_now'];
-    }
-    if (isset($row['passage_text']) && trim((string) $row['passage_text']) !== '') {
-        return (string) $row['passage_text'];
     }
     return null;
 }

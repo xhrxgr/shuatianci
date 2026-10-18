@@ -63,19 +63,10 @@ $adminTabs = [
           ></textarea>
           <p class="mt-1.5 text-xs text-faint" id="admin-blank-count">输入或粘贴原句后，这里会自动拆出各个空位</p>
 
-          <label class="mb-1.5 mt-4 block text-sm font-medium text-ink" for="admin-passage">
-            完整原文 <span class="text-faint">（选填）</span>
-          </label>
-          <textarea
-            id="admin-passage"
-            rows="4"
-            placeholder="这道大题如果是「一篇阅读挖多个空」，把未挖空的原文粘在这里，学生做题时可以展开对照。单句题留空即可。"
-            class="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm leading-6 outline-none transition focus:border-primary"
-          ></textarea>
-          <p class="mt-1.5 text-xs text-faint">
-            代词指代、时态呼应、篇章逻辑这类空，只看挖出来的那句判断不了 —— 有原文才有上下文。
-            只做展示对照，不参与查重。
-          </p>
+          <!-- 这里**不再有「完整原文」**：手动录入的是一道最小填空题，
+               原文是整篇共享的、挂在试卷上。录完题后在「试卷管理 → 编辑 →
+               本卷原文」里填一次，本卷所有题自动关联。
+               后端也已拒绝按题传 passageText（v3.9.0）。 -->
 
           <label class="mb-1.5 mt-4 block text-sm font-medium text-ink" for="admin-source">试卷来源</label>
           <input
@@ -270,12 +261,29 @@ $adminTabs = [
                       class="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none transition focus:border-primary"
                     >
                   </div>
+                  <!-- 本卷原文（v3.9.0）
+                       原文是整篇共享的：这一卷所有引用它的题，学生做题时展开的就是这一份。
+                       放在**题目列表之外**，改一次全卷生效 —— 单题编辑里没有这个字段。
+                       内容由 JS 展开时按「该卷题目实际引用的篇章」填充：
+                       不依赖 passages.paper_id，所以 AI 导入建的篇章（建时卷还没落地、
+                       paper_id 为空）也能在这里找到并编辑。 -->
+                  <div class="border-t border-line pt-3" data-paper-passage>
+                    <p class="mb-1 text-xs font-medium text-ink">本卷原文</p>
+                    <p class="mb-2 text-[11px] leading-5 text-faint">
+                      一道大题（一篇阅读挖多个空）对应一篇原文，这卷所有题共用这一份。
+                      代词指代、时态呼应、篇章逻辑这类空，只看挖出来的那句判断不了。
+                    </p>
+                    <div data-paper-passage-body>
+                      <p class="text-[11px] text-faint">读取中…</p>
+                    </div>
+                  </div>
+
                   <!-- 该卷题目：在这里就能看内容、跳编辑，不用切到「题库总览」再筛。
                        列表由 JS 在展开时填充（数据用页面加载时那份 boot.questions，不额外请求） -->
                   <div class="border-t border-line pt-3">
                     <p class="mb-2 text-xs font-medium text-ink">
                       该卷题目（<span data-paper-q-count>0</span> 道）——
-                      点「查看」展开内容，点「编辑」改答案 / 提示词 / 标签 / 解析 / 完整原文
+                      点「查看」展开内容，点「编辑」改答案 / 提示词 / 标签 / 解析
                     </p>
                     <ul class="space-y-1.5" data-paper-questions></ul>
                   </div>

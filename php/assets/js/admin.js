@@ -352,8 +352,8 @@ function buildQuestion(id) {
       trapAnalysis: blank.trapAnalysis.trim(),
     })),
     source: draft.source.trim() || "手动录入",
-    // 完整原文可空：没填就不给上下文对照
-    passageText: (document.getElementById("admin-passage")?.value ?? "").trim() || null,
+    // 不传 passageText：这里录的是一道最小填空题，原文是整篇共享的、
+    // 挂在试卷上的。录完到「试卷管理 → 编辑 → 本卷原文」填一次即可。
     schemaVersion: boot.schemaVersion ?? 1,
     status: "unmastered",
     wrongCount: 0,

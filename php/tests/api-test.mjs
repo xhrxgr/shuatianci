@@ -312,13 +312,40 @@ async function main() {
     dup.data
   );
 
-  /* ---- 完整原文（passageText）：一道大题 = 一篇阅读多个空 ---- */
+  /* ---- 完整原文：v3.9.0 起只认 passageId（指向 passages 表）---- */
+  // 旧写法（按题传 passageText）已被后端明确拒绝 400 —— 见下面两条断言。
+  const oldStyle = await request("POST", "/questions", {
+    token: adminToken,
+    body: {
+      question: {
+        originalSentence: "Editors ______ (correct) every page before printing.",
+        passageText: "Editors correct every page. This is why typos rarely survive.",
+        blanks: [
+          { blankIndex: 1, answer: ["correct"], hintType: "给动词", hintWord: "correct", trapAnalysis: "常规做法。" },
+        ],
+      },
+    },
+  });
+  check(
+    "按题传 passageText -> 400（原文不再按题存放）",
+    oldStyle.status === 400 && /passages/.test(oldStyle.data?.error ?? ""),
+    oldStyle.data
+  );
+
+  // 正确写法：先建篇章拿到 id，再用 passageId 关联
+  const mkPassage = await request("POST", "/passages", {
+    token: adminToken,
+    body: { text: "Editors correct every page before printing, and they double-check the cover. This is why typos rarely survive." },
+  });
+  check("建篇章成功（201）", mkPassage.status === 201 && Boolean(mkPassage.data.passage?.id), mkPassage.data);
+  const sharedPassageId = mkPassage.data.passage.id;
+
   const withPassage = await request("POST", "/questions", {
     token: adminToken,
     body: {
       question: {
         originalSentence: "Editors ______ (correct) every page before printing, and ______ double-check the cover.",
-        passageText: "Editors correct every page before printing, and they double-check the cover. This is why typos rarely survive.",
+        passageId: sharedPassageId,
         blanks: [
           { blankIndex: 1, answer: ["correct"], hintType: "给动词", hintWord: "correct", trapAnalysis: "全文是现在的常规做法，用原形。" },
           { blankIndex: 2, answer: ["they"], hintType: "无提示词", hintWord: null, trapAnalysis: "指代上句的 editors，只看本句判断不了。" },
@@ -326,34 +353,46 @@ async function main() {
       },
     },
   });
-  check("创建题目可带完整原文（201）", withPassage.status === 201 && withPassage.data.added === 1, withPassage.data);
+  check("创建题目可带 passageId（201）", withPassage.status === 201 && withPassage.data.added === 1, withPassage.data);
   const passageList = await request("GET", "/questions", { token: adminToken });
   const passageQ = (passageList.data.questions ?? []).find((q) => q.originalSentence?.startsWith("Editors ______"));
-  check("读取返回 passageText", passageQ?.passageText?.includes("Editors correct every page") === true, passageQ?.passageText);
-  check("passageText 不影响 fingerprint/查重", passageQ?.originalSentence !== undefined);
+  check("读取返回 passageText（从 passages JOIN 出来）",
+    passageQ?.passageText?.includes("Editors correct every page") === true, passageQ?.passageText);
+  check("passageId 一并返回", passageQ?.passageId === sharedPassageId, passageQ?.passageId);
 
-  // 更新：改原文、再清空（显式 null 表示清除）
-  const patchPassage = await request("PUT", `/questions/${passageQ.id}`, {
+  // 改原文要改篇章本身 —— 改一处，所有引用它的题立即生效
+  const patchPassage = await request("PUT", `/passages/${sharedPassageId}`, {
     token: adminToken,
-    body: { passageText: "改过的完整原文。" },
+    body: { text: "改过的完整原文。" },
   });
-  check("PUT 可改完整原文", patchPassage.status === 200, patchPassage.data);
+  check("PUT /passages/{id} 可改原文", patchPassage.status === 200, patchPassage.data);
   const listAfterPatch = await request("GET", "/questions", { token: adminToken });
   const patched = (listAfterPatch.data.questions ?? []).find((q) => q.id === passageQ.id);
-  check("改后的原文读得回来", patched?.passageText === "改过的完整原文。", patched?.passageText);
-  const clearPassage = await request("PUT", `/questions/${passageQ.id}`, {
+  check("改后的原文对题立刻生效", patched?.passageText === "改过的完整原文。", patched?.passageText);
+
+  // 单题编辑不再能改原文：传了就 400，并说清该去哪改
+  const patchByQuestion = await request("PUT", `/questions/${passageQ.id}`, {
     token: adminToken,
-    body: { passageText: null },
+    body: { passageText: "不该被接受的写法" },
   });
-  check("PUT 传 null 可清除原文", clearPassage.status === 200, clearPassage.data);
-  const listAfterClear = await request("GET", "/questions", { token: adminToken });
-  const cleared = (listAfterClear.data.questions ?? []).find((q) => q.id === passageQ.id);
-  check("清除后读回 null（不是空串）", cleared?.passageText === null, cleared?.passageText);
+  check("单题编辑传 passageText -> 400（共享原文不在单题里改）",
+    patchByQuestion.status === 400 && /passages/.test(patchByQuestion.data?.error ?? ""),
+    patchByQuestion.data);
+
+  // 摘掉关联 = 变回「没有原文」，篇章本身不受影响
+  const detach = await request("PUT", `/questions/${passageQ.id}`, {
+    token: adminToken,
+    body: { passageId: null },
+  });
+  check("PUT 传 passageId:null 可解除关联", detach.status === 200, detach.data);
+  const listAfterDetach = await request("GET", "/questions", { token: adminToken });
+  const detached = (listAfterDetach.data.questions ?? []).find((q) => q.id === passageQ.id);
+  check("解除关联后读回 null（不是空串）", detached?.passageText === null, detached?.passageText);
 
   // 超长原文要被拒（不静默截断——截断会让学生看到半篇文章）
-  const tooLong = await request("PUT", `/questions/${passageQ.id}`, {
+  const tooLong = await request("POST", "/passages", {
     token: adminToken,
-    body: { passageText: "x".repeat(5001) },
+    body: { text: "x".repeat(5001) },
   });
   check("原文超过 5000 字 -> 400", tooLong.status === 400, tooLong.data);
 

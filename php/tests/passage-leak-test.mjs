@@ -31,6 +31,16 @@ const token = await p.evaluate(() => localStorage.getItem("eq_token"));
 // 造一道带原文的题
 const created = await p.evaluate(
   async ([tk, text]) => {
+    // v3.9.0：原文只存 passages 表，先建篇章再用 passageId 关联。
+    // （旧的「按题传 passageText」已被后端明确拒绝 400）
+    const mk = await fetch("/api/passages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + tk },
+      body: JSON.stringify({ text }),
+    });
+    const passageId = (await mk.json().catch(() => null))?.passage?.id;
+    if (!passageId) return { status: mk.status, data: { error: "建篇章失败" } };
+
     const res = await fetch("/api/questions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + tk },
@@ -38,9 +48,7 @@ const created = await p.evaluate(
         question: {
           originalSentence: "Leak check sentence blank ______ (silent) for the test run.",
           source: "泄题自测",
-          // 服务端只认 passageText / passageId；`passage` 是 AI JSON 里的字段名，
-          // 由前端解析时转换成 passageText
-          passageText: text,
+          passageId,
           blanks: [{ blankIndex: 1, answer: ["silent"], hintType: "给形容词", hintWord: "silent", trapAnalysis: "自测解析。" }],
         },
       }),

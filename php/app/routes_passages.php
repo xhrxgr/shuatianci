@@ -101,6 +101,18 @@ function route_passages_create()
         if ($paper === null) {
             json_response(['ok' => false, 'error' => '试卷不存在或已删除'], 404);
         }
+        // 一卷一篇（v3.9.0）：这张卷已经有原文了，直接告诉用户是哪一篇，
+        // 让他去改那一篇，而不是默默多出一篇——那样同一卷会有两篇，
+        // 题目到底挂哪篇就说不清了。
+        $existing = query_one('SELECT id, title FROM passages WHERE paper_id = ?', [$paperId]);
+        if ($existing !== null) {
+            json_response([
+                'ok' => false,
+                'error' => '这张卷已经有一篇原文了。请直接改那一篇（PUT /api/passages/'
+                    . $existing['id'] . '），一卷只对应一篇原文。',
+                'passageId' => $existing['id'],
+            ], 409);
+        }
     }
 
     // 与 next_question_id 同一套生成方式：时间戳 base36 + 随机后缀，
@@ -152,6 +164,19 @@ function route_passages_update($id)
             $paper = query_one('SELECT id FROM papers WHERE id = ?', [$paperId]);
             if ($paper === null) {
                 json_response(['ok' => false, 'error' => '试卷不存在或已删除'], 404);
+            }
+            // 与 create 同一道闸（一卷一篇）：把篇章挂到已经有另一篇的卷上，
+            // 同样会让「同一卷到底哪篇是原文」说不清
+            $clash = query_one(
+                'SELECT id FROM passages WHERE paper_id = ? AND id <> ?',
+                [$paperId, $id]
+            );
+            if ($clash !== null) {
+                json_response([
+                    'ok' => false,
+                    'error' => '这张卷已经有一篇原文了，一卷只对应一篇。',
+                    'passageId' => $clash['id'],
+                ], 409);
             }
         }
         $fields[] = 'paper_id = ?';
