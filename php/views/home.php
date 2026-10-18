@@ -27,6 +27,10 @@ $cards = [
         href="/practice"
         class="min-h-11 rounded-xl bg-primary px-5 py-3 text-center text-sm font-medium text-on-primary transition hover:bg-primary-hover"
       >开始刷题</a>
+      <a
+        href="/practice#pick"
+        class="min-h-11 rounded-xl border border-line bg-surface px-5 py-3 text-center text-sm font-medium text-ink transition hover:bg-surface-alt"
+      >按考点选题</a>
       <?php if (!empty($isAdmin)): ?>
         <a
           href="/admin"
@@ -45,6 +49,37 @@ $cards = [
     <?php endforeach; ?>
   </section>
 
+  <!-- 选题面板（v3.9.8）
+       筛选属于「选题」不属于「做题」：在这里勾好考点，跳到 /practice?tags=…，
+       做题页就只有题目，没有筛选栏要滚过。
+       勾选逻辑在 assets/js/practice-picker.js（页面加载时挂上）。 -->
+  <section id="pick" class="rounded-xl border border-line bg-surface p-5">
+    <h3 class="mb-1 text-sm font-semibold text-ink">按考点选题</h3>
+    <p class="mb-4 text-xs text-muted">
+      勾选要练的考点，再点「开始刷这些题」。不勾就是全部题目。
+    </p>
+    <div id="pick-groups" class="space-y-3"></div>
+    <div class="mt-4 flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        id="pick-go"
+        class="min-h-11 rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-on-primary transition hover:bg-primary-hover"
+      >开始刷这些题</button>
+      <button
+        type="button"
+        id="pick-reset"
+        class="min-h-11 rounded-lg border border-line bg-surface px-4 py-2.5 text-sm text-muted transition hover:bg-surface-alt"
+      >清空勾选</button>
+      <span class="text-xs text-faint" id="pick-status">未勾选，将刷全部题目</span>
+    </div>
+  </section>
+
+  <script type="application/json" id="pick-tags"><?= json_encode(
+      $tagDictionary['tags'] ?? [],
+      JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+  ) ?></script>
+  <script type="module" src="<?= e(asset_url('/js/practice-picker.js')) ?>"></script>
+
   <section class="rounded-xl border border-line bg-surface p-5">
     <h3 class="mb-1 text-sm font-semibold text-ink">最容易错的考点 Top 5</h3>
     <p class="mb-4 text-xs text-muted">按标签累计的错误次数排序，用于定位薄弱环节。</p>
@@ -57,10 +92,14 @@ $cards = [
         <?php foreach ($topTags as $index => $item): ?>
           <li class="flex items-center gap-3">
             <span class="w-5 text-xs text-faint"><?= e($index + 1) ?></span>
-            <span
-              class="rounded px-2 py-0.5 text-xs font-medium text-white"
+            <!-- v3.9.8：考点直接可点 —— 筛选在**进入之前**做，
+                 选题结果编码进 URL，做题页就不用再摆一屏筛选栏了 -->
+            <a
+              href="/practice?tags=<?= e(rawurlencode($item['tag']['id'])) ?>"
+              class="min-h-11 rounded px-2 py-0.5 text-xs font-medium text-white transition hover:opacity-80"
               style="background-color: <?= e($item['tag']['color']) ?>"
-            ><?= e($item['tag']['name']) ?></span>
+              title="只刷这个考点"
+            ><?= e($item['tag']['name']) ?></a>
             <span class="ml-auto text-xs text-danger">错 <?= e($item['count']) ?> 次</span>
           </li>
         <?php endforeach; ?>

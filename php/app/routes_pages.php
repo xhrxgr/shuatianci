@@ -149,6 +149,8 @@ function page_home()
             'blankCount' => $blankCount,
         ],
         'topTags' => $topTags,
+        // 选题面板要用完整标签树（不只是错题 Top5）
+        'tagDictionary' => load_tag_dictionary(),
         'recent' => $recent,
         // 最近三张卷，按考试日期倒序（首页不必再排一次）
         'papers' => array_map('map_paper', array_slice(query_papers_with_counts(), 0, 3)),

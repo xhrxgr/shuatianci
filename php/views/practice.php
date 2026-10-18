@@ -31,15 +31,46 @@
     $longSource = mb_strlen($sourceFilter) > 40;
     $scopeLabel = '正在刷来源：' . ($longSource ? mb_substr($sourceFilter, 0, 40) . '…' : $sourceFilter);
   }
+
+  // 按考点进来的（?tags=…）：把考点名翻出来写进提示条，
+  // 并给一个「换个考点」的入口 —— 筛选已经移到进入之前，这里只负责说明与反悔。
+  $tagNames = [];
+  $tagQuery = (string) ($_GET['tags'] ?? '');
+  if ($tagQuery !== '') {
+    $ids = array_values(array_filter(array_map('trim', explode(',', $tagQuery))));
+    if ($ids !== []) {
+      $byId = [];
+      foreach (load_tag_dictionary()['tags'] as $t) {
+        $byId[$t['id']] = $t;
+      }
+      foreach ($ids as $id) {
+        if (isset($byId[$id])) {
+          $tagNames[] = $byId[$id]['name'];
+        }
+      }
+      if ($scopeLabel === null && $tagNames !== []) {
+        $scopeLabel = '正在刷考点：' . implode(' · ', $tagNames);
+      }
+    }
+  }
+  $hasTagScope = $tagNames !== [];
   ?>
   <?php if ($scopeLabel !== null): ?>
     <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary-soft px-4 py-3">
       <p class="text-sm text-ink"<?= !empty($sourceFilter) && empty($paperIdFilter) ? ' title="' . e($sourceFilter) . '"' : '' ?>>
         <?= e($scopeLabel) ?>
       </p>
-      <a href="/practice" class="min-h-11 rounded-lg border border-line bg-surface px-4 py-2 text-xs text-muted transition hover:bg-surface-alt">
-        看全部题目
-      </a>
+      <div class="flex flex-wrap gap-2">
+        <?php if ($hasTagScope): ?>
+          <!-- 筛选已在进入之前定好，这里给一个反悔的入口 -->
+          <a href="/#pick" class="min-h-11 rounded-lg border border-line bg-surface px-4 py-2 text-xs text-muted transition hover:bg-surface-alt">
+            换个考点
+          </a>
+        <?php endif; ?>
+        <a href="/practice" class="min-h-11 rounded-lg border border-line bg-surface px-4 py-2 text-xs text-muted transition hover:bg-surface-alt">
+          看全部题目
+        </a>
+      </div>
     </div>
   <?php endif; ?>
   <!-- 模式切换 -->
@@ -48,10 +79,10 @@
       role="tablist"
       aria-label="刷题模式"
       id="practice-tabs"
-      class="flex gap-1 rounded-xl border border-line bg-surface p-1 shadow-sm"
+      class="flex min-w-0 flex-1 gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1 shadow-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     ></div>
 
-    <div class="flex gap-2">
+    <div class="flex flex-shrink-0 gap-2">
       <button
         type="button"
         id="practice-shuffle"

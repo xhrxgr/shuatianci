@@ -58,6 +58,32 @@ const sourceFilter = boot.sourceFilter || null;
 /** 按试卷筛选（从「自由刷这卷」进来时），与 sourceFilter 可同时存在 */
 const paperIdFilter = boot.paperIdFilter || null;
 
+/**
+ * 考点筛选：**进入之前**在入口处选好的，通过 URL 带进来。
+ *
+ * v3.9.7 把筛选栏从「按卷进入」时藏掉，v3.9.8 进一步去掉整块筛选栏 ——
+ * 筛选属于「选题」，不属于「做题」。做题页只负责把选好的题一道道做完。
+ * URL 形如 /practice?tags=t_001,t_002（可再叠加 paperId）。
+ */
+const urlTagIds = (() => {
+  try {
+    return (new URL(window.location.href).searchParams.get("tags") ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+})();
+const urlHintType = (() => {
+  try {
+    const v = new URL(window.location.href).searchParams.get("hintType");
+    return v && v !== "" ? v : null;
+  } catch {
+    return null;
+  }
+})();
+
 /* ---------------- 游客本地存储（key 与原版一致） ---------------- */
 
 function readJson(key, fallback) {
@@ -138,8 +164,8 @@ async function submitRecord(questionId, isCorrect, wrongCount, answers) {
 const bootQuestions = Array.isArray(boot.questions) ? boot.questions : [];
 let questions = authenticated ? bootQuestions : applyLocalProgress(bootQuestions);
 let tab = "all";
-let selectedHintType = null;
-let selectedTagIds = [];
+let selectedHintType = urlHintType;
+let selectedTagIds = [...urlTagIds];
 let shuffledIds = null;
 let currentIndex = 0;
 let markedIds = new Set();
@@ -292,7 +318,7 @@ function renderTabs() {
         role="tab"
         aria-selected="${active ? "true" : "false"}"
         data-tab="${item.id}"
-        class="min-h-11 rounded-lg px-4 py-2 text-xs font-medium transition ${
+        class="min-h-11 shrink-0 whitespace-nowrap rounded-lg px-4 py-2 text-xs font-medium transition ${
           active ? "bg-ink text-surface" : "text-ink hover:bg-surface-alt"
         }"
       >${escapeHtml(item.label)}<span class="${active ? "ml-1.5 text-surface opacity-60" : "ml-1.5 text-faint"}">${counts[item.id]}</span></button>
@@ -308,82 +334,22 @@ function renderTabs() {
 
 /* ---------------- 渲染：筛选栏 ---------------- */
 
+/**
+ * 筛选栏在 v3.9.8 整体退役 —— 筛选改到**进入之前**做。
+ *
+ * 原来的筛选栏在手机上实测高 1034px，题目要滚过 58% 屏高才出现，
+ * 而那一屏全是「介词-时间 0」这种筛不了的标签。
+ *
+ * 现在的分工：入口处（首页 / 试卷列表）用「按考点刷」弹窗选题，
+ * 条件编码进 URL（?tags=t_001,t_002），做题页只负责把选好的题做完。
+ * 这个函数保留为空实现，是为了不改 init() 里的调用顺序。
+ */
 function renderFilter() {
   const container = document.getElementById("practice-filter");
   if (!container) return;
+  container.innerHTML = "";
+  container.hidden = true;
 
-  const counts = tagCounts();
-  const hasFilter = selectedHintType !== null || selectedTagIds.length > 0;
-  const list = ordered();
-
-  const hintButtons = [
-    `<button
-        type="button"
-        data-hint-type=""
-        class="min-h-11 rounded-full border px-4 py-2 text-xs font-medium transition ${
-          selectedHintType === null ? "bg-ink text-surface" : "border-line text-ink hover:bg-surface-alt"
-        }"
-      >全部</button>`,
-    ...HINT_TYPES.map((hintType) => {
-      const selected = selectedHintType === hintType;
-      const color = HINT_TYPE_COLORS[hintType];
-      const style = selected
-        ? `background-color: ${color}; border-color: ${color}; color: #ffffff;`
-        : `border-color: ${color}66; color: ${color};`;
-      return `<button
-        type="button"
-        data-hint-type="${escapeHtml(hintType)}"
-        class="min-h-11 rounded-full border px-4 py-2 text-xs font-medium transition"
-        style="${style}"
-      >${escapeHtml(hintType)}</button>`;
-    }),
-  ].join("");
-
-  const active = (tagDictionary?.tags ?? []).filter((tag) => tag.isActive);
-  const groups = active
-    .filter((tag) => tag.parentId === null)
-    .map((parent) => ({
-      parent,
-      children: active.filter((tag) => tag.parentId === parent.id),
-    }));
-
-  const groupHtml = groups.map((group) => {
-    const children = group.children.map((tag) => {
-      const selected = selectedTagIds.includes(tag.id);
-      const count = counts.get(tag.id) ?? 0;
-      const cls = selected
-        ? "font-medium text-white"
-        : count === 0
-          ? "cursor-not-allowed text-faint"
-          : "border border-line text-ink hover:bg-surface-alt";
-      const style = selected ? `background-color: ${tag.color};` : "";
-      return `<button
-        type="button"
-        data-tag="${escapeHtml(tag.id)}"
-        ${count === 0 && !selected ? "disabled" : ""}
-        class="min-h-11 rounded-lg px-3 py-2 text-xs transition ${cls}"
-        ${style ? `style="${style}"` : ""}
-      >${escapeHtml(tag.name)}<span class="${selected ? "ml-1 text-surface opacity-60" : "ml-1 text-faint"}">${count}</span></button>`;
-    }).join("");
-
-    return `<div class="flex flex-wrap items-center gap-2">
-      <span class="mr-1 flex-shrink-0 text-xs font-semibold text-muted">${escapeHtml(group.parent.name)}</span>
-      ${children}
-    </div>`;
-  }).join("");
-
-  container.innerHTML = `
-    <div class="mb-4 flex flex-wrap items-center gap-2">
-      ${hintButtons}
-      <span class="ml-auto text-xs text-muted">共 ${tabCounts()[tab]} 题，当前 ${list.length} 题</span>
-      ${
-        hasFilter
-          ? `<button type="button" data-action="reset-filter" class="min-h-11 rounded-lg px-3 py-2 text-xs text-muted transition hover:bg-surface-alt">重置筛选</button>`
-          : ""
-      }
-    </div>
-    <div class="space-y-3">${groupHtml}</div>
-  `;
 }
 
 /* ---------------- 渲染：进度与翻页 ---------------- */
