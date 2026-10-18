@@ -15,6 +15,7 @@
 import { setFlash } from "./flash.js";
 import { notify, notifyError } from "./feedback.js";
 import { openDialog, closeModal } from "./modal.js";
+import { renderState } from "./ui-guard.js";
 
 /**
  * 由 admin.js 调用完成绑定。
@@ -153,11 +154,21 @@ export function setupPaperAndQuestionPanels(context) {
     if (!box) return;
     const paperId = item.dataset.paperManage ?? "";
 
+    // 这一块是**唯一靠接口取数**的面板，没有 SSR 兜底 —— 之前一失败就永远
+    // 停在 HTML 里那句「正在读取…」，用户完全不知道该怎么办。
+    // 现在三态齐全：加载中 / 空（给新建表单）/ 失败（带重试）。
+    renderState(box, "loading", { message: "本卷原文读取中…" });
+
+    // 读回来的是共享数据，改一下会影响所有引用它的题。
+    // 界面自己的文案要跟着改，不要把「改一处影响全卷」这件事藏起来。
     let all = [];
     try {
       all = (await api.listPassages())?.passages ?? [];
     } catch (error) {
-      box.innerHTML = `<p class="text-[11px] text-danger">原文读取失败：${escape(error?.message ?? "未知错误")}</p>`;
+      renderState(box, "error", {
+        message: `原文读取失败：${error?.message ?? "未知错误"}`,
+        onRetry: () => void renderPaperPassage(item),
+      });
       return;
     }
 

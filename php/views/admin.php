@@ -382,7 +382,10 @@ $adminTabs = [
               点「编辑」可改原句、答案、提示词、标签与解析；勾选多题后可批量改归属试卷或删除。
             </p>
           </div>
-          <div class="flex gap-2">
+          <!-- min-w-0：flex item 默认 min-width:auto，会拒绝收缩到内容宽度以下。
+               长卷名把里面那个 select 撑到 499px，连带把本容器撑出 316px 的父级，
+               整页跟着横向滚（390px 视口实测溢出 146px）。 -->
+          <div class="flex min-w-0 gap-2">
             <select
               id="question-paper-filter"
               class="min-h-11 rounded-lg border border-line bg-surface px-3 py-2 text-xs text-muted outline-none transition focus:border-primary"
@@ -391,15 +394,19 @@ $adminTabs = [
               <?php foreach ($papers as $paper): ?>
                 <!-- 筛选可以包含虚拟卷（按卷筛题走成员表，虚拟卷同样能筛），
                      但要说清楚，免得用户以为那是真实录入的卷 -->
-                <option value="<?= e($paper['id']) ?>"><?= e($paper['name']) ?><?= ($paper['kind'] ?? 'original') === 'generated' ? '（虚拟卷）' : '' ?></option>
+                <!-- 名称截断到 28 字：select 的宽度跟着最长 option 走，
+                     长卷名会把整个下拉撑到上万像素（见 views.php 的 ellipsis 注释）。
+                     title 保留全名，长按/悬停仍能看全。 -->
+                <option value="<?= e($paper['id']) ?>" title="<?= e($paper['name']) ?>"><?= e(ellipsis($paper['name'])) ?><?= ($paper['kind'] ?? 'original') === 'generated' ? '（虚拟卷）' : '' ?></option>
               <?php endforeach; ?>
               <option value="__none__">未归卷</option>
             </select>
           </div>
         </div>
 
-        <!-- 批量操作条 -->
-        <div class="mt-4 flex flex-wrap items-center gap-2 rounded-lg bg-surface-alt p-3" id="question-bulk-bar" hidden>
+        <!-- 批量操作条。flex-wrap 里的 select 也要能收缩（min-w-0），
+             否则长卷名会把这个条撑宽、连带把整页撑出横向滚动 -->
+        <div class="mt-4 flex min-w-0 flex-wrap items-center gap-2 rounded-lg bg-surface-alt p-3" id="question-bulk-bar" hidden>
           <span class="text-xs text-muted">已选 <span id="question-selected-count">0</span> 题</span>
           <select
             id="question-bulk-paper"
@@ -409,7 +416,8 @@ $adminTabs = [
             <?php // 虚拟卷不进这个列表：批量移动走 questions.paper_id，把题移进虚拟卷会污染原始归属
             foreach ($papers as $paper): ?>
               <?php if (($paper['kind'] ?? 'original') !== 'generated'): ?>
-                <option value="<?= e($paper['id']) ?>"><?= e($paper['name']) ?></option>
+                <!-- 同样截断（见上方 ellipsis 注释），title 保留全名 -->
+                <option value="<?= e($paper['id']) ?>" title="<?= e($paper['name']) ?>"><?= e(ellipsis($paper['name'])) ?></option>
               <?php endif; ?>
             <?php endforeach; ?>
             <option value="__none__">移出试卷（不归卷）</option>
@@ -767,7 +775,8 @@ $adminTabs = [
           <?php // 编辑题目时不给选虚拟卷：那会写 questions.paper_id，把题的主卷指到一张快照卷上
           foreach ($papers as $paper): ?>
             <?php if (($paper['kind'] ?? 'original') !== 'generated'): ?>
-              <option value="<?= e($paper['id']) ?>"><?= e($paper['name']) ?></option>
+              <!-- 同样截断（见上方 ellipsis 注释），title 保留全名 -->
+              <option value="<?= e($paper['id']) ?>" title="<?= e($paper['name']) ?>"><?= e(ellipsis($paper['name'])) ?></option>
             <?php endif; ?>
           <?php endforeach; ?>
         </select>

@@ -37,19 +37,72 @@ export function setToken(token) {
  * details 放服务端给的原始原因（如 git 失败时的 stderr）。
  * 主文案是人话，details 是给排查看的——两者都要，
  * 只有前者用户会看到「失败了」却不知道该查什么。
+ *
+ * kind 用来区分「该怎么处理」——同样的「失败了」，
+ * 超时要提示等待、离线要提示连网、鉴权失败要重新登录，
+ * 三者的下一步完全不同，不该只靠文案区分。
  */
 export class ApiError extends Error {
-  constructor(message, status, details = "") {
+  constructor(message, status, details = "", kind = "unknown") {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.details = details;
+    this.kind = kind;   // network | timeout | offline | auth | server | parse | unknown
+  }
+
+  /** 是否值得让用户点「重试」再试一次 */
+  get retryable() {
+    return this.kind === "network" || this.kind === "timeout" || this.kind === "server";
   }
 }
 
+/**
+ * 默认超时（毫秒）。
+ *
+ * 没有超时控制时，一次 fetch 可能永远挂着 —— 手机切后台、断网重连、
+ * 中间代理挂起，界面就永远转圈，用户既看不到结果也走不掉。
+ * 20 秒对「改个题」这种秒级操作足够宽松，对「导入 200 道题」也不至于误杀。
+ * 需要更久的调用方可以传自己的 timeout。
+ */
+const DEFAULT_TIMEOUT_MS = 20000;
+
+/** 当前是否离线。navigator.onLine 在部分 WebView 上不可靠，所以只当提示用 */
+function isOffline() {
+  return typeof navigator !== "undefined" && navigator.onLine === false;
+}
+
+/** 网络类错误的统一文案：面向用手机的老师，不提「后端服务」这类实现词 */
+function networkMessage(kind, path) {
+  if (kind === "timeout") {
+    return `请求超时（${path}）。可能是网络较慢或题量较多，可以再试一次。`;
+  }
+  if (kind === "offline") {
+    return "当前没有网络连接。请连上网络后重试。";
+  }
+  return "网络请求失败，请检查网络后重试。";
+}
+
 async function request(path, options = {}) {
-  const { method = "GET", body, skipAuthReload = false } = options;
+  const {
+    method = "GET",
+    body,
+    skipAuthReload = false,
+    timeout = DEFAULT_TIMEOUT_MS,
+  } = options;
   const token = getToken();
+
+  // 超时靠 AbortController：fetch 自己没有超时参数，不加就永远等着。
+  // 计时器必须在 finally 里清掉，否则每个请求都留一个挂着的定时器。
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  let timedOut = false;
+  const timer =
+    controller && timeout > 0
+      ? setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+        }, timeout)
+      : null;
 
   let response;
   try {
@@ -60,9 +113,23 @@ async function request(path, options = {}) {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
+      ...(controller ? { signal: controller.signal } : {}),
     });
-  } catch {
-    throw new ApiError("网络连接失败，请检查后端服务是否已启动", 0);
+  } catch (error) {
+    // 区分「超时被 abort」与「网络断了」：两者的提示与重试策略不同
+    if (timedOut) {
+      throw new ApiError(networkMessage("timeout", path), 0, "", "timeout");
+    }
+    if (isOffline()) {
+      throw new ApiError(networkMessage("offline", path), 0, "", "offline");
+    }
+    // fetch 只在网络层失败时抛 TypeError；别的异常（如 body 序列化失败）照原样透出
+    if (error instanceof TypeError) {
+      throw new ApiError(networkMessage("network", path), 0, "", "network");
+    }
+    throw error;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 
   // 401：登录态失效，清 token 并刷新，让页面按未登录重新渲染。
@@ -73,18 +140,31 @@ async function request(path, options = {}) {
     setToken(null);
     if (!skipAuthReload && token) {
       window.location.reload();
-      throw new ApiError("登录已失效，请重新登录", 401);
+      throw new ApiError("登录已失效，请重新登录", 401, "", "auth");
     }
   }
 
   let data = null;
+  let parseFailed = false;
   try {
     data = await response.json();
   } catch {
-    // 非 JSON 响应
+    // 非 JSON 响应。常见于：反向代理返回了 HTML 错误页、
+    // 或请求打到别的服务去了。这类响应没有一个字能展示给用户，
+    // 与其显示「请求失败（502）」，不如说清「服务器返回了非预期的内容」。
+    parseFailed = true;
   }
 
   if (!response.ok) {
+    const kind = parseFailed ? "parse" : response.status >= 500 ? "server" : "unknown";
+    if (parseFailed) {
+      throw new ApiError(
+        `服务器返回了无法解析的内容（HTTP ${response.status}）。请稍后重试。`,
+        response.status,
+        "",
+        kind
+      );
+    }
     const message =
       data && typeof data === "object" && "error" in data
         ? String(data.error)
@@ -96,7 +176,7 @@ async function request(path, options = {}) {
       data && typeof data === "object" && typeof data.detail === "string"
         ? data.detail
         : "";
-    throw new ApiError(message, response.status, detail);
+    throw new ApiError(message, response.status, detail, kind);
   }
 
   return data;

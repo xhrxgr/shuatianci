@@ -213,6 +213,131 @@ html.no-dialog dialog[open]::before {
 }
 
 /* ---------------------------------------------------------------------------
+ * 移动端布局兜底（v3.9.3）
+ *
+ * 手机端出问题的两种典型场景，都在下面这几条里兜住：
+ *
+ * ① **超长文本撑破布局**
+ * 一个不换行的长英文单词、或一串没有空格的长 URL、或者某个用户
+ * 粘进来一整段没有空格的题干，都会让所在容器横向撑开，
+ * 整页跟着横向滚动 —— 移动端横向滚动几乎等于「页面坏了」。
+ * `overflow-wrap: anywhere` 让这类内容在容器内断行；断不开的
+ * （如 code 片段）再用 `word-break: break-word` 兜一层。
+ *
+ * ② **用户放大字号**
+ * iOS Safari 与安卓 Chrome 都会把用户字号偏好算进布局（网页缩放），
+ * 字号放大后固定高度的元素会被截断。模板里统一用 min-h-* 而非 h-*，
+ * 这里再加一条保险：按钮与输入不写死高度。
+ *
+ * 只做「不溢出」，不改变任何现有配色与间距，保持视觉风格不变。
+ * --------------------------------------------------------------------------- */
+
+html {
+  /* 放大后仍能横滑到内容末尾，页面本身不产生横向滚动条 */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* 长内容不撑破容器。anywhere 比 break-word 更彻底：
+   它在**还没溢出容器时**就允许提前断行，避免「先撑开再断」造成的抖动。 */
+body {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* 表单控件继承上面的断行策略：<option>、<input> 的占位文本同理 */
+input,
+textarea,
+select,
+button {
+  overflow-wrap: anywhere;
+}
+
+/**
+ * <select> 的宽度是**内容驱动**的：它会撑到能放下最长那个 <option>。
+ * 卷名动辄三四十个汉字，选中后宽度飙到一两千 px，整页跟着横向滚。
+ * <option> 内部无法换行，所以只能在 select 这一层限宽。
+ * （实测：卷名 180 字符 → select 宽 1564px，视口才 1280px）
+ *
+ * ⚠️ 光靠 max-width:100% 不够：它参照的是父容器宽度，而 flex 父容器的宽度
+ * 又是被这个 select 撑出来的 —— 循环依赖，限不住。
+ * 两道措施一起上：
+ *   ① 模板里 option 文本截断（views.php 的 ellipsis()），title 保留全名
+ *   ② 这里用 flex:1 1 0% 让它**按容器分配宽度**而不是按内容 ——
+ *      flex-basis:0 是关键，它把起点从「内容宽度」换成「0」
+ * 没有 ② 的话，即使 option 截断到 28 个汉字，在 390px 视口下仍是 499px。
+ */
+select {
+  flex: 1 1 0%;
+  min-width: 0;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+
+/* 作为 flex 子项时 min-width:auto 会让它拒绝收缩到内在宽度以下 */
+input,
+textarea {
+  min-width: 0;
+}
+
+/* 文本域不参与上面的 min-height 兜底（它本来就要多行），
+   但同样不能被内容撑宽；resize 只留纵向，横向拖动会把布局撑乱 */
+textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+/**
+ * flex 子项允许收缩到内容宽度以下。
+ *
+ * flex item 的 `min-width` 默认是 `auto`，意思是「不小于内容宽度」——
+ * 于是任何装着长文本（卷名、超长题干）的 flex 容器都会拒绝收缩，
+ * 连带把整页撑出横向滚动。**给容器本身加 min-width:0 才能治本**，
+ * 只给里面的 select 限宽是不够的（实测：select 限到 499px 后，
+ * 它的父容器仍是 499px，而父容器真正的父级只有 316px）。
+ *
+ * 这里用 `[class*="flex"]` 做兜底：不必把每个 flex 容器都改成 min-w-0，
+ * 新写的容器也自动被覆盖。min-width:0 本身是安全的 —— 它只是允许收缩，
+ * 元素仍按 flex-grow / basis 分配空间，不会让本来就该占满的元素变窄。
+ */
+[class*="flex"] > * {
+  min-width: 0;
+}
+
+/* 输入框、按钮：min-height 而非 height，用户放大字号时文字不会被裁掉 */
+input:not([type="checkbox"]):not([type="radio"]),
+textarea,
+button {
+  min-height: 2.75rem;
+  height: auto;
+}
+
+/* 表单控件的字号不要跟着浏览器的「自动放大」缩放 ——
+   iOS 上字号小于 16px 会触发聚焦时页面自动放大，用户体验上像是页面失控。 */
+@supports (-webkit-touch-callout: none) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+  }
+}
+
+/* 滚动容器本身允许横滑（页签、代码块），但不把溢出传给父级 */
+[data-admin-tablist] {
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 极端窄屏 + 放大字号：让 flex 容器换行，别把按钮挤出屏幕 */
+@media (max-width: 400px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
  * 前端改为 PHP 服务端渲染后，Tailwind 需要同时扫描 PHP 模板与原生 JS 里的类名。
  *
  * 有 Node 时执行 `npm run build:css` 重新生成 php/assets/app.css；

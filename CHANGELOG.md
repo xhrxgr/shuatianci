@@ -1,3 +1,63 @@
+## 3.9.3（2026-10-18）—— 移动端健壮性改造
+
+面向异常与边界情况的稳定性改进。**不改变现有视觉风格与业务逻辑**，
+改动都在「出错时怎么办」这一层。详见 `docs/MOBILE_ROBUSTNESS.md`。
+
+### 网络层：超时 + 错误分类
+
+`fetch` 此前**没有超时控制** —— 手机切后台、断网重连、代理挂起时请求会永远挂着，
+界面既看不到结果也走不掉。现在用 `AbortController` 加默认 20s 超时，
+并按类型给不同文案（超时 / 离线 / 网络失败 / 5xx / 返回非 JSON），
+`ApiError` 新增 `kind` 与 `retryable`，既有 16 处调用方式不变。
+
+### 状态占位
+
+新增 `assets/js/ui-guard.js`：`renderState()` 三态占位（失败态自带「重试」按钮）、
+`loadInto()` 列表标准写法（空判定兼容 null / [] / {} / {items: []}）。
+已接入试卷编辑面板的「本卷原文」区 —— 它是管理端唯一靠接口取数、
+没有 SSR 兜底的面板，之前一失败就永远停在「正在读取…」。
+
+### 超长文本与大字体（本轮实测抓到的真 bug）
+
+`<select>` 宽度是**内容驱动**的：实测卷名 180 字符 → select 宽 1564px
+（视口 1280px）；390px 真机视口下整页横向滚动 146px。三层修复：
+
+1. option 文本截断（`views.php` 新增 `ellipsis()`，title 保留全名）
+2. `select { flex: 1 1 0% }` —— `flex-basis: 0` 把宽度计算起点从内容换成 0
+3. `[class*="flex"] > * { min-width: 0 }` —— **只给 select 限宽是不够的**，
+   flex item 默认 `min-width: auto`，它的父容器仍会拒绝收缩
+
+大字体：表单控件统一 `min-height` 而非 `height`；iOS 上字号不小于 16px，
+避免聚焦时页面自动放大。
+
+### 防重复点击
+
+`ui-guard.js` 提供 `once()` 与 `guardButton()`。核查发现保存、删除、导入、
+解析已有防护（`savingPaper` / `savingEdit` / `saveButton.disabled`），未改动，
+新封装供后续代码使用。
+
+### 生命周期
+
+新增 `assets/js/lifecycle.js`：在 BFCache 恢复、切后台回前台、
+网络变化三个时机派发 `app:stale`，由 `onStale()` 登记回调。
+BFCache 那条最关键 —— 页面从内存快照恢复时**脚本根本没重新执行**，
+不补一次刷新，用户看到的就是返回前的旧数据。已接入 AI 导入面板。
+
+### 测试
+
+新增 `npm run test:mobile-robust`（8 项），在 **390px 真机视口**下跑 ——
+溢出类问题在桌面宽度上常常「看不出来」，必须用真实手机宽度测。
+含连点 5 下保存只发一次请求、接口 500 可重试、返回 HTML 不崩、
+触摸目标 ≥40px。
+
+### 验证
+
+干净串行 20 个套件全绿：api 128、bank-phase1 66、bank-phase2 88、
+paper-passage 10、paper-delete 17、dialog-fallback 7、asset-cache 29 模块全带戳、
+admin-buttons 14、mobile-robustness 8、blueprint-ui 30、passage-entry 11、
+passage-leak 9、tag-collapse 10、update-trigger 11、feedback-smoke 8、
+AI 7 套件 109。
+
 ## 3.9.2（2026-10-18）—— 修 v3.9.1 降级样式把弹窗背景弄没了
 
 v3.9.1 的降级 CSS 里顺手写了三行，恰好把卡片外观全覆盖掉了：

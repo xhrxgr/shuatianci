@@ -32,6 +32,7 @@
  */
 
 import { debounce } from "./ai-text.js";
+import { onStale } from "./lifecycle.js";
 import { activeTagCount, state } from "./ai-state.js";
 import {
   applyPassageToBatch, buildPreview, clearPassageFromBatch, handleCopy,
@@ -153,6 +154,22 @@ export function setupAiAssistant({
   renderCopyButton();
   renderMissing();
   renderSubmitting();
+
+  // 页面从后台 / BFCache 回来时，如果上一次解析的结果还挂在预览区，
+  // 用户看到的是「几分钟前的旧预览」，改一下就会基于过期状态操作。
+  // 这里在页面变旧时把提交按钮的 loading 态复位 —— 解析过程本身是
+  // 纯前端同步计算、不发请求，所以不需要重新跑，只需要解除可能的卡住。
+  onStale(() => {
+    if (state.submitting) {
+      state.submitting = false;
+      renderSubmitting();
+    }
+    // 清掉可能已经失效的错误提示，避免一屏都是红条
+    const err = state.els.error;
+    if (err && err.textContent && !state.previewList.length) {
+      err.textContent = "";
+    }
+  });
 }
 
 // 兼容挂载：主脚本现走 import 调用；保留此全局入口便于控制台调试

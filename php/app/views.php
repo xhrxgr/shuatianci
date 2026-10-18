@@ -24,6 +24,31 @@ function e($value)
 }
 
 /**
+ * 截断过长文本，用在 <option> 与窄容器里。
+ *
+ * 为什么需要：`<select>` 的宽度是**内容驱动**的 —— 它会撑到能放下最长那个
+ * `<option>`，而 `<option>` 内部无法换行。卷名动辄三四十个汉字
+ * （实测 180 字符时 select 宽 1564px，视口才 1280px），整页跟着横向滚，
+ * 移动端横向滚动基本等于页面坏了。
+ *
+ * CSS 的 max-width:100% 在这里救不了：它参照的是父容器宽度，而 flex 父容器
+ * 的宽度又是被这个 select 撑出来的 —— 循环依赖。只能从文本本身下手。
+ *
+ * 调用方负责配 title= 原值，让用户悬停/长按仍能看到全名。
+ *
+ * @param string $text
+ * @param int $max 按字符计（中文按 1 计，与 mb_* 一致）
+ */
+function ellipsis($text, $max = 28)
+{
+    $text = (string) $text;
+    if (mb_strlen($text) <= $max) {
+        return $text;
+    }
+    return mb_substr($text, 0, $max) . '…';
+}
+
+/**
  * 静态资源 URL 加缓存戳（文件修改时间）。
  *
  * 代码更新后 URL 随之变化，浏览器会自动重新下载，无需手动 Ctrl+F5；
