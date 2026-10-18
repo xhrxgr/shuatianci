@@ -134,6 +134,53 @@ check("提示里说明跳过了 1 题", notice.includes("跳过 1 道"), notice.
 check("提示里带来源", notice.includes("预览测试卷"), notice.replace(/\s+/g, " ").slice(0, 160));
 
 // ---------------------------------------------------------------------------
+console.log("\n【二·补】点「去题库总览看看」应看到刚导入的题\n");
+// ---------------------------------------------------------------------------
+// 题库总览面板是 PHP 首屏直出的（views/admin.php 里 foreach 出列表），
+// 不是客户端渲染——切页签翻一下 hidden 属性，列表里还是首屏那份 HTML。
+// 所以这个按钮必须整页重载，否则用户看到的是「刚导入的题不见了」，
+// 以为没导入成功，只能自己按 F5。v3.8.8 修的就是这个。
+await page.locator('[data-action="notice-goto-questions"]').click();
+await page.waitForLoadState("networkidle");
+await page.waitForTimeout(1200);
+
+check(
+  "点按钮后仍落在「题库总览」页签（不用自己切回来）",
+  await page.locator('[data-admin-panel="questions"]').isVisible(),
+  page.url()
+);
+
+const overviewText = await page.locator('[data-admin-panel="questions"]').innerText();
+check(
+  "题库总览里能看到刚导入的 Alpha",
+  overviewText.includes("Alpha"),
+  overviewText.replace(/\s+/g, " ").slice(0, 160)
+);
+check(
+  "题库总览里能看到刚导入的 Gamma",
+  overviewText.includes("Gamma"),
+  overviewText.replace(/\s+/g, " ").slice(0, 160)
+);
+
+// 重载会把提示条一起冲掉，靠 flash 把它带过来并还原成同一张卡片，
+// 否则用户点完按钮提示就消失了，像是白点了一下
+const noticeAfter = await page.locator("#admin-notice").innerText().catch(() => "");
+check(
+  "重载后导入提示仍在（没白点一下）",
+  noticeAfter.includes("成功导入"),
+  noticeAfter.replace(/\s+/g, " ").slice(0, 160)
+);
+check(
+  "重载后提示仍带结构化信息（来源与跳过数）",
+  noticeAfter.includes("预览测试卷") && noticeAfter.includes("跳过"),
+  noticeAfter.replace(/\s+/g, " ").slice(0, 160)
+);
+
+// 回到 AI 页签继续后面的用例
+await page.locator('[data-admin-tab="ai"]').click();
+await page.waitForTimeout(400);
+
+// ---------------------------------------------------------------------------
 console.log("\n【三】已存在的题默认不勾选\n");
 // ---------------------------------------------------------------------------
 // 重新粘贴：Alpha、Gamma 已在库里（应判已存在），Delta 是新的

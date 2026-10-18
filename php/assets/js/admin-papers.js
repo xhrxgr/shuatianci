@@ -491,7 +491,8 @@ export function setupPaperAndQuestionPanels(context) {
     };
 
     document.getElementById("edit-question-sentence").value = question.originalSentence;
-    document.getElementById("edit-question-passage").value = question.passageText ?? "";
+    // 完整原文（passage）**不在这里编辑**：它是整篇共享的，改单题那一份没有意义，
+    // 而且保存时也写不进共享的那篇。录入与修改见「AI 导入」页签的「本篇完整原文」区。
     document.getElementById("edit-question-source").value = question.source;
     const paperSelect = document.getElementById("edit-question-paper");
     if (paperSelect) paperSelect.value = question.paperId ?? "__none__";
@@ -661,7 +662,9 @@ export function setupPaperAndQuestionPanels(context) {
     try {
       await api.updateQuestion(editing.id, {
         originalSentence: sentence,
-        passageText: document.getElementById("edit-question-passage").value,
+        // 不传 passageText：原文是整篇共享的，单题编辑不该改它。
+        // 传了反而会写进 questions.passage_text（每题那一列），而读取时优先取
+        // 共享的那篇 —— 结果是「改了看不到变化」，还留下一份永远不显示的脏数据。
         source,
         // 同时给 source 与 paperId：paperId 是用户的明确选择，优先于按名归卷
         paperId: paperValue === "__none__" ? null : paperValue,

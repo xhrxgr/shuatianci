@@ -619,7 +619,7 @@ $adminTabs = [
 -->
 <dialog
   id="delete-paper-dialog"
-  class="w-[min(30rem,calc(100vw-2rem))] rounded-2xl border border-line bg-surface p-0 text-ink backdrop:bg-black/40"
+  class="w-[min(30rem,calc(100vw-2rem))] m-auto rounded-2xl border border-line bg-surface p-0 text-ink backdrop:bg-black/40"
 >
   <div class="p-5">
     <h3 class="text-sm font-semibold text-ink">删除试卷</h3>
@@ -650,7 +650,7 @@ $adminTabs = [
 <!-- ============ 虚拟卷成员编辑弹窗 ============ -->
 <dialog
   id="paper-items-dialog"
-  class="w-[min(52rem,calc(100vw-2rem))] rounded-2xl border border-line bg-surface p-0 text-ink backdrop:bg-black/40"
+  class="w-[min(52rem,calc(100vw-2rem))] m-auto rounded-2xl border border-line bg-surface p-0 text-ink backdrop:bg-black/40"
 >
   <div class="flex max-h-[85vh] flex-col">
     <div class="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
@@ -691,7 +691,7 @@ $adminTabs = [
 <!-- ============ 题目编辑弹窗 ============ -->
 <dialog
   id="question-edit-dialog"
-  class="w-[min(46rem,calc(100vw-2rem))] rounded-2xl border border-line bg-surface p-0 text-ink backdrop:bg-black/40"
+  class="w-[min(46rem,calc(100vw-2rem))] m-auto rounded-2xl border border-line bg-surface p-0 text-ink backdrop:bg-black/40"
 >
   <div class="flex max-h-[85vh] flex-col">
     <div class="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
@@ -715,22 +715,10 @@ $adminTabs = [
         <p class="mt-1.5 text-xs text-faint">改动原句时空格数量必须与下方空的个数一致。</p>
       </div>
 
-      <div>
-        <label class="mb-1.5 block text-sm font-medium text-ink" for="edit-question-passage">
-          完整原文 <span class="text-faint">（选填）</span>
-        </label>
-        <textarea
-          id="edit-question-passage"
-          rows="4"
-          placeholder="把这篇阅读未挖空的原文粘在这里。学生做题时可以展开对照——代词指代、时态呼应、篇章逻辑这些空，只看挖出来的那句是判断不了的。"
-          class="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm leading-6 outline-none transition focus:border-primary"
-        ></textarea>
-        <p class="mt-1.5 text-xs text-faint">
-          一道大题（一篇阅读挖多个空）录成一道题时填这份全文；单句题留空即可。
-          只做展示对照，不参与查重与指纹。
-        </p>
-      </div>
-
+      <!-- 完整原文不放在单题编辑里：它是**整篇共享**的（一道大题 10 道小题共用一篇），
+           挂在单题上就会出现「10 道题各存一份、改一处不生效」的问题。
+           录入与修改统一在「AI 导入」页签的「本篇完整原文」区做（建一次、本批共用、改一处全篇生效）；
+           历史数据里每题一份的旧原文仍会在做题时正常展示，只是不再从这里改。 -->
       <div>
         <label class="mb-1.5 block text-sm font-medium text-ink" for="edit-question-source">试卷来源</label>
         <input

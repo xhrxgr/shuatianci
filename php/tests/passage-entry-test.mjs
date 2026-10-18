@@ -78,7 +78,11 @@ await qBox.locator('[data-action="edit-paper-question"]').first().click();
 await page.waitForTimeout(500);
 const dialog = page.locator("#question-edit-dialog");
 check("编辑弹窗打开", await dialog.isVisible());
-check("编辑弹窗有「完整原文」框", (await page.locator("#edit-question-passage").count()) === 1);
+// 完整原文**不该**在单题编辑里：它是整篇共享的（一道大题 10 道小题共用一篇），
+// 挂在单题上就会「各存一份、改一处不生效」。录入与修改统一走 AI 导入页的
+// 「本篇完整原文」区。v3.8.8 从弹窗里移除，这里反过来断言它不在了。
+check("编辑弹窗**没有**「完整原文」框（共享原文不在单题里改）",
+  (await page.locator("#edit-question-passage").count()) === 0);
 check("编辑弹窗有「提示词」输入框（v3.6.13 补）",
   (await page.locator("[data-edit-hint-word]").count()) >= 1);
 await page.locator('#question-edit-dialog [data-action="close-edit-question"]').first().click();

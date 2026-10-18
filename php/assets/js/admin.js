@@ -41,6 +41,12 @@ if (!boot) throw new Error("缺少启动数据 admin-boot");
 
 let tagDictionary = boot.tagDictionary;
 let existingIds = boot.existingIds ?? [];
+/**
+ * 最近一次 showNotice 的入参（原样保存，不做字符串化）。
+ * 「去题库总览看看」触发整页重载时要靠它把结构化卡片交给 flash 带走，
+ * 重载后由 init() 的 takeFlash() 还原。
+ */
+let lastNotice = null;
 const tagUsage = boot.tagUsage ?? {};
 const colorOptions = boot.colorOptions ?? [];
 
@@ -66,10 +72,15 @@ export const adminContext = {
  * - 对象：结构化成功卡片，用于「导入 N 道题」这种信息量大的场景 ——
  *   把数量、来源、跳过数、自动修正分开排，长来源名能换行显示，
  *   再给一个「去题库总览看看」的入口，不用用户自己找页签
+ *
+ * 会把入参记到 lastNotice：「去题库总览看看」需要整页重载（题库总览是 PHP
+ * 首屏直出的，不重载就看不到刚导入的题），而重载会把这张卡片一起冲掉，
+ * 靠 lastNotice 才能把它完整地交给 flash 带走。
  */
 function showNotice(payload) {
   const box = document.getElementById("admin-notice");
   if (!box) return;
+  lastNotice = payload || null;
   if (!payload) {
     box.innerHTML = "";
     box.hidden = true;
@@ -140,14 +151,40 @@ function switchTab(tab) {
     history.replaceState(null, "", "#" + tab);
   }
 
+  // 切页签时收掉上一条提示，并把 lastNotice 一起清掉——
+  // 否则提示条虽然看不见了，lastNotice 还留着上一条，flash 会把它带去重载后的页面。
+  //
+  // ⚠️ 不能走 showNotice(null)：它会清空 box.innerHTML。而 init() 的顺序是
+  // 「先 takeFlash() 恢复提示，再按 hash 点页签按钮」——走 showNotice 的话，
+  // 刚由 flash 还原的「导入 N 道题」卡片会被这一步立刻擦掉，用户看到的就是
+  // 「点完按钮提示消失了」。所以这里只隐藏 + 清变量，不动 DOM 内容。
   const notice = document.getElementById("admin-notice");
   if (notice) notice.hidden = true;
+  lastNotice = null;
 }
 
-// 导入成功卡片里的「去题库总览看看」：直接切页签，省得用户自己找
+/**
+ * 导入成功卡片里的「去题库总览看看」。
+ *
+ * 必须**整页重载**，不能只切页签
+ * --------------------------------
+ * 题库总览面板是 PHP 首屏直出的（views/admin.php 里 foreach 出题目列表），
+ * 不是客户端渲染。切页签只是把 hidden 属性翻过来，**列表里的 HTML 还是
+ * 首屏那份**——刚导入的题不会出现在里面，用户以为没导入成功，只能手动刷新。
+ *
+ * 带 hash 是为了重载后仍落在「题库总览」页签，不用自己再切回来
+ * （admin.js 启动时读 hash 决定落在哪个页签，与 admin-blueprints.js 的
+ * reloadKeepingTab 同一套做法）。
+ */
 document.getElementById("admin-notice")?.addEventListener("click", (event) => {
   if (event.target.closest('[data-action="notice-goto-questions"]')) {
-    switchTab("questions");
+    // 整页重载会把提示条一起刷掉，先用 flash 把导入结果挪过去，由 init() 重载后
+    // 还原成同一张卡片——不然用户点完按钮提示就消失了，像是白点了一下。
+    // 存结构化 payload 而非 innerText：showNotice 能重绘出带数量/来源/跳过数的
+    // 完整卡片，存纯文本只会退化成一两行字。
+    if (lastNotice) setFlash(lastNotice);
+    window.location.hash = "questions";
+    window.location.reload();
   }
 });
 
