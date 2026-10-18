@@ -11,6 +11,55 @@
 当前版本写在根目录的 `VERSION` 文件里，与 `package.json` 的 `version`、git 标签 `v{VERSION}`
 三处保持一致；发版流程见 README「发版」一节。
 
+## 3.8.9（2026-10-18）—— 删除试卷弹窗的三个按钮完全无响应
+
+用户报「试卷管理里这地方的按钮怎么都点不动」。逐项排查后，7 个按钮里 6 个正常，
+真 bug 只有一个，但影响很直接：**删除试卷弹窗的三个按钮全部无响应，
+用户只能刷新页面。**
+
+### 根因
+
+三个按钮用的是 `data-action`，而处理它们的 switch 写在 `paper-manage-list`
+（试卷列表那个 `<ul>`）的 click 委托里。
+
+问题在于 `<dialog id="delete-paper-dialog">` 是 body 级元素，与那个 `<ul>`
+**平级、不在它内部** —— 点按钮时事件冒泡不到 ul，委托里的三个 case 永远收不到。
+不是被遮挡、不是 z-index、没有任何 JS 报错，就是单纯的没绑定。
+
+同文件另外两个弹窗都是好的，因为做法不同：
+
+- `paper-items-dialog` 是 `itemsDialog.addEventListener(...)` 直接绑在 dialog 上
+- `question-edit-dialog` 是 `querySelectorAll` 直接绑
+
+唯独删除试卷这个当初把 case 写进了列表委托。
+
+### 修法
+
+把三个按钮改为直接绑在 `delete-paper-dialog` 上，与 `admin-blueprints.js` 对
+`itemsDialog` 的做法一致。同时删掉列表委托里那三个永远不会执行的 case ——
+留着会让人以为它们在工作。
+
+### 排查范围
+
+用浏览器逐个点过，除上述三个按钮外全部正常：题库总览「编辑」/「删除」、
+试卷管理「编辑」/「查看」/「删除」→ 弹窗打开、「取消」关弹窗、
+「只删除试卷，保留题目」真执行、「删除试卷，并删除这些题目」真执行。
+
+### 测试
+
+`paper-delete-test.mjs` 此前**只测 API 层**（直接 fetch DELETE），完全没碰过
+弹窗按钮 —— 这就是漏洞漏掉的原因。补了 9 项 UI 断言：弹窗打开、描述文字含
+卷名与题目数、取消能关、两条删除路径都真的执行。
+
+已验证测试本身有效：把 dialog 上的监听器注掉后，「取消能关掉弹窗」立刻失败，
+复现用户症状；恢复后 17/17 全绿。
+
+### 验证
+
+干净串行：api 125、bank-phase1 66、bank-phase2 88、paper-delete 17、
+blueprint-ui 30、passage-entry 11、passage-leak 9、tag-collapse 10、
+update-trigger 11、feedback-smoke 8、AI 7 套件 109，全绿。
+
 ## 3.8.8（2026-10-18）—— 弹窗不居中、导入后总览不刷新、单题编辑移除完整原文
 
 三个都是用户实际碰到的。其中第三个比表面更严重。
