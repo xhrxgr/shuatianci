@@ -223,10 +223,32 @@ function page_paper_practice($id)
     }
     $questions = merge_progress($questions, $user);
 
+    // 该卷的完整原文（v3.9.5）。
+    //
+    // 模型是「原文挂卷、题自带最小上下文」—— 所以这里按 **paper_id** 取，
+    // 而不是让前端去问某道题的 passageText（那是「题要绑原文」时代的旧做法，
+    // 已经去掉：一卷一篇完形填空 = 一篇原文 + N 道独立小题）。
+    //
+    // 一卷一篇，多余的忽略；取不到就让前端不渲染原文块（它是可选的补充材料，
+    // 折叠着放，学生做单题时靠题干自带的上下文就够）。
+    $passageRow = query_one(
+        'SELECT p.id, p.title, p.text
+           FROM passages p
+          WHERE p.paper_id = ?
+          ORDER BY p.created_at
+          LIMIT 1',
+        [(string) $paperRow['id']]
+    );
+
     render_page('paper-practice', [
         'currentPath' => '/papers',
         'paper' => map_paper($paperRow),
         'questions' => $questions,
+        'passage' => $passageRow === null ? null : [
+            'id' => (string) $passageRow['id'],
+            'title' => (string) ($passageRow['title'] ?? ''),
+            'text' => (string) $passageRow['text'],
+        ],
         'authenticated' => $user !== null,
     ]);
 }

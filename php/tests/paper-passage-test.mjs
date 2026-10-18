@@ -79,24 +79,30 @@ await t("保存后原文区显示已有篇章（可编辑）", async () =>
 const shown = await page.locator(`[data-paper-manage="${made}"] [data-paper-passage-text]`).first().inputValue().catch(() => "");
 await t("原文内容正确回填", async () => shown.includes("It rains often"));
 
-await t("改原文后保存生效", async () => {
+// v3.9.5：原文挂卷、题独立。这里两条要反过来断言 ——
+// 「题目的 passageText 随原文变化」与「N 道题引用同一篇」都是「题要绑原文」
+// 时代的旧模型，删掉之后它们**不再成立**，正是模型简化的结果。
+// 正面行为（录原文不动题、做题页按卷取原文）由 passage-independent-test 覆盖。
+await t("改原文后保存，题目不被改动（旧模型已不适用）", async () => {
   await page.locator(`[data-paper-manage="${made}"] [data-paper-passage-text]`).first().fill("CHANGED PASSAGE TEXT HERE.");
   await page.locator(`[data-paper-manage="${made}"] button[data-action="save-paper"]`).click();
-  await page.waitForTimeout(2000);
+  await page.waitForTimeout(2200);
+  await page.waitForLoadState("networkidle").catch(() => {});
   const after = await page.evaluate(async (pid) => {
     const r = await fetch(`/api/questions?paperId=${pid}`, { credentials: "include" });
     return (await r.json()).questions ?? [];
   }, made);
-  return after.length > 0 && (after[0].passageText ?? "").includes("CHANGED PASSAGE TEXT");
+  // 每道题都不该带原文，也不该指向篇章
+  return after.length > 0 && after.every((q) => !q.passageId && !q.passageText);
 });
 
-await t("两题共享同一篇原文（questionCount=2）", async () => {
+await t("原文区不再显示「N 道题引用」（题不绑原文）", async () => {
   await page.locator('[data-admin-tab="papers"]').click();
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(700);
   await page.locator(`[data-paper-manage="${made}"] button[data-action="edit-paper"]`).click();
   await page.waitForTimeout(900);
   const txt = await page.locator(`[data-paper-manage="${made}"] [data-paper-passage]`).innerText();
-  return /2 道题引用/.test(txt);
+  return !/道题引用/.test(txt);
 });
 
 await t("单题编辑弹窗里没有原文字段", async () => {

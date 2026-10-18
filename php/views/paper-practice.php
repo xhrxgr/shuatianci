@@ -129,6 +129,8 @@
     'authenticated' => $authenticated,
     'paper' => $paper,
     'questions' => $questions,
+    // 该卷的完整原文（可选，折叠展示）
+    'passage' => $passage ?? null,
     // 解析里要显示考点标签，否则学生不知道自己错在哪个知识点上
     'tagDictionary' => load_tag_dictionary(),
 ]) ?>

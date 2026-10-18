@@ -136,34 +136,29 @@ export function setupPaperAndQuestionPanels(context) {
   /**
    * 渲染「本卷原文」编辑区。
    *
-   * 一卷一篇（v3.9.0）：原文只存一份，所有引用它的题共用，
-   * 改一次全卷生效 —— 所以编辑入口在**试卷这一层**，不在单题里。
+   * 模型（v3.9.5）：**原文挂在卷上，不绑任何题。**
+   * 一卷一篇完形填空 → 原文一份、每道小题一份最小答题上下文，
+   * 两者分别录入、互不影响。做题页按卷取原文显示（paper-practice.js），
+   * 所以这里**不需要**去题目那边反查任何东西。
    *
-   * 找篇章的方式要**两条路都走**，缺一不可：
-   * ① passages.paper_id 指向本卷 —— 在试卷层新建的篇章在这里，
-   *    但它刚建好时可能还没有任何题引用（用户是先填原文、再录题）
-   * ② 本卷题目实际引用的 passageId —— AI 导入建的篇章在**预览阶段**就建好了，
-   *    那时卷还没落地（题目入库时才 ensure_paper_by_name），paper_id 是空的
-   *
-   * 只走 ① 会漏掉 AI 导入的那些；只走 ② 会漏掉「先填原文后录题」——
-   * 那种篇章还没被任何题引用，从题目反查是查不到的。
-   * 篇章总量很小（一个学期几十篇），一次 listPassages() 拉全再筛即可。
+   * 之前为了「共享篇章」建过一整套从题目反查 passageId 的逻辑
+   * （usedIds / dangling / 「N 道题引用」计数），那是基于「题要绑原文」
+   * 的旧模型；模型简化后全部多余，一并去掉。
    */
   async function renderPaperPassage(item) {
     const box = item?.querySelector("[data-paper-passage-body]");
     if (!box) return;
     const paperId = item.dataset.paperManage ?? "";
 
-    // 这一块是**唯一靠接口取数**的面板，没有 SSR 兜底 —— 之前一失败就永远
-    // 停在 HTML 里那句「正在读取…」，用户完全不知道该怎么办。
+    // 这一块是管理端唯一靠接口取数的面板，没有 SSR 兜底 ——
+    // 之前一失败就永远停在 HTML 里那句「正在读取…」。
     // 现在三态齐全：加载中 / 空（给新建表单）/ 失败（带重试）。
     renderState(box, "loading", { message: "本卷原文读取中…" });
 
-    // 读回来的是共享数据，改一下会影响所有引用它的题。
-    // 界面自己的文案要跟着改，不要把「改一处影响全卷」这件事藏起来。
-    let all = [];
+    let mine = [];
     try {
-      all = (await api.listPassages())?.passages ?? [];
+      // 接口本来就支持按卷过滤，不必拉全量再筛
+      mine = (await api.listPassages(paperId))?.passages ?? [];
     } catch (error) {
       renderState(box, "error", {
         message: `原文读取失败：${error?.message ?? "未知错误"}`,
@@ -172,32 +167,16 @@ export function setupPaperAndQuestionPanels(context) {
       return;
     }
 
-    const usedIds = new Set(
-      allQuestions
-        .filter((q) => (q.paperId ?? "") === paperId && q.passageId)
-        .map((q) => q.passageId)
-    );
-
-    // ① paper_id 指向本卷的 + ② 本卷题目引用的，去重后按 id 排
-    const found = all.filter((p) => (p.paperId ?? "") === paperId || usedIds.has(p.id));
-    const dangling = [...usedIds].filter((pid) => !all.some((p) => p.id === pid));
+    // 一卷一篇。真出现多篇（历史数据）就都列出来，而不是只取第一篇 ——
+    // 只取第一篇会让人以为其余那几篇不存在。
+    const found = mine.filter((p) => (p.paperId ?? "") === paperId);
 
     if (found.length === 0) {
-      box.innerHTML = newPassageFormHtml(
-        dangling.length > 0
-          ? `有 ${dangling.length} 道题指向的原文已不存在，可能被手动删过。`
-          : ""
-      );
+      box.innerHTML = newPassageFormHtml("");
       return;
     }
 
-    const warn = dangling.length > 0
-      ? `<p class="mb-2 text-[11px] text-danger">
-          有 ${dangling.length} 道题指向的原文已不存在，可能被手动删过。
-        </p>`
-      : "";
-
-    box.innerHTML = warn + found
+    box.innerHTML = found
       .map(
         (p) => `<div class="mb-3">
           <input
@@ -210,11 +189,11 @@ export function setupPaperAndQuestionPanels(context) {
           <textarea
             data-paper-passage-text="${escape(p.id)}"
             rows="6"
-            placeholder="把这卷阅读未挖空的原文粘在这里。学生做题时可以展开对照。"
+            placeholder="把这卷完形填空的原文粘在这里。学生做题时可以展开对照。"
             class="w-full rounded-lg border border-line bg-surface px-3 py-2 text-xs leading-6 outline-none transition focus:border-primary"
           >${escape(p.text ?? "")}</textarea>
           <div class="mt-1.5 flex items-center justify-between gap-2">
-            <span class="text-[11px] text-faint">本篇共 ${p.questionCount ?? 0} 道题引用（保存后即时生效）</span>
+            <span class="text-[11px] text-faint">保存后本卷做题时立即生效</span>
             <button
               type="button"
               data-action="delete-paper-passage"
@@ -254,9 +233,8 @@ export function setupPaperAndQuestionPanels(context) {
   /**
    * 保存「本卷原文」。
    *
-   * 篇章可能还没建（比如这卷的题还没录、或全是指向已删篇章的悬空引用），
-   * 这时先 POST 建一篇再关联。已存在的直接 PUT —— 改的是共享那一份，
-   * 所有引用它的题立刻看到新原文。
+   * 已存在的直接 PUT（改的是这一篇），没有则 POST 新建一篇。
+   * **不碰任何题目** —— 原文与题是分别录入的两份东西。
    */
   async function handleSavePaperPassage(item) {
     const paperId = item?.dataset.paperManage ?? "";
@@ -276,29 +254,13 @@ export function setupPaperAndQuestionPanels(context) {
 
     if (newBox && newBox.value.trim() !== "") {
       const title = (item.querySelector("[data-paper-passage-new-title]")?.value ?? "").trim();
-      const created = await api.createPassage({ paperId, title, text: newBox.value.trim() });
-      const passageId = created?.passage?.id ?? null;
-      if (passageId) {
-        // 一卷一篇（v3.9.0）：这卷里**所有还没关联篇章的题**都指过来。
-        //
-        // 不只关联「本来就有 passageText 的」—— 那是 v3.8.x 老数据的思路。
-        // 现在的正常工作流是「先在试卷层填原文，再录题」，录进来的题本来就没有
-        // 任何 passage 字段（手动录入已不再传 passageText），
-        // 按老条件关联会一道都关联不上，原文区显示 0 道题引用，等于白填。
-        const orphans = allQuestions.filter(
-          (q) => (q.paperId ?? "") === paperId && !q.passageId
-        );
-        for (const question of orphans) {
-          await api.updateQuestion(question.id, {
-            passageId,
-            originalSentence: question.originalSentence,
-            blanks: question.blanks,
-          });
-        }
-        // 返回条数让调用方决定提示语；不在这里 reload ——
-        // 整条保存链路由 handleSavePaper 统一 reload，重复 reload 会闪两次
-        return orphans.length;
-      }
+      // 只建篇章，**不碰任何题目**。
+      //
+      // 原文与题目是两个独立录入的东西：一卷一篇原文，每道小题只带自己那句
+      // 和空。以前这里会把本卷所有没关联的题自动指过来（v3.9.0 的「套用」），
+      // 那是画蛇添足——录入时不该有任何隐式动作，做题页按卷取原文就够了
+      // （见 paper-practice.js 的 applyPaperPassage）。
+      await api.createPassage({ paperId, title, text: newBox.value.trim() });
     }
     return 0;
   }
@@ -420,12 +382,8 @@ export function setupPaperAndQuestionPanels(context) {
       await api.updatePaper(id, { name, examDate: date || null, note });
       // 同一个「保存」按钮也存本卷原文：原文区就在这个面板里，
       // 分成两个按钮会让用户以为「保存试卷名」不管原文
-      const linked = await handleSavePaperPassage(item);
-      setFlash(
-        linked > 0
-          ? `已保存，并把本卷 ${linked} 道题关联到了这一篇原文`
-          : "试卷与本卷原文已保存"
-      );
+      await handleSavePaperPassage(item);
+      setFlash("试卷与本卷原文已保存");
       window.location.reload();
     } catch (error) {
       // 重试沿用同一行元素，用户改过的名字与日期都还在输入框里
@@ -672,8 +630,9 @@ export function setupPaperAndQuestionPanels(context) {
     };
 
     document.getElementById("edit-question-sentence").value = question.originalSentence;
-    // 完整原文（passage）**不在这里编辑**：它是整篇共享的，改单题那一份没有意义，
-    // 而且保存时也写不进共享的那篇。录入与修改见「AI 导入」页签的「本篇完整原文」区。
+    // 完整原文**不在这里编辑**：它挂在卷上、按卷取用（做题页可折叠展示），
+    // 而题目自带最小答题上下文，可以脱离卷单独/随机出题。
+    // 录入与修改见「试卷管理 → 编辑 → 本卷原文」。
     document.getElementById("edit-question-source").value = question.source;
     const paperSelect = document.getElementById("edit-question-paper");
     if (paperSelect) paperSelect.value = question.paperId ?? "__none__";
@@ -843,9 +802,9 @@ export function setupPaperAndQuestionPanels(context) {
     try {
       await api.updateQuestion(editing.id, {
         originalSentence: sentence,
-        // 不传 passageText：原文是整篇共享的，单题编辑不该改它。
+        // 不传 passageText：原文挂在卷上，与单题无关。
         // 传了反而会写进 questions.passage_text（每题那一列），而读取时优先取
-        // 共享的那篇 —— 结果是「改了看不到变化」，还留下一份永远不显示的脏数据。
+        // 卷上那篇 —— 结果是「改了看不到变化」，还留下一份永远不显示的脏数据。
         source,
         // 同时给 source 与 paperId：paperId 是用户的明确选择，优先于按名归卷
         paperId: paperValue === "__none__" ? null : paperValue,

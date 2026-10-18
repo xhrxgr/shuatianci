@@ -1,3 +1,55 @@
+## 3.9.5（2026-10-18）—— 原文与填空题彻底解绑，去掉自动「套用」
+
+用户原话：「一张卷子只会有一篇完形填空。我输入原文以及每一题的最小答题上下文，
+这两个是分别独立的就行了。你在里面又去搞什么套用。」
+
+### 去掉了什么
+
+v3.9.0 建的篇章模型是「**题要绑原文**」：建篇章时把本卷所有未关联的题
+自动指过来（代码注释里叫「套用」），题通过 `passage_id` 指向篇章。
+
+用户指出这是多余的 —— 原文和题本来就是两份分别录入的东西，录入时不该有任何
+隐式动作。一整套附属逻辑随之失效：
+
+- 建篇章时自动关联本卷所有题（`admin-papers.js` 的 `handleSavePaperPassage`）
+- 从题目反查 `passage_id` 的两条路（`usedIds` / `dangling`）
+- 原文区的「本篇共 N 道题引用」计数
+- 保存后的提示「已保存，并把本卷 N 道题关联到了这一篇原文」
+
+### 现在的模型
+
+```
+卷 ──→ 原文（一篇，passages.paper_id）
+卷 ──→ 题（N 道，各自只有题干 + 空 + 答案 + 提示词）
+两者之间没有任何自动关联
+```
+
+**做题页改成按卷取原文**（`routes_pages.php` 按 `paper_id` 查一次，
+经 boot 传给 `paper-practice.js`），折叠展示、判卷后自动展开。
+
+这解决了模型简化后的一个关键问题：**题自带最小上下文，所以能脱离整卷随机出题**。
+随机刷题 / 专项练习时只出题、不带原文，因为题干里的上下文已经够了；
+只有整卷做才需要那篇原文。
+
+原文是**可选的补充材料** —— 没有它题照样做得下去。
+
+### 测试
+
+- 新增 `passage-independent-test`（8 项，`npm run test:passage-independent`）：
+  录原文后题目完全没被碰过（无 passageId、无 passageText）、原文能读回、
+  做题页按卷取到原文、默认折叠、随机刷题页不依赖整卷
+- `paper-passage-test` 里两条**旧模型断言反转为新模型**：
+  「改原文后题目的 passageText 跟着变」→「改原文后题目不被改动」；
+  「两题共享同一篇原文（questionCount=2）」→「原文区不再显示 N 道题引用」
+
+### 验证
+
+干净串行 20 个套件全绿：api 128、bank-phase1 66、bank-phase2 88、
+paper-passage 10、passage-independent 8、paper-delete 17、modal 14、
+admin-buttons 14、mobile-robustness 8、blueprint-ui 30、passage-entry 11、
+passage-leak 9、tag-collapse 10、update-trigger 11、feedback-smoke 8、
+AI 7 套件 109。
+
 ## 3.9.4（2026-10-18）—— 弹窗统一为一套实现，移除降级分支
 
 用户反馈：「这玩意好麻烦，统一回到一种一样的方法吧，不要搞什么降级，

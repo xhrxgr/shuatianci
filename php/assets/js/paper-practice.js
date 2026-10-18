@@ -29,6 +29,8 @@ const bootNode = document.getElementById("paper-practice-boot");
 if (!bootNode) throw new Error("缺少页面数据节点");
 const boot = JSON.parse(bootNode.textContent);
 const paper = boot.paper;
+// 该卷的完整原文（可选）。取不到就是空 —— 原文是补充材料，不是做题的前提。
+const paperPassage = boot.passage ?? null;
 const authenticated = Boolean(boot.authenticated);
 
 /* ------------------------------------------------------------------ */
@@ -347,7 +349,7 @@ function renderCard() {
       <h3 class="text-sm font-semibold text-ink">第 ${currentIndex + 1} 题</h3>
       <span class="text-xs text-faint">${blanks.length} 个空</span>
     </div>
-    ${passageBlock(question, submitted)}
+    ${passageBlock(submitted)}
     <div class="mt-4 text-base leading-9 text-ink sm:text-lg">${sentenceHtml}</div>
     ${submitBlock}
     ${resultBanner}
@@ -548,26 +550,25 @@ function init() {
 init();
 
 /**
- * 完整原文（未挖空）展示块。
+ * 完整原文（未挖空）展示块 —— **按卷取，不是按题取**。
  *
- * ⚠️ 这里有个必须守住的红线：**原文是未挖空的完整文章，展开它等于直接看到答案**。
- * 所以：
- *   1. 默认**收起**——之前的实现带着 `open`，学生点进题目第一眼就看到全文，
- *      短文填空的所有空在原文里一目了然，做题这件事就废了；
- *   2. 标题明写「展开会直接看到本题答案」，不靠用户自己想起来这件事；
- *   3. 提交判卷之后才自动展开——那正是需要对照原文的时刻。
+ * 模型（v3.9.5）：原文挂在**卷**上，与具体题目无关。
+ * 每道小题自带最小答题上下文，所以可以脱离整卷随机出题；
+ * 原文只是整卷作答时的补充材料，折叠着放，需要才展开。
  *
- * 为什么还需要它：短文填空一道大题是一篇阅读挖多个空，代词指代、时态呼应、
- * 篇章逻辑这类空，只看挖出来的那一句判断不了。
+ * 原来是从 `question.passageText` 读（每题一份「共享」的），那是
+ * 「题要绑原文」时代的旧模型，已经去掉。现在一次取整卷那篇，
+ * 整卷页所有题共用同一个块。
  *
- * 没有原文的题（老题、单句题）什么都不渲染，不占地方。
+ * ⚠️ 必须守住的红线：**原文是未挖空的全文，展开它等于直接看到答案。**
+ * 所以默认收起，标题明写「展开会直接看到本题答案」，
+ * 提交判卷之后才自动展开 —— 那正是需要对照原文的时刻。
  *
- * @param {object} question
  * @param {boolean} submitted 本题是否已提交判卷
  * @returns {string} HTML
  */
-function passageBlock(question, submitted) {
-  const passage = typeof question.passageText === "string" ? question.passageText.trim() : "";
+function passageBlock(submitted) {
+  const passage = typeof paperPassage.text === "string" ? paperPassage.text.trim() : "";
   if (passage === "") return "";
   // submitted 时自动展开：那是对答案阶段，需要对照原文
   return `<details class="mb-5 rounded-xl border border-line bg-surface-alt p-3 sm:p-4" data-passage-block${
