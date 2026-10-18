@@ -67,6 +67,24 @@ await t("弹窗被正确定位（不在左上角）", async () => {
   return r && r.x > 20 && r.y > 20;
 });
 
+// v3.9.1 的降级 CSS 里写过 background:transparent; border:0，
+// 特异性 0,1,2 压过 .bg-surface 的 0,1,0 —— 卡片变成全透明，
+// 页面上只剩一行字悬着（用户报的）。光测「能不能点」抓不到这种问题，
+// 必须断言**看得见的样式**。
+await t("弹窗仍有可见背景（不是透明）", async () => {
+  const bg = await page.evaluate(() => getComputedStyle(
+    document.querySelector("#delete-paper-dialog")).backgroundColor);
+  return !/transparent|rgba\(0, 0, 0, 0\)/.test(bg);
+});
+
+await t("弹窗仍有边框与圆角", async () => {
+  const st = await page.evaluate(() => {
+    const cs = getComputedStyle(document.querySelector("#delete-paper-dialog"));
+    return { w: cs.borderTopWidth, r: cs.borderTopLeftRadius };
+  });
+  return parseFloat(st.w) > 0 && parseFloat(st.r) >= 4;
+});
+
 await t("「取消」能点（这是用户报的问题）", async () => {
   await page.locator('[data-action="delete-paper-cancel"]').click();
   await page.waitForTimeout(400);

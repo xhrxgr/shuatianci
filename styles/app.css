@@ -183,10 +183,13 @@ html.no-dialog dialog {
   margin: auto;
   max-height: 92vh;
   overflow-y: auto;
-  background: transparent;
-  border: 0;
-  padding: 0;
-  color: inherit;
+  /* ⚠️ 这里只管**定位**，外观一律交给模板上的 Tailwind class
+     （bg-surface / border-line / rounded-2xl / p-0）。
+     曾经顺手写了 background:transparent; border:0; padding:0 ——
+     本条选择器特异性 0,1,2，压得过 .bg-surface 的 0,1,0，
+     结果卡片变成完全透明，页面上只剩一行字悬着（用户报的）。
+     不支持的浏览器把 <dialog> 当普通元素，本来就没有 UA 样式，
+     Tailwind class 直接生效；支持的浏览器走原生路径，这里也不参与。 */
 }
 
 /* 关闭态：必须显式 display:none。未支持 <dialog> 的浏览器会把它当普通

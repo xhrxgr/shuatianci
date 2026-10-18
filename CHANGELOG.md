@@ -1,3 +1,42 @@
+## 3.9.2（2026-10-18）—— 修 v3.9.1 降级样式把弹窗背景弄没了
+
+v3.9.1 的降级 CSS 里顺手写了三行，恰好把卡片外观全覆盖掉了：
+
+```css
+html.no-dialog dialog {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+```
+
+模板上写的是 `bg-surface border-line p-0`，而降级这条选择器
+`html.no-dialog dialog` 的特异性是 **0,1,2**，压得过 `.bg-surface` 的 **0,1,0**
+—— 于是白底没了、边框没了，页面上只剩一行字悬着。
+
+用户反馈：「可以点了，但是样式变得很诡异？只剩下了文字悬浮在这个页面上，
+那个背景怎么没掉了？」
+
+**降级 CSS 只该管定位，外观一律交给模板上的 class。** 删掉那三行即可：
+定位（`position/inset/z-index/margin/max-height/overflow-y`）保留，
+其余交给 `bg-surface / border-line / rounded-2xl / p-0`。
+
+顺带说明两件看起来像 bug 但正常的事：
+- 卷内 0 道题时，「删除试卷，并删除这些题目」按钮会隐藏（没题可删）
+- 降级路径下弹窗仍然居中、遮罩仍然生效，实测计算样式：
+  背景 `rgb(255,255,255)`、边框 `1px rgb(226,232,240)`、圆角 `16px`
+
+### 测试
+
+`dialog-fallback-test` 补两条**样式**断言（背景非透明、边框与圆角存在）。
+原来的 5 项只验「能不能点」，这类「能点但看不见」的退化一个都抓不到。
+
+### 验证
+
+受影响套件全绿：api 128、paper-delete 17、dialog-fallback 7、
+paper-passage 10、admin-buttons 14、blueprint-ui 30、passage-entry 11、
+feedback-smoke 8。
+
 ## 3.9.1（2026-10-18）—— 手机端弹窗点不动、提示条不悬浮、子模块缓存
 
 用户在手机上重报「删除试卷弹窗三个按钮点不动」。v3.8.9 在桌面端修好了，
