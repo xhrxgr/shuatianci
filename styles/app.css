@@ -308,12 +308,69 @@ textarea {
   min-width: 0;
 }
 
-/* 输入框、按钮：min-height 而非 height，用户放大字号时文字不会被裁掉 */
+/* ---------------------------------------------------------------------------
+ * 按钮的文字对齐（v3.10.0）
+ *
+ * 问题：按钮在盒子里「看着没居中」，尤其偏上。
+ *
+ * 原因不在配色或圆角，而在**高度被撑起来、文字却没跟着居中**：
+ *   · <button> 靠 min-height: 2.75rem 撑到 44px，但 preflight 把它
+ *     重置成了 padding:0 + font:inherit，内部按 line-box 排布；
+ *   · 按钮式 <a>（class 里有 min-h-11 rounded-…）更明显：min-h-11 同样
+ *     把它撑到 44px，而 <a> 默认是 inline，**文字根本不会在 44px 里居中**。
+ *
+ * 实测（1280px 视口，扫描 190 个 <button> + 36 个链接式按钮）：
+ * 「开始刷题」上下间距 0 / 3 —— 确实偏上。
+ *
+ * 解法：用 flex 居中，而不是拿 line-height 打补丁。
+ * line-height 只能让文字在自己的 line-box 里居中，撑高的那截留白
+ * 它管不了；align-items 才是对齐到**盒子**。
+ *
+ * 只挑「确实是按钮」的 a（同时有 min-h-11 与 rounded），
+ * 免得把正文里的普通链接也改成 flex。
+ * --------------------------------------------------------------------------- */
+button,
+a[class*="min-h-11"][class*="rounded"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* 文字换行时也要居中，否则第二行会靠左 */
+  text-align: center;
+}
+
+/* 图标与文字混排：给一点点间距，并防止图标被行高裁掉。
+   图标用 inline-flex 排布后不必再靠 vertical-align 修正基线。 */
+button > svg,
+a[class*="min-h-11"][class*="rounded"] > svg {
+  flex: none;
+}
+
+/* 输入框、按钮：min-height 而非 height，用户放大字号时文字不会被裁掉。
+   链接式按钮一并纳入 —— 否则它撑不高，触摸目标会低于 44px。 */
 input:not([type="checkbox"]):not([type="radio"]),
 textarea,
-button {
+button,
+a[class*="min-h-11"][class*="rounded"] {
   min-height: 2.75rem;
   height: auto;
+}
+
+/* 放大字号时按钮宽度要跟着文字走：固定宽 + 大字号会把字挤出边框
+   （实测 250% 下「退出」81px 宽装不下 30px 的两个字，溢出 6.9px）。 */
+a[class*="min-h-11"][class*="rounded"] {
+  max-width: 100%;
+}
+
+/* flex 容器里的按钮不参与横向收缩。
+   上面 `[class*="flex"] > * { min-width: 0 }` 是为了治 select 溢出，
+   代价是按钮也变成了可压缩的 flex item —— 空间一紧张它就被压到
+   装不下字（实测 250% 字号下「退出」左右各溢出 4.6px）。
+   按钮内容通常很短，宁可让容器换行也不该压扁它。
+   顶部导航的链接同样适用（class 形如 `rounded-lg px-3 py-2 text-sm`，
+   没有 min-h-11，所以判据只能取「带 rounded」）。 */
+[class*="flex"] > button,
+[class*="flex"] > a[class*="rounded"] {
+  flex: none;
 }
 
 /* 表单控件的字号不要跟着浏览器的「自动放大」缩放 ——
