@@ -154,4 +154,14 @@ await t("390px 下可点按钮的触摸目标够大（≥40px）", async () => {
 
 console.log(out.join("\n"));
 console.log("\nJS 错误:", errs.length ? [...new Set(errs)].slice(0, 3).join(" | ") : "无");
+// 退出码：没有它，测试失败时进程仍返回 0 ——
+// 批处理里会被当成「通过」，绿得莫名其妙。
+const FAIL = out.filter((x) => String(x).startsWith("❌")).length
+  + out.filter((x) => String(x).startsWith("FAIL")).length;
+// 只把 pageerror（真异常）算失败：errs 里通常还混着 favicon 之类的 404，
+// 那是无害的资源缺失，不该让整套测试变红。
+const REAL_JS_ERRORS = Array.isArray(errs)
+  ? [...new Set(errs)].filter((e) => !/Failed to load resource|404|403/.test(String(e)))
+  : [];
+process.exitCode = FAIL > 0 || REAL_JS_ERRORS.length > 0 ? 1 : 0;
 await b.close();

@@ -1,3 +1,69 @@
+## 3.10.1（2026-10-19）—— 全面体检：修 4 处隐患
+
+不开发新功能，做一次系统性排查。逐项核对而不是凭感觉。
+
+### 1. 隐私：线上服务器地址硬编码在公开仓库里
+
+`php/tests/online-check.mjs` 与 `online-feedback.mjs` 顶部写着真实的
+站点地址与端口。**仓库是公开的**，任何人都能看到这条地址 ——
+违反「文档示例统一用 `example.com`、不写真实域名/服务器 IP」。
+
+已改为读环境变量：
+
+```js
+const BASE = process.env.EQ_BASE || "http://127.0.0.1:9002";
+```
+
+线上实测时 `EQ_BASE=https://your.host:port node php/tests/online-check.mjs`。
+
+### 2. 大面积缺失：测试套件没有退出码
+
+**28 个套件里有 14 个失败时仍返回 0** —— 批处理里会被当成「通过」，
+绿得莫名其妙。新写的三个套件（exam-mode / practice-picker /
+ai-passage-attaches）连汇总行都没有。
+
+已全部补齐。判定收紧为只认真异常：
+
+```js
+// errs 里混着 favicon 之类的 404，那是无害的资源缺失，不该让整套测试变红
+const REAL_JS_ERRORS = [...new Set(errs)].filter((e) =>
+  !/Failed to load resource|404|403/.test(String(e)));
+process.exitCode = FAIL > 0 || REAL_JS_ERRORS.length > 0 ? 1 : 0;
+```
+
+已验证：故意破坏一条断言 → 退出码 1；恢复 → 退出码 0。
+
+### 3. npm scripts 指向已删除的文件
+
+`test:practice-cleanup` 指向 v3.9.8 就删掉的套件（换成
+`practice-picker` 时漏删条目）。已删。
+
+### 4. 一处注释与实现不符
+
+`ai-actions.js` 里写着「篇章引用必须一起清…不会重置 passageId」，
+但代码清的是 `pendingPassageText` —— `passageId` 在 v3.9.6 就没了。
+照着注释找会找错。已更正并补上历史缘由。
+
+### 体检项与结果
+
+| 项 | 结果 |
+|---|---|
+| 版本三处一致（VERSION / package.json / git tag） | ✅ 3.10.0 |
+| CSS 产物与源文件同步（重跑 build 应逐字节一致） | ✅ |
+| import map 覆盖全部 JS 模块（动态扫描 + 缓存戳） | ✅ 31/31 |
+| PHP 语法 | ✅ 47/47 |
+| JS/MJS 语法 | ✅ 65/65 |
+| 死代码（未使用的导出） | ✅ 无 |
+| 注释与实现一致性 | 修 1 处 |
+| npm scripts → 文件存在性 | 修 1 处 |
+| 鉴权覆盖（`auth-coverage-test` 内嵌在 `test:api`） | ✅ 真正在执行 |
+| 仓库隐私（真实域名 / IP / 学校名） | 修 2 处 |
+| 测试退出码 | 修 14 个 |
+
+### 验证
+
+干净串行 **28 个套件全部 exit=0**，全绿。
+
 ## 3.10.0（2026-10-19）—— 统一按钮文字对齐（水平 + 垂直居中）
 
 用户要求：排查并优化所有按钮的 UI 样式，解决文字未垂直/水平居中、整体偏上。

@@ -205,4 +205,14 @@ console.log(out.join("\n"));
 const fail = out.filter((x) => x.startsWith("❌")).length;
 console.log(`\n通过 ${out.length - fail} 项，失败 ${fail} 项`);
 console.log(errs.length ? "JS 错误: " + [...new Set(errs)].slice(0, 3).join(" | ") : "无 JS 错误");
+// 退出码：没有它，测试失败时进程仍返回 0 ——
+// 批处理里会被当成「通过」，绿得莫名其妙。
+const FAIL = out.filter((x) => String(x).startsWith("❌")).length
+  + out.filter((x) => String(x).startsWith("FAIL")).length;
+// 只把 pageerror（真异常）算失败：errs 里通常还混着 favicon 之类的 404，
+// 那是无害的资源缺失，不该让整套测试变红。
+const REAL_JS_ERRORS = Array.isArray(errs)
+  ? [...new Set(errs)].filter((e) => !/Failed to load resource|404|403/.test(String(e)))
+  : [];
+process.exitCode = FAIL > 0 || REAL_JS_ERRORS.length > 0 ? 1 : 0;
 await browser.close();

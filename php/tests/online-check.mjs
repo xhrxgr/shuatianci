@@ -2,7 +2,13 @@
 // 也不点「测试更新源」（会临时改写服务器上的更新配置）。
 import { chromium } from "playwright-core";
 
-const BASE = "https://stc.364354.xyz:2022";
+/**
+ * 被测站点地址。**不要把真实地址写进代码** —— 仓库是公开的。
+ * 线上实测时这样跑：
+ *   EQ_BASE=https://your.host:port node php/tests/online-check.mjs
+ * 默认值指向本地开发服务器，方便不传环境变量时也能跑通。
+ */
+const BASE = process.env.EQ_BASE || "http://127.0.0.1:9002";
 const b = await chromium.launch({ channel: "chrome", headless: true, args: ["--ignore-certificate-errors"] });
 const p = await (await b.newContext({ ignoreHTTPSErrors: true })).newPage();
 

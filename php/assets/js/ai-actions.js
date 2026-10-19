@@ -428,7 +428,7 @@ async function buildPreviewInner(raw) {
   // 换了一批题，上一篇的共用引用作废（否则会把上一篇的原文套到新一批上）
   state.pendingPassageText = "";
 
-  // 原文是 AI 已经填好的，不该再让用户手动点一次「套用到本批」。
+  // AI 返回的顶层 passage 直接收进原文框，用户不用再点一次「填入本卷原文」。
   // 必须放在 state.previewList = list 之后：判断与落库都读 state.previewList，
   // 放在赋值前读到的是上一批（首次构建时甚至是空数组），判断永远不成立。
   await autoAdoptSharedPassage(list);
@@ -647,10 +647,12 @@ async function runImport(list, checks = null) {
     knownPaper.questionCount = Number(knownPaper.questionCount ?? 0) + stamped.length;
   }
 
-  // 篇章引用必须一起清：否则下一批题如果**文本与这一批相同**，
+  // 待导入的原文必须一起清：否则下一批题如果**文本与这一批相同**，
   // buildPreview 会命中 state.lastBuild 缓存直接返回（那条路径不经过 buildPreviewInner，
-  // 不会重置 passageId），面板就会显示「已套用到本批 N 道题」而实际一题都没挂。
-  // 更糟的是用户点「重新套用」会 updatePassage 改到**别的批次**的篇章上。
+  // 不会重置 pendingPassageText），于是上一批的原文会被静默地挂到这一批的卷上。
+  //
+  // （v3.9.6 之前这里清的是 passageId —— 那时题还绑篇章，同一个词的坑更大：
+  //  用户点「重新套用」会 updatePassage 改到**别的批次**的篇章上。）
   state.pendingPassageText = "";
   renderPassagePanel();
 

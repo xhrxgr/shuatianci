@@ -61,4 +61,13 @@ const papersTabWorks = await page.locator('[data-admin-panel="papers"]').isVisib
 console.log(papersTabWorks ? "✅ 页签切换正常（模块解析成功）" : "❌ 页签切换异常");
 
 console.log("\nJS 错误:", errs.length ? [...new Set(errs)].slice(0, 3).join(" | ") : "无");
+// 退出码：没有它，测试失败时进程仍返回 0 ——
+// 批处理里会被当成「通过」，绿得莫名其妙。
+// 这个套件的判据是「有没有漏戳的模块」，不是 ❌ 行（它本来就没有 out 数组）。
+// 只把 pageerror 算失败：errs 里混着 favicon 之类的 404，那是无害的资源缺失。
+const REAL_JS_ERRORS = Array.isArray(errs)
+  ? [...new Set(errs)].filter((e) => !/Failed to load resource|404|403/.test(String(e)))
+  : [];
+process.exitCode =
+  without.length > 0 || !papersTabWorks || REAL_JS_ERRORS.length > 0 ? 1 : 0;
 await browser.close();

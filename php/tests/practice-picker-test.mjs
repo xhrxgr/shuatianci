@@ -86,5 +86,12 @@ await t("清空勾选后能刷全部", async () => {
 });
 
 console.log(out.join("\n"));
-console.log("JS 错误:", errs.length ? [...new Set(errs)].slice(0,2).join(" | ") : "无");
+// 汇总 + 退出码：缺了这条，测试失败时进程仍返回 0，
+// 批处理里会被当成「通过」，绿得莫名其妙。
+const jsErrors = [...new Set(errs)].filter((e) => e.startsWith("PAGEERROR"));
+console.log("JS 错误:", jsErrors.length ? jsErrors.slice(0, 2).join(" | ") : "无");
+const failed = out.filter((line) => line.startsWith("❌")).length;
+  console.log(`
+通过 8 项，失败 ${failed} 项`);
+process.exitCode = failed > 0 || jsErrors.length > 0 ? 1 : 0;
 await b.close();
