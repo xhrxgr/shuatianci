@@ -1,7 +1,7 @@
 {
   "name": "english-quiz",
   "private": true,
-  "version": "3.10.1",
+  "version": "3.11.0",
   "type": "module",
   "description": "English cloze question bank for exam practice (pure PHP backend + vanilla JS frontend, no Node at runtime)",
   "scripts": {
@@ -39,7 +39,8 @@
     "test:paper-practice": "node php/tests/paper-practice-render-test.mjs http://127.0.0.1:9002",
     "test:practice-picker": "node php/tests/practice-picker-test.mjs http://127.0.0.1:9002",
     "test:exam-mode": "node php/tests/exam-mode-test.mjs http://127.0.0.1:9002",
-    "test:btn-align": "node php/tests/btn-align-test.mjs http://127.0.0.1:9002"
+    "test:btn-align": "node php/tests/btn-align-test.mjs http://127.0.0.1:9002",
+    "test:btn-feedback": "node php/tests/practice-button-feedback-test.mjs http://127.0.0.1:9002"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3"

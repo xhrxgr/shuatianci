@@ -298,6 +298,12 @@ function tabCounts() {
   };
 }
 
+/** 当前题是不是最后一道 —— 用于把「下一题」在末题时讲清楚，而不是让用户点了没反应 */
+function isLastQuestion() {
+  const list = ordered();
+  return list.length > 0 && currentIndex === list.length - 1;
+}
+
 function currentQuestion() {
   const list = ordered();
   return list[Math.min(currentIndex, Math.max(0, list.length - 1))];
@@ -515,8 +521,16 @@ function renderCard() {
       <div class="space-y-4">${blanksHtml}</div>
       <p class="mt-4 text-xs text-faint">来源：${escapeHtml(question.source)}</p>
       <div class="mt-5 flex flex-col gap-3 sm:flex-row">
-        <button type="button" data-action="next" class="min-h-11 flex-1 rounded-xl bg-primary px-6 py-3 text-sm font-medium text-on-primary transition hover:bg-primary-hover">下一题</button>
-        <button type="button" data-action="master" class="min-h-11 flex-1 rounded-xl border border-success/40 bg-success-soft px-6 py-3 text-sm font-medium text-success transition hover:bg-success/20">标记为已掌握</button>
+        <button type="button" data-action="next" ${
+            isLastQuestion() ? 'disabled title="已经到最后一题了"' : ""
+          } class="min-h-11 flex-1 rounded-xl bg-primary px-6 py-3 text-sm font-medium text-on-primary transition hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50">${
+            isLastQuestion() ? "已是最后一题" : "下一题"
+          }</button>
+        <button type="button" data-action="master" class="min-h-11 flex-1 rounded-xl border px-6 py-3 text-sm font-medium transition ${
+            question.status === "mastered"
+              ? "border-line bg-surface text-muted hover:bg-surface-alt"
+              : "border-success/40 bg-success-soft text-success hover:bg-success/20"
+          }">${question.status === "mastered" ? "取消「已掌握」" : "标记为已掌握"}</button>
       </div>
     </section>`;
   }
@@ -683,12 +697,18 @@ async function handleMarkMastered() {
   if (!question) return;
 
   if (!authenticated) {
-    setLocalProgressStatus(question.id, "mastered");
+    setLocalProgressStatus(
+      question.id,
+      question.status === "mastered" ? "new" : "mastered"
+    );
   } else {
     // 失败必须告诉用户，而且**不要先改本地状态**：之前是无 catch 的 fire-and-forget，
     // 界面稳稳显示「已掌握」，刷新后打回原形，用户整理错题的成果看起来白干
     try {
-      await api.setProgress(question.id, "mastered");
+      await api.setProgress(
+        question.id,
+        question.status === "mastered" ? "new" : "mastered"
+      );
     } catch (error) {
       notifyError(error, {
         details: ["这道题的掌握状态没有被保存，刷新后会恢复原样"],
@@ -697,8 +717,9 @@ async function handleMarkMastered() {
       return;
     }
   }
+  const nextStatus = question.status === "mastered" ? "new" : "mastered";
   questions = questions.map((item) =>
-    item.id === question.id ? { ...item, status: "mastered" } : item
+    item.id === question.id ? { ...item, status: nextStatus } : item
   );
   renderAll();
 }

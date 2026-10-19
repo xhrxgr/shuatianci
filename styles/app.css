@@ -329,6 +329,30 @@ textarea {
  * 只挑「确实是按钮」的 a（同时有 min-h-11 与 rounded），
  * 免得把正文里的普通链接也改成 flex。
  * --------------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------------
+ * 固定页头会盖住滚到它下面的内容（header 是 sticky top-0 z-50）。
+ *
+ * 实测后果：admin 页有 50 个按钮的中心点被页头盖住 —— 眼睛看着按钮在那儿，
+ * 点下去却打在页头上，看起来就是「按钮点不动」。
+ *
+ * 两道措施：
+ *   ① scroll-padding-top：锚点跳转与 focus 时自动留出页头的高度，
+ *      不会把目标元素送到页头底下；
+ *   ② scroll-margin-top：作用在可交互元素上，浏览器把「滚到可见」时
+ *      同样按这个边距计算。
+ * 页头高约 56px（py-3 + 一行），取 4.5rem 留一点余量。
+ * --------------------------------------------------------------------------- */
+html {
+  scroll-padding-top: 4.5rem;
+}
+
+button,
+a[class*="min-h-11"][class*="rounded"],
+a[href],
+summary {
+  scroll-margin-top: 4.5rem;
+}
+
 button,
 a[class*="min-h-11"][class*="rounded"] {
   display: inline-flex;
@@ -371,6 +395,17 @@ a[class*="min-h-11"][class*="rounded"] {
 [class*="flex"] > button,
 [class*="flex"] > a[class*="rounded"] {
   flex: none;
+}
+
+/* ⚠️ 上一条有个副作用：它会把按钮自带的 `flex-1` 顶掉 ——
+   按钮显式要「撑满一行」，却因为 `flex: none` 缩成内容宽度
+   （实测解析区两个按钮被压到 134px，而它们本该平分整行）。
+   这里把「自己声明了伸缩」的按钮排除掉，让它的 flex-1 / flex-grow 生效。 */
+[class*="flex"] > button.flex-1,
+[class*="flex"] > button[class*="flex-grow"],
+[class*="flex"] > a.flex-1,
+[class*="flex"] > a[class*="flex-grow"] {
+  flex: 1 1 0%;
 }
 
 /* 表单控件的字号不要跟着浏览器的「自动放大」缩放 ——
