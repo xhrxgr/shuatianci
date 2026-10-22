@@ -187,6 +187,25 @@ function answeredCount() {
   return ids.size;
 }
 
+/**
+ * 对错是否已揭晓 —— **整卷交完之前一律 false**。
+ *
+ * v3.9.9 只把答题卡的对错压到了交卷后，题目卡片本身还在提交那一刻
+ * 弹出 ✓/✗、正确答案、「全部正确！」和完整解析 —— 等于还是一题一题看答案，
+ * 整卷做就退化成了普通刷题。
+ *
+ * 现在所有「对错相关」的渲染都统一受它把门：
+ *   · 输入框的绿/红配色
+ *   · ✓/✗ 图标
+ *   · 「正确：xxx」提示
+ *   · 结果横幅
+ *   · 命题依据解析
+ * 提交后只显示中性的「已提交」，交卷后在逐题回顾里一次性全给。
+ */
+function revealed() {
+  return allSubmitted();
+}
+
 /** 答题卡：一眼看出哪些做过、对错如何 */
 function renderSheet() {
   const sheet = document.getElementById("paper-sheet");
@@ -288,12 +307,14 @@ function renderCard() {
 
       const isCorrect = submitted ? isBlankCorrect(blank, state.inputs[blank.blankIndex] ?? "") : null;
 
-      let boxClass = "border-line text-ink focus:border-primary focus:bg-primary-soft/40";
-      if (submitted) {
-        boxClass = isCorrect
-          ? "border-success bg-success-soft text-success"
-          : "border-danger bg-danger-soft text-danger";
-      }
+// 已提交但没揭晓时保持中性 —— 绿/红本身就是「这题对了/错了」的信号
+        let boxClass = "border-line text-ink focus:border-primary focus:bg-primary-soft/40";
+        if (submitted) boxClass += " border-primary/60 bg-primary-soft/40 text-primary";
+        if (submitted && revealed()) {
+          boxClass = isCorrect
+            ? "border-success bg-success-soft text-success"
+            : "border-danger bg-danger-soft text-danger";
+        }
 
       const inputHtml = `<input
         type="text"
@@ -308,9 +329,10 @@ function renderCard() {
         class="blank-slot border-b-2 bg-transparent px-1.5 py-0.5 text-center text-base outline-none transition sm:text-lg ${boxClass}${submitted ? " cursor-default" : ""}"
       >`;
 
-      const iconHtml = submitted ? (isCorrect ? correctIcon() : wrongIcon()) : "";
-      const answerHint =
-        submitted && !isCorrect
+const showVerdict = submitted && revealed();
+        const iconHtml = showVerdict ? (isCorrect ? correctIcon() : wrongIcon()) : "";
+        const answerHint =
+          showVerdict && !isCorrect
           ? `<span class="blank-slot ml-1 text-sm text-danger">正确：${escapeHtml((blank.answer ?? []).join(" / "))}</span>`
           : "";
 
@@ -325,16 +347,22 @@ function renderCard() {
         <p class="mt-2 text-xs text-faint">输入答案后按回车可跳到下一个空，最后一个空回车直接提交。注意区分大小写，按考试要求精确拼写。</p>
       </div>`;
 
-  const resultBanner = submitted
-    ? `<div class="${
-        state.correct
-          ? "mt-5 rounded-xl border border-success/40 bg-success-soft px-6 py-3 text-sm font-medium text-success"
-          : `mt-5 rounded-xl border border-danger/40 bg-danger-soft px-6 py-3 text-sm font-medium text-danger`
-      }">${state.correct ? "全部正确！" : `答错 ${state.wrongCount} 个，查看解析`}</div>`
-    : "";
+// 交卷前只说「记下了」，一个字都不透露对错；交卷后才给真实结论
+    const resultBanner = submitted
+      ? revealed()
+        ? `<div class="${
+            state.correct
+              ? "mt-5 rounded-xl border border-success/40 bg-success-soft px-6 py-3 text-sm font-medium text-success"
+              : `mt-5 rounded-xl border border-danger/40 bg-danger-soft px-6 py-3 text-sm font-medium text-danger`
+          }">${state.correct ? "全部正确！" : `答错 ${state.wrongCount} 个，查看解析`}</div>`
+        : `<div class="mt-5 rounded-xl border border-primary/30 bg-primary-soft px-6 py-3 text-sm font-medium text-primary">
+             已提交。对错与解析等本卷全部做完后一起揭晓。
+           </div>`
+      : "";
 
   let analysisHtml = "";
-  if (submitted) {
+  // 解析区藏着标准答案与命题意图 —— 交卷前一律不渲染
+  if (submitted && revealed()) {
     const blanksHtml = blanks
       .map((blank, index) => {
         const isCorrect = isBlankCorrect(blank, state.inputs[blank.blankIndex] ?? "");
@@ -477,11 +505,10 @@ async function handleSubmit() {
     blanks.map((blank) => normalize(state.inputs[blank.blankIndex] ?? ""))
   );
 
-  // 全对时自动进入下一题——连续做题时少点一次
-  if (state.correct && currentIndex < questions.length - 1) {
-    currentIndex += 1;
-    renderAll();
-  }
+  // 注意：这里**不再**「全对就自动跳下一题」。
+  // 整卷做是考试 —— 自动跳与否本身就是「这题对不对」的信号，
+  // 而且学生连自己刚填的答案都还没看见就被换页了。
+  // 现在无论对错都停在原题，由学生自己决定什么时候翻页。
 }
 
 function showFinish() {
@@ -529,6 +556,17 @@ function renderReview() {
     const right = blankList(question)
       .map((b) => (b.answer ?? []).join(" / "))
       .join("　");
+    // 解析存在**空级**（blanks[].trapAnalysis），题目级没有这个字段。
+    // 之前这里读的是 question.trapAnalysis，于是交卷后的回顾永远显示不出解析 ——
+    // 而整卷做恰恰是唯一会看到回顾的地方。
+    const analyses = blankList(question)
+      .filter((b) => (b.trapAnalysis ?? "").trim() !== "")
+      .map(
+        (b) => `<p class="rounded-lg bg-surface-alt px-3 py-2 text-xs leading-5 text-muted">
+          <span class="font-medium text-ink">第 ${b.blankIndex} 空解析：</span>${escapeHtml(b.trapAnalysis)}
+        </p>`
+      )
+      .join("");
     return `<article class="rounded-xl border ${ok ? "border-line" : "border-danger/50"} bg-surface p-4">
       <div class="mb-2 flex flex-wrap items-center gap-2">
         <span class="text-xs font-semibold text-muted">第 ${index + 1} 题</span>
@@ -542,12 +580,12 @@ function renderReview() {
         ${ok ? "" : `　正确答案：<span class="text-success">${escapeHtml(right)}</span>`}
       </p>
       ${
-        question.trapAnalysis
-          ? `<p class="mt-2 rounded-lg bg-surface-alt px-3 py-2 text-xs leading-5 text-muted">${escapeHtml(question.trapAnalysis)}</p>`
-          : ""
-      }
-    </article>`;
-  });
+          analyses
+            ? `<div class="mt-2 space-y-1.5">${analyses}</div>`
+            : ""
+        }
+      </article>`;
+    });
 
   const passage = renderPassageBlanked(
     typeof paperPassage?.text === "string" ? paperPassage.text.trim() : "",
@@ -668,17 +706,20 @@ init();
  * @returns {string} HTML
  */
 function passageBlock(submitted) {
-  const passage = typeof paperPassage?.text === "string" ? paperPassage.text.trim() : "";
-  if (passage === "") return "";
-  const revealed = Boolean(submitted) && allSubmitted();
-  // 未整卷交完时不挖空 —— 挖空视图和题目视图共用同一份作答与判卷，
-  // 直接给全文等于当场把答案摊开。
-  const html = revealed ? renderPassageBlanked(passage) : escapeHtml(passage);
-  return `<details class="mb-5 rounded-xl border border-line bg-surface-alt p-3 sm:p-4" data-passage-block${
-    revealed ? " open" : ""
-  }>
-    <summary class="cursor-pointer select-none text-xs font-medium text-muted">
-      ${
+const passage = typeof paperPassage?.text === "string" ? paperPassage.text.trim() : "";
+    if (passage === "") return "";
+    // ⚠️ 这里原本叫 `revealed`，和全局的 revealed() 同名 ——
+    // 局部 const 会把它遮蔽掉，之后调用 revealed() 直接 TypeError。
+    // 局部变量统一加 `is` 前缀区分。
+    const isRevealed = revealed();
+    // 未整卷交完时不挖空 —— 挖空视图和题目视图共用同一份作答与判卷，
+    // 直接给全文等于当场把答案摊开。
+    const html = isRevealed ? renderPassageBlanked(passage) : escapeHtml(passage);
+    return `<details class="mb-4 rounded-xl border border-line bg-surface-alt p-4" data-passage-block${
+      isRevealed ? " open" : ""
+    }>
+      <summary class="cursor-pointer select-none text-xs font-medium text-muted">
+        ${
         revealed
           ? "完整原文（空位可填，作答与题目共享）"
           : "完整原文 —— 展开会直接看到本题答案"
